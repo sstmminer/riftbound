@@ -1,0 +1,322 @@
+import copy
+import json
+import random
+import unittest
+
+from riftbound.engine import Environment, InvalidAction, RulesUnavailable, replay
+from riftbound.origins import OriginsRules
+from riftbound.policies import GreedyPolicy
+from riftbound.support import starter_deck
+from riftbound.training import RandomPolicy, self_play
+
+
+class OriginsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.rules = OriginsRules()
+
+    def scenario(self):
+        state = self.rules.initial_state(random.Random(9))
+        state.update(phase="main", actor=0, turn_player=0, turn=3)
+        for row in state["players"]:
+            row["energy"], row["power"] = 20, ["fury", "order", "fury", "order"]
+        return state
+
+    def take_card(self, state, code, player=0):
+        row = state["players"][player]
+        for zone in ("hand", "main", "champion", "trash"):
+            for uid in row[zone]:
+                if state["cards"][uid]["code"] == code:
+                    row[zone].remove(uid)
+                    return uid
+        self.fail(f"no physical copy of {code}")
+
+    def hand(self, state, code, player=0):
+        uid = self.take_card(state, code, player)
+        state["players"][player]["hand"].append(uid)
+        return uid
+
+    def unit(self, state, code="OGN-219", player=0, location=0):
+        uid = self.take_card(state, code, player)
+        unit = self.rules._new_unit(state, code, player, location, card=uid, exhausted=False)
+        if location in (0, 1):
+            state["fields"][location]["controller"] = player
+        return unit
+
+    def act(self, state, kind, **args):
+        options = [a for a in self.rules.legal_actions(state) if a.kind == kind
+                   and all(json.loads(a.arguments).get(k) == v for k, v in args.items())]
+        self.assertTrue(options, (kind, args, state["phase"]))
+        self.rules.apply(state, options[0], random.Random(7))
+        self.rules.validate(state)
+
+    def drain(self, state):
+        for _ in range(80):
+            if state["phase"] not in {"chain", "trigger_order"}:
+                return
+            if state["phase"] == "trigger_order":
+                self.act(state, "order_triggers")
+            else:
+                self.act(state, "pass")
+        self.fail("chain did not close")
+
+    def test_starter_is_constructed_legal_and_unknown_effect_rejected(self):
+        deck = starter_deck()
+        self.assertEqual(len(deck["main"]), 40)
+        deck["main"][0] = "OGN-002"
+        with self.assertRaises(RulesUnavailable):
+            OriginsRules([deck, starter_deck()])
+
+    def test_archive_normalizes_champion_signature_and_errata(self):
+        cards = self.rules.cards
+        self.assertTrue(cards["OGN-027"]["champion"])
+        self.assertIn("Darius", cards["OGN-027"]["tags"])
+        self.assertTrue(cards["OGN-254"]["signature"])
+        self.assertIn("banish", cards["OGN-242"]["text"])
+        self.assertEqual(cards["OGN-027"]["might"], 5)
+        self.assertEqual(cards["OGN-027"]["power_cost"], 1)
+
+    def test_setup_mulligan_turns_and_second_player_extra_rune(self):
+        env = Environment(self.rules)
+        env.reset(seed=3)
+        first = env.current_player
+        keep = next(a for a in env.legal_actions() if json.loads(a.arguments)["slots"] == [])
+        env.step(keep)
+        env.step(keep)
+        obs = env.observe(first)
+        self.assertEqual(len(obs["hand"]), 5)
+        self.assertEqual(len(obs["players"][first]["runes"]), 2)
+        end = next(a for a in env.legal_actions() if a.kind == "end_turn")
+        env.step(end)
+        self.assertEqual(len(env.observe(1-first)["players"][1-first]["runes"]), 3)
+
+    def test_hidden_opponent_hand_and_deck_order_not_in_observation(self):
+        state = self.scenario()
+        other = copy.deepcopy(state)
+        p = other["players"][1]
+        p["main"][0], p["hand"][0] = p["hand"][0], p["main"][0]
+        p["rune_deck"].reverse()
+        self.assertEqual(self.rules.observe(state, 0), self.rules.observe(other, 0))
+        self.assertEqual(self.rules.legal_actions(state), self.rules.legal_actions(other))
+
+    def test_accelerate_cost_and_enter_ready(self):
+        state = self.scenario()
+        uid = self.hand(state, "OGN-010")
+        before = state["players"][0]["energy"]
+        self.act(state, "play_unit", card=uid, accelerate=True, location="base:0")
+        self.assertFalse(state["units"][-1]["exhausted"])
+        self.assertEqual(state["players"][0]["energy"], before-3)
+        self.assertEqual(len(state["players"][0]["power"]), 3)
+
+    def test_magma_wurm_only_other_units_enter_ready(self):
+        state = self.scenario()
+        uid = self.hand(state, "OGN-011")
+        self.act(state, "play_unit", card=uid, location="base:0")
+        self.assertTrue(state["units"][-1]["exhausted"])
+        uid = self.hand(state, "OGN-219")
+        self.act(state, "play_unit", card=uid, location="base:0")
+        self.assertFalse(state["units"][-1]["exhausted"])
+
+    def test_legion_discount_buff_and_darius_second_card_trigger(self):
+        state = self.scenario()
+        darius = self.unit(state, "OGN-027", location="base:0")
+        darius["exhausted"] = True
+        state["players"][0]["played"] = 1
+        uid = self.hand(state, "OGN-217")
+        self.act(state, "play_unit", card=uid, location="base:0")
+        self.assertEqual(state["phase"], "trigger_order")
+        self.drain(state)
+        self.assertEqual(darius["temporary"], 2)
+        self.assertFalse(darius["exhausted"])
+        self.assertEqual(next(u for u in state["units"] if u["card"] == uid)["buff"], 1)
+        before = state["players"][0]["energy"]
+        uid = self.hand(state, "OGN-012")
+        self.act(state, "play_unit", card=uid, location="base:0")
+        self.assertEqual(state["players"][0]["energy"], before-2)
+
+    def test_damage_spell_and_reaction_resolve_lifo(self):
+        state = self.scenario()
+        enemy = self.unit(state, "OGN-210", player=1, location=0)
+        ray = self.hand(state, "OGN-009")
+        glory = self.hand(state, "OGN-207", player=1)
+        self.act(state, "play_spell", card=ray, targets=[enemy["id"]])
+        self.act(state, "pass")
+        self.act(state, "play_spell", card=glory, targets=[enemy["id"]], spend_buff=None)
+        self.drain(state)
+        self.assertIn(enemy, state["units"])
+        self.assertEqual((enemy["temporary"], enemy["damage"]), (3, 3))
+        self.assertIn(ray, state["players"][0]["trash"])
+        self.assertIn(glory, state["players"][1]["trash"])
+
+    def test_invalidated_spell_target_fizzles_without_hitting_new_objects(self):
+        state = self.scenario()
+        enemy = self.unit(state, "OGN-210", player=1)
+        ray = self.hand(state, "OGN-009")
+        self.act(state, "play_spell", card=ray, targets=[enemy["id"]])
+        # Unit leaves board while the spell is pending; keep physical conservation.
+        state["units"].remove(enemy)
+        state["players"][1]["trash"].append(enemy["card"])
+        self.drain(state)
+        self.assertIn(ray, state["players"][0]["trash"])
+
+    def test_deflect_requires_additional_any_power(self):
+        state = self.scenario()
+        enemy = self.unit(state, "OGN-013", player=1)
+        ray = self.hand(state, "OGN-009")
+        state["players"][0]["power"] = ["fury"]
+        self.assertFalse(any(a.kind == "play_spell" and json.loads(a.arguments)["card"] == ray
+                             for a in self.rules.legal_actions(state)))
+        state["players"][0]["power"].append("order")
+        self.act(state, "play_spell", card=ray, targets=[enemy["id"]])
+        self.assertEqual(state["players"][0]["power"], [])
+
+    def test_call_to_glory_optional_buff_cost_and_persistence(self):
+        state = self.scenario()
+        unit = self.unit(state)
+        unit["buff"] = 1
+        spell = self.hand(state, "OGN-207")
+        state["players"][0]["energy"] = 0
+        self.act(state, "play_spell", card=spell, targets=[unit["id"]], spend_buff=unit["id"])
+        self.drain(state)
+        self.assertEqual((unit["buff"], unit["temporary"]), (0, 3))
+        self.act(state, "end_turn")
+        self.assertEqual(unit["temporary"], 0)
+
+    def test_movement_drumming_token_showdown_conquer_and_hold(self):
+        state = self.scenario()
+        unit = self.unit(state, "OGN-222", location="base:0")
+        self.act(state, "begin_move", destination=0)
+        self.act(state, "select_unit", unit=unit["id"])
+        self.act(state, "commit_move")
+        self.drain(state)
+        self.assertEqual(len(self.rules._units(state, 0, 0)), 2)
+        self.assertEqual(state["phase"], "showdown")
+        self.act(state, "pass")
+        self.act(state, "pass")
+        self.assertEqual(state["points"][0], 1)
+        self.act(state, "end_turn")
+        self.act(state, "end_turn")
+        self.assertEqual(state["points"][0], 2)
+
+    def test_group_movement_and_simultaneous_combat_deaths(self):
+        state = self.scenario()
+        state["fields"][0]["code"] = "OGN-276"  # No Might aura.
+        attacker = self.unit(state, "OGN-219", location="base:0")
+        defender = self.unit(state, "OGN-219", player=1)
+        self.act(state, "begin_move", destination=0)
+        self.act(state, "select_unit", unit=attacker["id"])
+        self.act(state, "commit_move")
+        self.act(state, "pass")
+        self.act(state, "pass")
+        self.assertEqual(state["phase"], "damage")
+        self.act(state, "assign_damage", target=defender["id"])
+        self.assertIn(attacker, state["units"])  # Damage not dealt before both assignments.
+        self.act(state, "assign_damage", target=attacker["id"])
+        self.assertFalse(state["units"])
+        self.assertIsNone(state["fields"][0]["controller"])
+
+    def test_fiora_mighty_shield_and_battlefield_ganking(self):
+        state = self.scenario()
+        state["fields"][0]["code"] = "OGN-276"
+        unit = self.unit(state, "OGN-232")
+        self.assertFalse(self.rules._ganking(state, unit))
+        unit["buff"] = 1
+        self.assertTrue(self.rules._ganking(state, unit))
+        state["battle"] = {"field": 0, "attacker": 1, "combat": True}
+        self.assertEqual(self.rules.might(state, unit), 6)
+        state["battle"] = None
+        unit["buff"] = 0
+        state["fields"][0]["code"] = "OGN-297"
+        self.assertTrue(self.rules._ganking(state, unit))
+
+    def test_completed_starter_game_replays_and_step_cap_is_distinct(self):
+        env = Environment(self.rules, max_steps=1600)
+        episode = self_play(env, (GreedyPolicy(), GreedyPolicy()), seed=9)
+        self.assertTrue(episode.terminated)
+        self.assertFalse(episode.truncated)
+        self.assertEqual(replay(self.rules, env.audit_replay()).audit_replay(), env.audit_replay())
+        capped = Environment(self.rules, max_steps=1)
+        capped.reset(seed=9)
+        result = capped.step(capped.legal_actions()[0])
+        self.assertTrue(result.truncated)
+        with self.assertRaises(InvalidAction):
+            capped.step(capped.legal_actions()[0] if capped.legal_actions() else env.audit_replay())
+
+    def test_random_legal_trajectory_preserves_invariants(self):
+        env = Environment(self.rules, max_steps=150)
+        episode = self_play(env, (RandomPolicy(71), RandomPolicy(72)), seed=7)
+        self.assertTrue(episode.terminated or episode.truncated)
+        replay(self.rules, env.audit_replay())
+
+    def test_peak_guardian_buffs_self_and_other_friendly_units_here(self):
+        state = self.scenario()
+        friend = self.unit(state)
+        uid = self.hand(state, "OGN-223")
+        self.act(state, "play_unit", card=uid, location=0)
+        self.drain(state)
+        self.assertEqual(friend["buff"], 1)
+        self.assertEqual(next(u for u in state["units"] if u["card"] == uid)["buff"], 1)
+
+    def test_back_to_back_two_targets_and_cleave_assault_stack_with_farron(self):
+        state = self.scenario()
+        first = self.unit(state, "OGN-210")
+        second = self.unit(state, "OGN-015")
+        spell = self.hand(state, "OGN-206")
+        self.act(state, "play_spell", card=spell, targets=[first["id"], second["id"]])
+        self.drain(state)
+        self.assertEqual((first["temporary"], second["temporary"]), (2, 2))
+        cleave = self.hand(state, "OGN-004")
+        self.act(state, "play_spell", card=cleave, targets=[first["id"]])
+        self.drain(state)
+        state["fields"][0]["code"] = "OGN-276"
+        state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+        # 2 printed + 2 temporary + 1 innate Assault + 3 Cleave + 1 Farron.
+        self.assertEqual(self.rules.might(state, first), 9)
+
+    def test_void_seeker_draws_even_when_its_target_has_left(self):
+        state = self.scenario()
+        enemy = self.unit(state, player=1)
+        spell = self.hand(state, "OGN-024")
+        self.act(state, "play_spell", card=spell, targets=[enemy["id"]])
+        state["units"].remove(enemy)
+        state["players"][1]["trash"].append(enemy["card"])
+        before = len(state["players"][0]["hand"])
+        self.drain(state)
+        self.assertEqual(len(state["players"][0]["hand"]), before+1)
+
+    def test_magma_wurm_also_readies_played_recruit_tokens(self):
+        state = self.scenario()
+        self.unit(state, "OGN-011", location="base:0")
+        drummer = self.unit(state, "OGN-222", location="base:0")
+        self.act(state, "begin_move", destination=0)
+        self.act(state, "select_unit", unit=drummer["id"])
+        self.act(state, "commit_move")
+        self.drain(state)
+        token = next(u for u in state["units"] if u["card"] is None)
+        self.assertFalse(token["exhausted"])
+
+    def test_movement_selection_is_private_until_committed(self):
+        state = self.scenario()
+        unit = self.unit(state, location="base:0")
+        self.act(state, "begin_move", destination=0)
+        self.act(state, "select_unit", unit=unit["id"])
+        self.assertIsNone(self.rules.observe(state, 1)["selection"])
+        self.assertEqual(self.rules.observe(state, 0)["selection"]["units"], [unit["id"]])
+
+    def test_battlefield_passives_and_hand_of_noxus_energy(self):
+        state = self.scenario()
+        state["fields"][0]["code"] = "OGN-294"
+        unit = self.unit(state)
+        self.assertEqual(self.rules.might(state, unit), 5)
+        self.assertFalse(any(a.kind == "legend_energy" for a in self.rules.legal_actions(state)))
+        state["players"][0]["played"] = 1
+        before = state["players"][0]["energy"]
+        self.act(state, "legend_energy")
+        self.assertEqual(state["players"][0]["energy"], before+1)
+        self.assertFalse(any(a.kind == "legend_energy" for a in self.rules.legal_actions(state)))
+        actual = self.rules.initial_state(random.Random(2))
+        self.assertEqual(actual["victory"], 8+sum(f["code"] == "OGN-276" for f in actual["fields"]))
+
+
+if __name__ == "__main__":
+    unittest.main()

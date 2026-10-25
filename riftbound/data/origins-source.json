@@ -1,0 +1,17 @@
+{
+  "source": "https://github.com/sstmminer/riftbound/tree/a330ca8325ae792548660b1ccef0e7dd97062bd7",
+  "commit": "a330ca8325ae792548660b1ccef0e7dd97062bd7",
+  "cards_sha256": "96399d8763ca5a2de766c571b5f5a12ddf8ada7cb31017f74875706772b9b10b",
+  "errata_sha256": "edd0ae50df72277092b6b46e9459973adf9d9eea7410bf535936de6b1598b9ee",
+  "snapshot_sha256": "e729b1afc7e4d21307c76bf60999018e477eb29ebe253e647ca20ea7189f47b7",
+  "count": 298,
+  "selection": "ogn-001-298 through ogn-298-298; distinct base print IDs",
+  "text_policy": "Known revised text first, otherwise gallery snapshot; retain incomplete errata status.",
+  "cost_mapping": "cost=energy, power_cost=domain power, power=Might; null energy is not zero.",
+  "limitations": [
+    "Official gallery metadata gap of 8 records is unresolved.",
+    "Unmatched LeBlanc errata belongs to Unleashed announcement.",
+    "Card data and artwork rights belong to Riot Games.",
+    "Only the explicit supported subset is executable."
+  ]
+}

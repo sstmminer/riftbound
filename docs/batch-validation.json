@@ -1,0 +1,166 @@
+{
+  "rules_id": "origins-subset/0.2.0/RUP5-2026-10-09/11568148bc4c418c41c13cb8b74667756e85224265acedcc8ab08ef7e22f2df6",
+  "games": 20,
+  "replays_verified": 20,
+  "terminated": 20,
+  "truncated": 0,
+  "seconds": 45.42,
+  "actions": {
+    "mulligan": 40,
+    "exhaust_rune": 1501,
+    "play_unit": 267,
+    "legend_energy": 203,
+    "end_turn": 480,
+    "begin_move": 348,
+    "select_unit": 306,
+    "commit_move": 164,
+    "pass": 601,
+    "assign_damage": 305,
+    "play_spell": 82,
+    "recycle_rune": 744,
+    "order_triggers": 2,
+    "cancel_move": 184
+  },
+  "results": [
+    {
+      "policy": "greedy",
+      "seed": 0,
+      "steps": 213,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "greedy",
+      "seed": 1,
+      "steps": 302,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "greedy",
+      "seed": 2,
+      "steps": 184,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "greedy",
+      "seed": 3,
+      "steps": 342,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "greedy",
+      "seed": 4,
+      "steps": 338,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "greedy",
+      "seed": 5,
+      "steps": 210,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "greedy",
+      "seed": 6,
+      "steps": 254,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "greedy",
+      "seed": 7,
+      "steps": 330,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "greedy",
+      "seed": 8,
+      "steps": 255,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "greedy",
+      "seed": 9,
+      "steps": 335,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "random",
+      "seed": 0,
+      "steps": 403,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "random",
+      "seed": 1,
+      "steps": 195,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "random",
+      "seed": 2,
+      "steps": 261,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "random",
+      "seed": 3,
+      "steps": 109,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "random",
+      "seed": 4,
+      "steps": 327,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "random",
+      "seed": 5,
+      "steps": 111,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "random",
+      "seed": 6,
+      "steps": 241,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "random",
+      "seed": 7,
+      "steps": 238,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "random",
+      "seed": 8,
+      "steps": 301,
+      "terminated": true,
+      "truncated": false
+    },
+    {
+      "policy": "random",
+      "seed": 9,
+      "steps": 278,
+      "terminated": true,
+      "truncated": false
+    }
+  ]
+}

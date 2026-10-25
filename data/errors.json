@@ -1,0 +1,49 @@
+[
+  {
+    "kind": "errata_parse",
+    "url": "https://playriftbound.com/en-us/news/rules-and-releases/unleashed-errata-updates/",
+    "sections": 8,
+    "unresolved": [
+      {
+        "title": "Leblanc, Deceiver",
+        "reason": "no exact normalized name match"
+      }
+    ],
+    "html_label_occurrences": 16
+  },
+  {
+    "kind": "public_gallery_api",
+    "url": "https://playriftbound.com/publishing-content/v2.0/public/channel/riftbound_website/list/riftbound_gallery_sets?locale=en_US&from=0&limit=200",
+    "status": 404,
+    "error": "HTTP Error 404: Not Found",
+    "last_checked_at": "2026-10-25T16:44:42.607536+00:00"
+  },
+  {
+    "kind": "public_gallery_api",
+    "url": "https://playriftbound.com/publishing-content/v2.0/public/channel/riftbound_website/list/riftbound_gallery_cards?locale=en_US&from=0&limit=200",
+    "status": 404,
+    "error": "HTTP Error 404: Not Found",
+    "last_checked_at": "2026-10-25T16:44:43.874934+00:00"
+  },
+  {
+    "kind": "public_gallery_api",
+    "url": "https://playriftbound.com/publishing-content/v2.0/public/channel/riftbound_website/list/riftbound_gallery_cards?locale=en_US&from=200&limit=200",
+    "status": 404,
+    "error": "HTTP Error 404: Not Found",
+    "last_checked_at": "2026-10-25T16:44:45.375995+00:00"
+  },
+  {
+    "kind": "robots",
+    "url": "https://content.publishing.riotgames.com/robots.txt",
+    "status": null,
+    "error": "<urlopen error Tunnel connection failed: 403 Forbidden>",
+    "last_checked_at": "2026-10-25T16:47:38.613492+00:00"
+  },
+  {
+    "kind": "public_gallery_api_sdk_host",
+    "url": "https://content.publishing.riotgames.com/publishing-content/v2.0/public/channel/riftbound_website/list/riftbound_gallery_cards?locale=en_US&from=0&limit=200",
+    "status": null,
+    "error": "Cannot verify robots.txt for https://content.publishing.riotgames.com: <urlopen error Tunnel connection failed: 403 Forbidden>",
+    "last_checked_at": "2026-10-25T16:47:38.615255+00:00"
+  }
+]

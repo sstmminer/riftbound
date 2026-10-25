@@ -1,0 +1,25 @@
+{
+  "sqlite_integrity": "ok",
+  "foreign_key_errors": [],
+  "export_counts": {
+    "cards": 1408,
+    "errata": 93,
+    "sources": 22,
+    "download_log": 1411
+  },
+  "duplicate_card_ids": 0,
+  "images_checked": 1408,
+  "image_bytes": 1319293613,
+  "image_dimensions": {
+    "744x1039": 1292,
+    "1039x744": 53,
+    "1038x744": 23,
+    "744x1040": 12,
+    "1488x2078": 26,
+    "744x1038": 1,
+    "1040x744": 1
+  },
+  "errors": [],
+  "validation_passed": true,
+  "scope": "File/database consistency only; does not certify complete official coverage or semantic errata correctness."
+}

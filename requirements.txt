@@ -1,0 +1,3 @@
+# Core collection, database, exports and validation use Python 3.10+ standard library.
+# Optional, needed only for --browser (ordinary public page rendering):
+playwright>=1.48,<2

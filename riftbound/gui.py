@@ -77,8 +77,8 @@ class OriginsGUI(tk.Tk):
         self.board.grid_rowconfigure(1, weight=1)
         self._panel("opponent", "对手区域 / Opponent", 0, height=150)
         self._panel("battlefields", "战场区 / Battlefields", 1, height=380)
-        self._panel("player", "我方区域 / Player", 2, height=245)
-        self._panel("banishment", "放逐区 / Banishment", 0, column=1, rowspan=3, height=675)
+        self._panel("player", "我方区域 / Player", 2, height=300)
+        self._panel("banishment", "放逐区 / Banishment", 0, column=1, rowspan=3, height=730)
 
         bottom = tk.Frame(self, bg="#101b2b", padx=8, pady=5)
         bottom.pack(fill="x")
@@ -153,9 +153,10 @@ class OriginsGUI(tk.Tk):
 
     def _image_card(self, parent, code, *, uid=None, zone=None, owner=None, factor=3,
                     private=False, compact_label=None, click=True, exhausted=False,
-                    selected=False):
+                    selected=False, pack=True, show_label=True):
         wrapper = tk.Frame(parent, bg="#24364d", padx=2, pady=2)
-        wrapper.pack(side="left", padx=2, pady=2, anchor="n")
+        if pack:
+            wrapper.pack(side="left", padx=2, pady=2, anchor="n")
         image = self._photo(BACK_CODE if private else code, factor, horizontal=exhausted)
         # Card frames stay black like the physical cards; gold is reserved for
         # the selected-unit highlight.
@@ -167,7 +168,7 @@ class OriginsGUI(tk.Tk):
                            highlightcolor="#f4c542" if selected else color)
         button.pack()
         label = compact_label or (self._card_name(code) if code != BACK_CODE else "牌背")
-        if label:
+        if show_label and label:
             tk.Label(wrapper, text=label, bg="#24364d", fg="#e9f1fc",
                      font=("TkDefaultFont", 8), wraplength=110).pack(fill="x")
         button.bind("<Enter>", lambda _event, c=code: self._arm_preview(button, c))
@@ -200,6 +201,27 @@ class OriginsGUI(tk.Tk):
                 row = tk.Frame(parent, bg="#24364d")
                 row.pack(fill="x", anchor="nw")
             render_item(row, item)
+
+    def _fan(self, parent, items, render_item, *, per_row=10, row_height=132):
+        """Lay cards over each other inside a fixed-size region.
+
+        The step is calculated from the actual parent width, so every card keeps
+        a clickable exposed strip even when the hand or rune pool grows.
+        """
+        parent.update_idletasks()
+        available = max(parent.winfo_width(), parent.winfo_reqwidth(), 1)
+        items = list(items)
+        for start in range(0, len(items), per_row):
+            row_items = items[start:start + per_row]
+            wrappers = [render_item(parent, item) for item in row_items]
+            if not wrappers:
+                continue
+            self.update_idletasks()
+            card_width = max(wrapper.winfo_reqwidth() for wrapper in wrappers)
+            count = len(wrappers)
+            step = card_width if count == 1 else min(card_width, max(18, (available - card_width) / (count - 1)))
+            for index, wrapper in enumerate(wrappers):
+                wrapper.place(x=int(index * step), y=(start // per_row) * row_height)
 
     def set_hint(self, text):
         self.hint.configure(text=text, fg="#9fb4ce")
@@ -460,9 +482,10 @@ class OriginsGUI(tk.Tk):
                     return self._card_name(rune["code"])
         return uid
 
-    def _rune_card(self, parent, rune, *, player):
+    def _rune_card(self, parent, rune, *, player, pack=True, show_label=True):
         wrapper = tk.Frame(parent, bg="#24364d", padx=1, pady=1)
-        wrapper.pack(side="left", padx=2, pady=2)
+        if pack:
+            wrapper.pack(side="left", padx=2, pady=2)
         button = tk.Button(wrapper, image=self._photo(rune["code"], 5, horizontal=rune["exhausted"]), relief="raised", bd=2,
                            bg="#111111", cursor="hand2")
         button.pack()
@@ -471,8 +494,9 @@ class OriginsGUI(tk.Tk):
         if rune["exhausted"]:
             tk.Label(wrapper, text="横置", bg="#8e2930", fg="white",
                      font=("TkDefaultFont", 8, "bold")).place(relx=.5, rely=.5, anchor="center")
-        tk.Label(wrapper, text=self._card_name(rune["code"]), bg="#24364d", fg="#e9f1fc",
-                 font=("TkDefaultFont", 7)).pack()
+        if show_label:
+            tk.Label(wrapper, text=self._card_name(rune["code"]), bg="#24364d", fg="#e9f1fc",
+                     font=("TkDefaultFont", 7)).pack()
         if player == 0:
             button.bind("<Button-1>", lambda _event, u=rune["id"]: self.rune_click(u))
             button.bind("<Button-3>", lambda event, u=rune["id"]: self.rune_menu(event, u))
@@ -577,15 +601,18 @@ class OriginsGUI(tk.Tk):
         identity = tk.Frame(body, bg="#1b2a3e")
         identity.grid(row=0, column=0, sticky="nsw")
         self._identity(identity, obs, 1, compact=True)
-        hand = self._subzone(body, f"对手手牌 · {obs['players'][1]['hand_count']} 张", width=500)
+        hand = self._subzone(body, f"对手手牌 · {obs['players'][1]['hand_count']} 张", width=500, height=125)
         hand.grid(row=0, column=1, sticky="nsew", padx=4)
-        self._flow(hand, range(min(10, obs["players"][1]["hand_count"])),
-                   lambda row, _item: self._image_card(row, BACK_CODE, factor=5, compact_label=""),
-                   per_row=8)
-        rune_zone = self._subzone(body, "对手符文区", width=280)
+        self._fan(hand, range(min(10, obs["players"][1]["hand_count"])),
+                  lambda parent, _item: self._image_card(parent, BACK_CODE, factor=5,
+                                                         compact_label="", pack=False, show_label=False),
+                  per_row=10, row_height=108)
+        rune_zone = self._subzone(body, "对手符文区", width=280, height=125)
         rune_zone.grid(row=0, column=2, sticky="nse", padx=4)
-        self._flow(rune_zone, obs["players"][1]["runes"],
-                   lambda row, rune: self._rune_card(row, rune, player=1), per_row=6)
+        self._fan(rune_zone, obs["players"][1]["runes"],
+                  lambda parent, rune: self._rune_card(parent, rune, player=1,
+                                                        pack=False, show_label=False),
+                  per_row=12, row_height=105)
         discard = tk.Frame(body, bg="#1b2a3e")
         discard.grid(row=0, column=3, sticky="nse", padx=4)
         self._stack(discard, obs["players"][1]["trash"], owner=1,
@@ -666,18 +693,21 @@ class OriginsGUI(tk.Tk):
         identity.grid(row=0, column=0, sticky="nsw")
         self._identity(identity, obs, 0)
 
-        rune_zone = self._subzone(body, "符文区 / Runes · 左键横置 · 右键回收", width=300)
+        rune_zone = self._subzone(body, "符文区 / Runes · 左键横置 · 右键回收", width=300, height=230)
         rune_zone.grid(row=0, column=1, sticky="nsew", padx=4)
-        self._flow(rune_zone, obs["players"][0]["runes"],
-                   lambda row, rune: self._rune_card(row, rune, player=0), per_row=6)
+        self._fan(rune_zone, obs["players"][0]["runes"],
+                  lambda parent, rune: self._rune_card(parent, rune, player=0,
+                                                        pack=False, show_label=False),
+                  per_row=6, row_height=105)
 
-        hand_zone = self._subzone(body, f"手牌 / Hand · {len(obs['hand'])} 张", width=500)
+        hand_zone = self._subzone(body, f"手牌 / Hand · {len(obs['hand'])} 张", width=500, height=165)
         hand_zone.grid(row=0, column=2, sticky="nsew", padx=4)
-        self._flow(hand_zone, obs["hand"],
-                   lambda row, card: self._image_card(row, card["code"], uid=card["id"],
-                                                     owner=0, zone="hand", factor=4,
-                                                     selected=card["id"] in self.selected_mulligan),
-                   per_row=6)
+        self._fan(hand_zone, obs["hand"],
+                  lambda parent, card: self._image_card(parent, card["code"], uid=card["id"],
+                                                        owner=0, zone="hand", factor=4,
+                                                        selected=card["id"] in self.selected_mulligan,
+                                                        pack=False, show_label=False),
+                  per_row=10, row_height=132)
 
         self._status_box(body, obs, 0, column=3)
         piles = self._subzone(body, "公开牌堆 / Public Piles")

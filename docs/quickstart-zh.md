@@ -58,6 +58,8 @@ Windows 将 `python` 换成 `.\.venv\Scripts\python.exe`，macOS/Linux 换成 `.
 - 对手使用内置贪心策略自动行动；只显示其公开区域和手牌数量。
 - 当前窗口使用默认体验套牌和 2 个随机战场；引擎支持动态追加战场，尚未开放多玩家模式。
 
+如果 Linux 的 Python 没有 Tk 支持，Debian/Ubuntu 通常需要安装与当前 Python 版本对应的 `python3-tk`（例如 `sudo apt install python3-tk`）；Windows 官方 Python 和 macOS 通常已自带 Tk。
+
 关闭窗口即可结束当前进程；对局不会自动保存，需用 CLI 的 `simulate --output` 生成可验证回放。
 
 ## 4. 运行测试

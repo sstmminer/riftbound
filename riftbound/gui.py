@@ -85,9 +85,12 @@ class OriginsGUI(tk.Tk):
 
         bottom = tk.Frame(self, bg="#101b2b", padx=8, pady=5)
         bottom.pack(fill="x")
+        self.state_bar = tk.Label(bottom, text="", anchor="w", justify="left",
+                                  bg="#17263a", fg="#dbe8f7", padx=8, pady=4)
+        self.state_bar.pack(fill="x")
         self.actions = tk.Frame(bottom, bg="#101b2b")
         self.actions.pack(fill="x")
-        self.log = tk.Text(bottom, height=4, state="disabled", wrap="word",
+        self.log = tk.Text(bottom, height=7, state="disabled", wrap="word",
                            bg="#111d2d", fg="#d6e3f5", insertbackground="white")
         self.log.pack(fill="x", pady=(5, 0))
 
@@ -292,6 +295,7 @@ class OriginsGUI(tk.Tk):
         self.selected_mulligan.clear()
         self._decision_signature = None
         self._winner_announced = False
+        self._log_seq = 0
         self.log_clear()
         self.log_add(f"已用种子 {self.seed} 重新开始。")
         self.render()
@@ -309,13 +313,15 @@ class OriginsGUI(tk.Tk):
         )
 
     def log_clear(self):
+        self._log_seq = 0
         self.log.configure(state="normal")
         self.log.delete("1.0", "end")
         self.log.configure(state="disabled")
 
     def log_add(self, text):
+        self._log_seq += 1
         self.log.configure(state="normal")
-        self.log.insert("end", text + "\n")
+        self.log.insert("end", f"{self._log_seq:04d}  {text}\n")
         self.log.see("end")
         self.log.configure(state="disabled")
 
@@ -573,6 +579,44 @@ class OriginsGUI(tk.Tk):
 
     # ---------- rendering ----------
 
+    def _chain_item_text(self, item):
+        effect = item.get("effect", "effect")
+        if effect == "spell":
+            code = item.get("code", item.get("card", "spell"))
+            name = self._card_name(self.rules.cards.get(code, {}).get("code", code))
+            return f"P{item.get('owner')} {name}"
+        names = {
+            "vision": "Vision / 洞察", "discard_two": "弃牌触发",
+            "darius": "Darius 触发", "buff_self": "自身增益",
+            "peak": "Peak Guardian 触发", "drummer": "Drummer 触发",
+        }
+        return f"P{item.get('owner')} {names.get(effect, effect)}"
+
+    def _state_summary(self, obs):
+        phases = {
+            "mulligan": "调度阶段", "main": "主要阶段",
+            "chain": "结算链", "trigger_order": "触发顺序",
+            "showdown": "对决结算", "damage": "战斗伤害分配",
+            "move_select": "移动选择", "decision": "效果选择",
+        }
+        parts = [f"回合 {obs['turn']} · 回合玩家 P{obs['turn_player']} · 当前行动 P{obs['to_act']} · {phases.get(obs['phase'], obs['phase'])}"]
+        chain = obs.get("chain") or []
+        if chain:
+            parts.append("结算链（顶→底）：" + " | ".join(self._chain_item_text(item) for item in reversed(chain)))
+        pending = obs.get("pending") or []
+        if pending:
+            parts.append("待排序触发：" + " | ".join(self._chain_item_text(item) for item in pending))
+        battle = obs.get("battle")
+        if battle:
+            text = f"战场 {battle['field'] + 1} · 攻击者 P{battle['attacker']}"
+            if battle.get("combat"):
+                text += " · 有战斗"
+            parts.append(text)
+        decision = obs.get("decision")
+        if decision:
+            parts.append(f"等待 P{decision['player']} 完成 {decision['kind']} 选择")
+        return "\n".join(parts)
+
     def render(self):
         obs = self.env.observe(0)
         if obs["phase"] != "main" or obs["to_act"] != 0:
@@ -581,6 +625,7 @@ class OriginsGUI(tk.Tk):
             self.selected_mulligan.clear()
         turn_text = "玩家 0 行动" if obs["to_act"] == 0 else "对手行动"
         self.status.configure(text=f"回合 {obs['turn']} · {turn_text} · 比分 {obs['points'][0]}–{obs['points'][1]} / {obs['victory']}")
+        self.state_bar.configure(text=self._state_summary(obs))
         self.render_opponent(obs)
         self.render_battlefields(obs)
         self.render_player(obs)

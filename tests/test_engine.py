@@ -117,6 +117,21 @@ class EngineTests(unittest.TestCase):
         bad["rules_id"] = "different"
         with self.assertRaisesRegex(ValueError, "incompatible"):
             replay(FixtureRules(), bad)
+        bad = copy.deepcopy(record)
+        bad["events"][0]["after"]["phase"] = "tampered"
+        with self.assertRaisesRegex(ValueError, "event log"):
+            replay(FixtureRules(), bad)
+
+    def test_event_log_captures_public_state_transitions_and_replays(self):
+        env = self.make_env()
+        env.step(env.legal_actions()[0])
+        events = env.event_log
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["seq"], 1)
+        self.assertEqual(events[0]["action"]["kind"], "collect")
+        self.assertIn("phase", events[0]["before"])
+        self.assertIn("phase", events[0]["after"])
+        self.assertEqual(replay(FixtureRules(), env.audit_replay()).event_log, events)
 
     def test_action_canonicalization_and_round_trip(self):
         first = Action("play", '{"b":2,"a":1}')

@@ -106,6 +106,7 @@ class Environment:
         self._seed: int | None = None
         self._actions: list[Action] = []
         self._digests: list[str] = []
+        self._events: list[dict] = []
 
     def _require_reset(self) -> dict:
         if self._state is None:
@@ -134,6 +135,11 @@ class Environment:
         return self.terminated or self.truncated
 
     @property
+    def event_log(self) -> list[dict]:
+        """Derived public-state summaries for UI/debugging, never policy input."""
+        return copy.deepcopy(self._events)
+
+    @property
     def current_player(self) -> int:
         player = self._rules.player(copy.deepcopy(self._require_reset()))
         if type(player) is not int or player not in (0, 1):
@@ -150,6 +156,7 @@ class Environment:
         self._rng, self._state, self._seed = rng, state, seed
         self._actions = []
         self._digests = [self._digest()]
+        self._events = []
         return self.observe(self.current_player)
 
     def observe(self, player: int) -> dict:
@@ -158,6 +165,22 @@ class Environment:
         result = self._rules.observe(copy.deepcopy(self._require_reset()), player)
         canonical(result)
         return copy.deepcopy(result)
+
+    @staticmethod
+    def _event_summary(observation: dict) -> dict:
+        def chain_item(item):
+            return {key: item[key] for key in ("effect", "owner", "code", "source", "location")
+                    if key in item}
+
+        decision = observation.get("decision")
+        return {"turn": observation.get("turn"), "phase": observation.get("phase"),
+                "actor": observation.get("to_act"), "points": observation.get("points"),
+                "fields": copy.deepcopy(observation.get("fields")),
+                "chain": [chain_item(item) for item in observation.get("chain", [])],
+                "pending": [chain_item(item) for item in observation.get("pending", [])],
+                "battle": copy.deepcopy(observation.get("battle")),
+                "decision": ({key: decision[key] for key in ("kind", "player", "remaining")
+                              if key in decision} if decision else None)}
 
     def legal_actions(self) -> tuple[Action, ...]:
         self._require_reset()
@@ -176,6 +199,9 @@ class Environment:
         if action not in self.legal_actions():
             raise InvalidAction("action is not legal in the current state")
         # Apply to private copies: errors must not consume randomness or mutate state.
+        before_player = self.current_player
+        before_summary = self._event_summary(
+            self._rules.observe(copy.deepcopy(self._state), before_player))
         state, rng = copy.deepcopy(self._state), copy.deepcopy(self._rng)
         self._rules.apply(state, action, rng)
         self._rules.validate(copy.deepcopy(state))
@@ -195,6 +221,9 @@ class Environment:
         self._state, self._rng = state, rng
         self._actions.append(action)
         self._digests.append(self._digest())
+        after_summary = self._event_summary(self._rules.observe(copy.deepcopy(state), player))
+        self._events.append({"seq": len(self._events) + 1, "action": action.to_dict(),
+                             "before": before_summary, "after": after_summary})
         return Transition(copy.deepcopy(observation), tuple(outcome or (0.0, 0.0)),
                           outcome is not None, self.truncated)
 
@@ -212,7 +241,7 @@ class Environment:
         return {"schema": 1, "rules_id": self.rules_id, "seed": self._seed,
                 "max_steps": self.max_steps,
                 "actions": [a.to_dict() for a in self._actions],
-                "digests": list(self._digests)}
+                "digests": list(self._digests), "events": self.event_log}
 
 
 def replay(rules: Rules, record: dict) -> Environment:
@@ -230,4 +259,6 @@ def replay(rules: Rules, record: dict) -> Environment:
         env.step(Action.from_dict(action))
         if env._digest() != digests[index]:
             raise ValueError(f"replay mismatch at step {index}")
+    if "events" in record and env.event_log != record["events"]:
+        raise ValueError("event log mismatch")
     return env

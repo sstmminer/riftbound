@@ -9,7 +9,7 @@ from .catalog import load_origins
 from .engine import Environment, RulesUnavailable, replay
 from .origins import OriginsRules
 from .policies import GreedyPolicy
-from .support import SUPPORTED, starter_deck
+from .support import FIELD_CODES, SUPPORTED, starter_deck, vision_deck
 from .training import RandomPolicy, self_play
 
 
@@ -76,10 +76,15 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Origins subset simulator (not full Origins support)")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("status")
+    gui = commands.add_parser("gui", help="launch the local Tk graphical client")
+    gui.add_argument("--variant", choices=("starter", "vision"), default="starter")
+    gui.add_argument("--extra-field", action="append", choices=sorted(FIELD_CODES), default=[],
+                     help="add a special battlefield; may be repeated up to four times")
     catalog = commands.add_parser("catalog")
     catalog.add_argument("--supported", action="store_true")
     deck_cmd = commands.add_parser("deck", help="print the included legal constructed deck")
     deck_cmd.add_argument("--output", type=Path)
+    deck_cmd.add_argument("--variant", choices=("starter", "vision"), default="starter")
     validate = commands.add_parser("validate-deck")
     validate.add_argument("path", type=Path)
     sim = commands.add_parser("simulate")
@@ -96,19 +101,23 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.command == "status":
-            print(json.dumps({"version": "0.2.0", "rules": "RUP5-2026-10-09", "mode": "1v1 Duel",
+            print(json.dumps({"version": "0.3.0", "rules": "RUP5-2026-10-09", "mode": "1v1 Duel",
                               "catalog_cards": len(load_origins()), "executable_cards": len(SUPPORTED),
                               "supported_subset_playable": True, "full_origins_supported": False,
                               "training_status": "experimental subset only; not a full-game benchmark"}, indent=2))
+        elif args.command == "gui":
+            from .gui import main as gui_main
+            gui_main(variant=args.variant, extra_fields=args.extra_field)
         elif args.command == "catalog":
             for card in load_origins():
                 if not args.supported or card["code"] in SUPPORTED:
                     print(json.dumps({**card, "supported": card["code"] in SUPPORTED}, ensure_ascii=False))
         elif args.command == "deck":
+            deck = vision_deck() if args.variant == "vision" else starter_deck()
             if args.output:
-                write_json(args.output, starter_deck())
+                write_json(args.output, deck)
             else:
-                print(json.dumps(starter_deck(), indent=2))
+                print(json.dumps(deck, indent=2))
         elif args.command == "validate-deck":
             deck = json.loads(args.path.read_text(encoding="utf-8-sig"))
             OriginsRules([deck, deck])

@@ -1,10 +1,10 @@
 {
-  "rules_id": "origins-subset/0.2.0/RUP5-2026-10-09/11568148bc4c418c41c13cb8b74667756e85224265acedcc8ab08ef7e22f2df6",
+  "rules_id": "origins-subset/0.3.0/RUP5-2026-10-09/c197838e55014be9dc3e6f43d54c2f55b9bbfcf1a71316afe6585439822143b8",
   "games": 20,
   "replays_verified": 20,
   "terminated": 20,
   "truncated": 0,
-  "seconds": 45.42,
+  "seconds": 85.19,
   "actions": {
     "mulligan": 40,
     "exhaust_rune": 1501,

@@ -1,18 +1,18 @@
 # 下载、安装和测试攻略
 
-本攻略针对 **0.2.0 / simulator 分支**。它能自动运行内置的合法 Origins 套牌及所列 26 张卡牌；尚未实现完整 Origins。没有图形界面，用命令行查看状态和生成对局文件。
+本攻略针对 **0.3.0 / simulator 分支**。它能自动运行内置的合法 Origins 套牌及所列 32 张卡牌；尚未实现完整 Origins。包含本地图形界面，也可用命令行查看状态和生成对局文件。
 
 ## 1. 下载
 
 选择一种方式即可：
 
-- [小型 ZIP](https://github.com/sstmminer/riftbound/raw/refs/heads/simulator/downloads/riftbound-simulator-0.2.0.zip)：解压后进入 `riftbound-simulator` 文件夹。
+- [小型 ZIP](https://github.com/sstmminer/riftbound/raw/refs/heads/simulator/downloads/riftbound-simulator-0.3.0.zip)：解压后进入 `riftbound-simulator` 文件夹。
 - [GitHub 代码页](https://github.com/sstmminer/riftbound/tree/simulator)：确认分支是 `simulator`，再选择 Code → Download ZIP，解压进入项目根目录。
 - 已安装 Git：`git clone --depth 1 --branch simulator https://github.com/sstmminer/riftbound.git`，然后 `cd riftbound`。
 
 仓库默认的 `archive-download` 是大型卡牌资料归档，不能代替模拟器代码分支。本模拟器不需要下载原图、SQLite 或完整资料归档。
 
-ZIP 校验值在同目录 [SHA256SUMS.txt](https://github.com/sstmminer/riftbound/blob/simulator/downloads/SHA256SUMS.txt)。Windows 用 `Get-FileHash .\riftbound-simulator-0.2.0.zip -Algorithm SHA256`；Linux 用 `sha256sum`，macOS 用 `shasum -a 256`，与文件内的值比较。
+ZIP 校验值在同目录 [SHA256SUMS.txt](https://github.com/sstmminer/riftbound/blob/simulator/downloads/SHA256SUMS.txt)。Windows 用 `Get-FileHash .\riftbound-simulator-0.3.0.zip -Algorithm SHA256`；Linux 用 `sha256sum`，macOS 用 `shasum -a 256`，与文件内的值比较。
 
 ## 2. 安装 Python 和项目
 
@@ -38,9 +38,29 @@ python3.12 -m venv .venv
 .venv/bin/python -m riftbound status
 ```
 
-状态应包含 `catalog_cards: 298`、`executable_cards: 26`、`supported_subset_playable: true` 和 `full_origins_supported: false`。
+状态应包含 `catalog_cards: 298`、`executable_cards: 32`、`supported_subset_playable: true` 和 `full_origins_supported: false`。
 
-## 3. 运行测试
+## 3. 启动图形界面
+
+在项目根目录运行：
+
+```bash
+python -m riftbound gui
+```
+
+默认使用 starter 体验套牌。要演示包含 Mystic Poro 的 Vision/洞察交互，运行 `python -m riftbound gui --variant vision`；窗口顶部也可以切换套牌并点击“重新开始”。点击“增加特殊战场”会在重开时追加一个动态战场；也可以用 `--extra-field OGN-276 --extra-field OGN-297` 预先追加。
+
+Windows 将 `python` 换成 `.\.venv\Scripts\python.exe`，macOS/Linux 换成 `.venv/bin/python`。窗口包含传奇区、英雄区（规则中的 Champion Zone）、动态战场区、两个基地/手牌、弃牌区、放逐区和公开状态区。
+
+- 点击或右键手牌/己方单位打开合法操作菜单。
+- 将手牌拖到基地或任意战场执行出牌；将单位拖到目标区域开始移动，再确认选择。
+- 洞察（Vision）会弹出选择窗口，可选择保留牌顶或回收到牌库底。
+- 对手使用内置贪心策略自动行动；只显示其公开区域和手牌数量。
+- 当前窗口使用默认体验套牌和 2 个随机战场；引擎支持动态追加战场，尚未开放多玩家模式。
+
+关闭窗口即可结束当前进程；对局不会自动保存，需用 CLI 的 `simulate --output` 生成可验证回放。
+
+## 4. 运行测试
 
 Windows：
 
@@ -57,7 +77,7 @@ macOS / Linux：
 
 应看到所有测试通过，最后显示 `OK`，退出码 0。测试包括通用规则、真实卡牌效果、响应链、信息隔离、整局自动对战、回放和 CLI。测试中的合成游戏仅验证框架；真实后端的测试在 `tests/test_origins.py`。
 
-## 4. 自动打三局
+## 5. 自动打三局
 
 Windows：
 
@@ -84,7 +104,7 @@ macOS / Linux：
 
 输出目录必须不存在或为空，程序不会覆盖既有对局。重复测试请换成 `artifacts/second-run` 等新目录。
 
-## 5. 随机策略和步数截断
+## 6. 随机策略和步数截断
 
 将上述模拟命令改为：
 
@@ -94,7 +114,7 @@ python -m riftbound simulate --games 10 --seed 100 --policy random --max-steps 3
 
 这里的 `python` 应替换成虚拟环境解释器路径。`terminated: true` 表示规则终局；`truncated: true` 表示达到步数上限。截断不算平局或胜利，不能作为正常终局回报训练。
 
-## 6. 导出实验训练样本
+## 7. 导出实验训练样本
 
 ```text
 python -m riftbound simulate --games 3 --seed 42 --export-decisions --output artifacts/training-run
@@ -104,7 +124,7 @@ python -m riftbound simulate --games 3 --seed 42 --export-decisions --output art
 
 审计回放含种子，可推断隐藏牌序，不得作为策略输入。决策文件混合双方各自的私有观测，训练时必须按记录中的玩家视角使用；不能把双方手牌或未来记录拼接输入。奖励向量按玩家编号排列，不能假定下一行动玩家一定是对手。
 
-## 7. 查看卡牌和改套牌
+## 8. 查看卡牌和改套牌
 
 ```text
 python -m riftbound catalog --supported

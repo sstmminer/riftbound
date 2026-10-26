@@ -15,7 +15,7 @@ import random
 from .catalog import load_origins, require_supported
 from .core import Card, Deck, Scoreboard, Unit, channel_count, draw_cards, mulligan, validate_deck
 from .engine import Action, canonical
-from .support import ACCELERATE, FIELD_CODES, LEGEND, REACTIONS, RUNES, SPELL_CODES, TOKEN, UNIT_CODES, starter_deck
+from .support import ACCELERATE, FIELD_CODES, LEGENDS, REACTIONS, RUNES, SPELL_CODES, TOKEN, UNIT_CODES, starter_deck
 
 
 def card_model(row):
@@ -25,8 +25,11 @@ def card_model(row):
 
 
 class OriginsRules:
-    def __init__(self, decks=None):
+    def __init__(self, decks=None, *, extra_fields=()):
         self.cards = {row["code"]: row for row in load_origins()}
+        self.extra_fields = list(extra_fields)
+        if len(self.extra_fields) > 4 or not set(self.extra_fields) <= FIELD_CODES:
+            raise ValueError("extra_fields must contain at most four supported battlefield codes")
         self.decks = copy.deepcopy(decks if decks is not None else [starter_deck(), starter_deck()])
         if len(self.decks) != 2:
             raise ValueError("exactly two decks required")
@@ -35,12 +38,13 @@ class OriginsRules:
             validate_deck(Deck(deck["legend"], deck["chosen_champion"], tuple(deck["main"]),
                                tuple(deck["runes"]), tuple(deck["battlefields"])), models)
             require_supported(tuple([deck["legend"], *deck["main"], *deck["runes"], *deck["battlefields"]]))
-            if deck["legend"] != LEGEND or not set(deck["runes"]) <= RUNES or not set(deck["battlefields"]) <= FIELD_CODES:
+            if deck["legend"] not in LEGENDS or not set(deck["runes"]) <= RUNES or not set(deck["battlefields"]) <= FIELD_CODES:
                 raise ValueError("deck contains unsupported legend, rune or battlefield")
             if any(self.cards[code]["token"] for code in deck["main"]):
                 raise ValueError("tokens cannot be included in a constructed main deck")
-        digest = hashlib.sha256(canonical({"cards": list(self.cards.values()), "decks": self.decks}).encode()).hexdigest()
-        self.id = f"origins-subset/0.2.0/RUP5-2026-10-09/{digest}"
+        digest = hashlib.sha256(canonical({"cards": list(self.cards.values()), "decks": self.decks,
+                                           "extra_fields": self.extra_fields}).encode()).hexdigest()
+        self.id = f"origins-subset/0.3.0/RUP5-2026-10-09/{digest}"
 
     def initial_state(self, rng):
         first = rng.randrange(2)
@@ -48,7 +52,7 @@ class OriginsRules:
                  "phase": "mulligan", "mulligans": 0, "players": [], "cards": {},
                  "units": [], "fields": [], "points": [0, 0], "scored": [[], []],
                  "chain": [], "pending": [], "passes": 0, "battle": None,
-                 "selection": None, "winner": None, "next_object": 0}
+                 "selection": None, "decision": None, "winner": None, "next_object": 0}
         for player, deck in enumerate(self.decks):
             physical = []
             for index, code in enumerate(deck["main"]):
@@ -62,15 +66,19 @@ class OriginsRules:
                      for i, code in enumerate(deck["runes"])]
             rng.shuffle(runes)
             state["players"].append({"main": physical[4:], "hand": physical[:4], "champion": [chosen],
-                                     "trash": [], "rune_deck": runes, "runes": [], "energy": 0,
+                                     "trash": [], "banishment": [], "rune_deck": runes, "runes": [], "energy": 0,
                                      "power": [], "legend": deck["legend"], "legend_exhausted": False,
                                      "turns": 0, "played": 0})
             state["fields"].append({"code": rng.choice(deck["battlefields"]), "controller": None})
+        state["fields"].extend({"code": code, "controller": None} for code in self.extra_fields)
         state["victory"] = 8 + sum(f["code"] == "OGN-276" for f in state["fields"])
         return state
 
     def player(self, state):
         return state["actor"]
+
+    def _is_field(self, state, location):
+        return type(location) is int and 0 <= location < len(state["fields"])
 
     def outcome(self, state):
         if state["winner"] is None:
@@ -97,11 +105,12 @@ class OriginsRules:
     def might(self, state, unit):
         value = self.cards[unit["code"]]["might"] + unit["buff"] + unit["temporary"]
         location = unit["location"]
-        if location in (0, 1) and state["fields"][location]["code"] == "OGN-294":
+        if self._is_field(state, location) and state["fields"][location]["code"] == "OGN-294":
             value += 1
         role = self._role(state, unit)
         if role == "attacker":
             value += int(unit["code"] in {"OGN-210", "OGN-215"}) + unit["assault"]
+            value += 2 if unit["code"] == "OGN-030" else 0
             value += sum(other["code"] == "OGN-015" and other["id"] != unit["id"]
                          for other in self._units(state, unit["owner"], location))
         if role == "defender" and unit["code"] == "OGN-232" and value >= 5:
@@ -115,7 +124,7 @@ class OriginsRules:
     def _ganking(self, state, unit):
         location = unit["location"]
         return ((unit["code"] == "OGN-232" and self.might(state, unit) >= 5)
-                or (location in (0, 1) and state["fields"][location]["code"] == "OGN-297"))
+                or (self._is_field(state, location) and state["fields"][location]["code"] == "OGN-297"))
 
     def _cleanup(self, state):
         for player in (0, 1):
@@ -146,7 +155,7 @@ class OriginsRules:
             state["winner"] = result.immediate_winner
 
     def _score(self, state, player, field, method, rng):
-        board = Scoreboard(state["points"], [set(s) for s in state["scored"]], state["victory"], 2)
+        board = Scoreboard(state["points"], [set(s) for s in state["scored"]], state["victory"], len(state["fields"]))
         result = board.score(player, field, method=method)
         state["scored"] = [sorted(s) for s in board.scored]
         if result == "draw":
@@ -166,6 +175,13 @@ class OriginsRules:
             rune["exhausted"] = False
         for unit in self._units(state, player):
             unit["exhausted"] = False
+        # Loose Cannon has a forced draw; this closed card pool has no
+        # Fury/Chaos Reactions, so the forced beginning trigger can settle here.
+        if row["legend"] == "OGN-251" and len(row["hand"]) <= 1:
+            self._draw(state, player, 1, rng)
+            self._cleanup(state)
+            if state["winner"] is not None:
+                return
         for field, obj in enumerate(state["fields"]):
             if obj["controller"] == player:
                 self._score(state, player, field, "hold", rng)
@@ -190,7 +206,7 @@ class OriginsRules:
             if not rune["exhausted"]:
                 result.append(Action.make("exhaust_rune", rune=rune["id"]))
             result.append(Action.make("recycle_rune", rune=rune["id"]))
-        if not row["legend_exhausted"] and row["played"]:
+        if row["legend"] == "OGN-253" and not row["legend_exhausted"] and row["played"]:
             result.append(Action.make("legend_energy"))
         return result
 
@@ -218,7 +234,7 @@ class OriginsRules:
                 targets = [list(pair) for pair in combinations([u["id"] for u in self._units(state, player)], 2)]
             else:
                 targets = [[u["id"]] for u in state["units"]
-                           if code not in {"OGN-009", "OGN-024"} or u["location"] in (0, 1)]
+                           if code not in {"OGN-009", "OGN-024"} or self._is_field(state, u["location"])]
             buffs = [None]
             if code == "OGN-207":
                 buffs += [u["id"] for u in self._units(state, player) if u["buff"]]
@@ -243,11 +259,14 @@ class OriginsRules:
             if code not in UNIT_CODES:
                 continue
             data = self.cards[code]
+            permitted = locations.copy()
+            if code == "OGN-176":
+                permitted += [i for i in range(len(state["fields"])) if not self._units(state, location=i) and i not in permitted]
             energy = data["energy"] - (2 if code == "OGN-012" and row["played"] else 0)
             for accelerate in ([False, True] if code in ACCELERATE else [False]):
                 for payment in self._payments(state, player, energy+int(accelerate), data["domains"],
                                                data["power_cost"]+int(accelerate)):
-                    for location in locations:
+                    for location in permitted:
                         result.append(Action.make("play_unit", card=card, location=location,
                                                   accelerate=accelerate, payment=payment))
         return result
@@ -257,13 +276,17 @@ class OriginsRules:
         base = f"base:{player}"
         return [u["id"] for u in self._units(state, player) if not u["exhausted"]
                 and u["location"] != destination
-                and ((destination == base and u["location"] in (0, 1))
-                     or (destination in (0, 1) and (u["location"] == base or self._ganking(state, u))))]
+                and ((destination == base and self._is_field(state, u["location"]))
+                     or (self._is_field(state, destination) and (u["location"] == base or self._ganking(state, u))))]
 
     def legal_actions(self, state):
         if state["winner"] is not None:
             return ()
         phase, player = state["phase"], state["actor"]
+        if phase == "decision":
+            if state["decision"]["kind"] == "predict":
+                return (Action.make("predict", recycle=False), Action.make("predict", recycle=True))
+            return tuple(Action.make("discard_card", card=uid) for uid in state["players"][player]["hand"])
         if phase == "mulligan":
             hand = state["players"][player]["hand"]
             return tuple(Action.make("mulligan", slots=list(slots)) for n in range(3)
@@ -289,7 +312,7 @@ class OriginsRules:
             result.append(Action.make("pass"))
         elif phase == "main":
             result.extend(self._unit_actions(state))
-            for destination in (f"base:{player}", 0, 1):
+            for destination in (f"base:{player}", *range(len(state["fields"]))):
                 if self._movable(state, destination):
                     result.append(Action.make("begin_move", destination=destination))
             result.append(Action.make("end_turn"))
@@ -337,7 +360,21 @@ class OriginsRules:
         kind, args = action.kind, json.loads(action.arguments)
         player = state["actor"]
         row = state["players"][player]
-        if kind == "mulligan":
+        if kind in {"predict", "discard_card"}:
+            if kind == "predict":
+                if args["recycle"] and row["main"]:
+                    row["main"].append(row["main"].pop(0))
+                state["decision"] = None
+            else:
+                row["hand"].remove(args["card"])
+                row["trash"].append(args["card"])
+                state["decision"]["remaining"] -= 1
+                if not state["decision"]["remaining"] or not row["hand"]:
+                    state["decision"] = None
+            if state["decision"] is None:
+                self._finish_resolution(state)
+                self._cleanup(state)
+        elif kind == "mulligan":
             row["hand"], row["main"] = mulligan(row["hand"], row["main"], tuple(args["slots"]), rng)
             state["mulligans"] += 1
             state["actor"] = 1-player
@@ -375,7 +412,13 @@ class OriginsRules:
                     triggers.append({"effect": "buff_self", "source": unit["id"], "owner": player})
                 if code == "OGN-223":
                     triggers.append({"effect": "peak", "source": unit["id"], "owner": player})
+                if code in {"OGN-030", "OGN-171"}:
+                    triggers.append({"effect": "discard_two" if code == "OGN-030" else "vision",
+                                     "source": unit["id"], "owner": player})
                 self._cleanup(state)
+                if self._is_field(state, args["location"]) and state["fields"][args["location"]]["controller"] != player:
+                    state["battle"] = {"field": args["location"], "attacker": player, "combat": False}
+                    state["phase"], state["focus"], state["passes"] = "showdown", player, 0
                 self._triggers(state, triggers)
             else:
                 spend = args["spend_buff"]
@@ -407,12 +450,12 @@ class OriginsRules:
                 unit["location"], unit["exhausted"] = destination, True
             state["selection"], state["phase"] = None, "main"
             self._cleanup(state)
-            if destination in (0, 1) and state["fields"][destination]["controller"] != player:
+            if self._is_field(state, destination) and state["fields"][destination]["controller"] != player:
                 state["battle"] = {"field": destination, "attacker": player,
                                    "combat": bool(self._units(state, 1-player, destination))}
                 state["phase"], state["focus"], state["passes"] = "showdown", player, 0
             self._triggers(state, [{"effect": "drummer", "owner": player, "location": destination}
-                                   for unit in moved if unit["code"] == "OGN-222" and destination in (0, 1)])
+                                   for unit in moved if unit["code"] == "OGN-222" and self._is_field(state, destination)])
         elif kind == "pass":
             state["passes"] += 1
             state["actor"] = 1-player
@@ -444,12 +487,18 @@ class OriginsRules:
         item = state["chain"].pop()
         effect, owner = item["effect"], item["owner"]
         source = self._unit(state, item.get("source"))
+        if ((effect == "vision" and state["players"][owner]["main"])
+                or (effect == "discard_two" and state["players"][owner]["hand"])):
+            state["decision"] = {"kind": "predict" if effect == "vision" else "discard",
+                                  "player": owner, "remaining": 1 if effect == "vision" else min(2, len(state["players"][owner]["hand"]))}
+            state["phase"], state["actor"] = "decision", owner
+            return
         if effect == "darius" and source:
             source["temporary"] += 2
             source["exhausted"] = False
         elif effect in {"buff_self", "peak"} and source:
             source["buff"] = 1
-            if effect == "peak" and source["location"] in (0, 1):
+            if effect == "peak" and self._is_field(state, source["location"]):
                 for unit in self._units(state, owner, source["location"]):
                     unit["buff"] = 1
         elif effect == "drummer":
@@ -458,7 +507,7 @@ class OriginsRules:
             code = item["code"]
             for uid in item["targets"]:
                 unit = self._unit(state, uid)
-                if unit is None or (code in {"OGN-009", "OGN-024"} and unit["location"] not in (0, 1)):
+                if unit is None or (code in {"OGN-009", "OGN-024"} and not self._is_field(state, unit["location"])):
                     continue
                 if code in {"OGN-206", "OGN-207"}:
                     unit["temporary"] += 2 if code == "OGN-206" else 3
@@ -470,7 +519,12 @@ class OriginsRules:
             if code == "OGN-024" and state["winner"] is None:
                 self._draw(state, owner, 1, rng)
             state["players"][owner]["trash"].append(item["card"])
+        self._finish_resolution(state)
+        self._cleanup(state)
+
+    def _finish_resolution(self, state):
         if state["chain"]:
+            state["phase"] = "chain"
             state["actor"] = state["chain"][-1]["owner"]
         else:
             state["phase"] = state["chain_return"]
@@ -480,7 +534,6 @@ class OriginsRules:
                 state["actor"] = state["focus"]
             else:
                 state["actor"] = state["turn_player"]
-        self._cleanup(state)
 
     def _close_showdown(self, state, rng):
         battle = state["battle"]
@@ -549,6 +602,7 @@ class OriginsRules:
                                    "energy": row["energy"], "power": row["power"].copy(),
                                    "legend": row["legend"], "legend_exhausted": row["legend_exhausted"],
                                    "champion": [card(uid) for uid in row["champion"]],
+                                   "banishment": [card(uid) for uid in row["banishment"]],
                                    "trash": [card(uid) for uid in row["trash"]], "played": row["played"]})
         return {"player": player, "to_act": state["actor"], "turn_player": state["turn_player"],
                 "turn": state["turn"], "phase": state["phase"], "points": state["points"].copy(),
@@ -558,6 +612,10 @@ class OriginsRules:
                 "chain": copy.deepcopy(state["chain"]), "pending": copy.deepcopy(state["pending"]),
                 "battle": copy.deepcopy(state["battle"]),
                 "selection": copy.deepcopy(state["selection"]) if player == state["actor"] else None,
+                "decision": ({**copy.deepcopy(state["decision"]),
+                              "cards": ([card(state["players"][player]["main"][0])]
+                                        if state["decision"]["kind"] == "predict" else [])}
+                             if state["decision"] and state["decision"]["player"] == player else None),
                 "winner": state["winner"]}
 
     def validate(self, state):
@@ -565,14 +623,14 @@ class OriginsRules:
             raise ValueError("invalid actor")
         located = []
         for player, row in enumerate(state["players"]):
-            for zone in ("main", "hand", "champion", "trash"):
+            for zone in ("main", "hand", "champion", "trash", "banishment"):
                 located.extend(row[zone])
                 if any(state["cards"][uid]["owner"] != player for uid in row[zone]):
                     raise ValueError("card in non-owner zone")
             runes = row["runes"] + row["rune_deck"]
             if len(runes) != 12 or len({r["id"] for r in runes}) != 12:
                 raise ValueError("rune conservation failed")
-            if row["energy"] < 0 or any(p not in {"fury", "order"} for p in row["power"]):
+            if row["energy"] < 0 or any(p not in {"fury", "order", "chaos"} for p in row["power"]):
                 raise ValueError("invalid resource pool")
         located.extend(u["card"] for u in state["units"] if u["card"] is not None)
         located.extend(item["card"] for item in state["chain"] if item["effect"] == "spell")
@@ -581,7 +639,7 @@ class OriginsRules:
         if len({u["id"] for u in state["units"]}) != len(state["units"]):
             raise ValueError("duplicate object IDs")
         for unit in state["units"]:
-            if unit["location"] not in (0, 1, f"base:{unit['owner']}") or unit["damage"] < 0 or unit["buff"] not in (0, 1):
+            if (not self._is_field(state, unit["location"]) and unit["location"] != f"base:{unit['owner']}") or unit["damage"] < 0 or unit["buff"] not in (0, 1):
                 raise ValueError("invalid unit state")
         if state["phase"] == "main":
             for field, obj in enumerate(state["fields"]):

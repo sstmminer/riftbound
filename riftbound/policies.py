@@ -15,6 +15,11 @@ class GreedyPolicy:
         player = obs["player"]
         phase = obs["phase"]
         options = [(action, json.loads(action.arguments)) for action in legal_actions]
+        if phase == "decision":
+            if obs["decision"]["kind"] == "predict":
+                return next(a for a, args in options if not args["recycle"])
+            own = {c["id"]: c["code"] for c in obs["hand"]}
+            return max(options, key=lambda pair: self.cards[own[pair[1]["card"]]]["energy"])[0]
         if phase == "mulligan":
             expensive = [i for i, card in enumerate(obs["hand"]) if self.cards[card["code"]]["energy"] >= 6][:2]
             return next(a for a, args in options if args["slots"] == expensive)

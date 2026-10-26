@@ -12,7 +12,7 @@ PATTERNS = ["README.md", "pyproject.toml", ".gitignore", ".python-version", "rif
 def main():
     directory = ROOT/"downloads"
     directory.mkdir(exist_ok=True)
-    path = directory/"riftbound-simulator-0.2.0.zip"
+    path = directory/"riftbound-simulator-0.3.0.zip"
     files = sorted({file for pattern in PATTERNS for file in ROOT.glob(pattern) if file.is_file()})
     with ZipFile(path, "w", ZIP_DEFLATED) as archive:
         for file in files:

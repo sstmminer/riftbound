@@ -1,15 +1,16 @@
 """Explicit implementations, never inferred by parsing card text at runtime."""
 
 UNIT_CODES = frozenset(f"OGN-{n:03d}" for n in
-                      (1, 10, 11, 12, 13, 15, 27, 210, 215, 217, 219, 222, 223, 232))
+                      (1, 10, 11, 12, 13, 15, 27, 30, 171, 175, 176, 210, 215, 217, 219, 222, 223, 232))
 SPELL_CODES = frozenset(f"OGN-{n:03d}" for n in (4, 9, 24, 206, 207))
 REACTIONS = frozenset({"OGN-206", "OGN-207"})
-ACCELERATE = frozenset({"OGN-001", "OGN-010"})
+ACCELERATE = frozenset({"OGN-001", "OGN-010", "OGN-030"})
 FIELD_CODES = frozenset({"OGN-276", "OGN-294", "OGN-297"})
 LEGEND = "OGN-253"
-RUNES = frozenset({"OGN-007", "OGN-214"})
+LEGENDS = frozenset({LEGEND, "OGN-251"})
+RUNES = frozenset({"OGN-007", "OGN-214", "OGN-166"})
 TOKEN = "OGN-273"
-SUPPORTED = UNIT_CODES | SPELL_CODES | FIELD_CODES | RUNES | {LEGEND, TOKEN}
+SUPPORTED = UNIT_CODES | SPELL_CODES | FIELD_CODES | RUNES | LEGENDS | {TOKEN}
 
 
 def starter_deck() -> dict:
@@ -20,4 +21,12 @@ def starter_deck() -> dict:
     assert len(main) == 40
     return {"legend": LEGEND, "chosen_champion": "OGN-027", "main": main,
             "runes": ["OGN-007"] * 6 + ["OGN-214"] * 6,
+            "battlefields": sorted(FIELD_CODES)}
+
+
+def vision_deck() -> dict:
+    codes = (1, 4, 9, 10, 11, 12, 13, 15, 24, 27, 30, 171, 176)
+    return {"legend": "OGN-251", "chosen_champion": "OGN-030",
+            "main": [f"OGN-{n:03d}" for n in codes for _ in range(3)] + ["OGN-175"],
+            "runes": ["OGN-007"] * 6 + ["OGN-166"] * 6,
             "battlefields": sorted(FIELD_CODES)}

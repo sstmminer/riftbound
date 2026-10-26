@@ -6,7 +6,7 @@ import unittest
 from riftbound.engine import Environment, InvalidAction, RulesUnavailable, replay
 from riftbound.origins import OriginsRules
 from riftbound.policies import GreedyPolicy
-from riftbound.support import starter_deck
+from riftbound.support import starter_deck, vision_deck
 from riftbound.training import RandomPolicy, self_play
 
 
@@ -66,6 +66,34 @@ class OriginsTests(unittest.TestCase):
         deck["main"][0] = "OGN-002"
         with self.assertRaises(RulesUnavailable):
             OriginsRules([deck, starter_deck()])
+
+    def test_vision_deck_opens_private_predict_decision(self):
+        rules = OriginsRules([vision_deck(), vision_deck()])
+        state = rules.initial_state(random.Random(11))
+        state.update(phase="main", actor=0, turn_player=0, turn=3)
+        state["players"][0]["energy"] = 10
+        state["players"][0]["power"] = ["chaos"] * 4
+        uid = next(uid for uid in state["players"][0]["main"]
+                   if state["cards"][uid]["code"] == "OGN-171")
+        state["players"][0]["main"].remove(uid)
+        state["players"][0]["hand"].append(uid)
+        self.act_with_rules(rules, state, "play_unit", card=uid, location="base:0")
+        self.assertEqual(state["phase"], "chain")
+        for _ in range(2):
+            pass_action = next(a for a in rules.legal_actions(state) if a.kind == "pass")
+            rules.apply(state, pass_action, random.Random(7))
+        self.assertEqual(state["phase"], "decision")
+        self.assertEqual(rules.observe(state, 1)["decision"], None)
+        self.assertEqual(len(rules.observe(state, 0)["decision"]["cards"]), 1)
+        self.act_with_rules(rules, state, "predict", recycle=True)
+        self.assertNotEqual(state["phase"], "decision")
+
+    def act_with_rules(self, rules, state, kind, **args):
+        options = [a for a in rules.legal_actions(state) if a.kind == kind
+                   and all(json.loads(a.arguments).get(k) == v for k, v in args.items())]
+        self.assertTrue(options, (kind, args, state["phase"]))
+        rules.apply(state, options[0], random.Random(7))
+        rules.validate(state)
 
     def test_archive_normalizes_champion_signature_and_errata(self):
         cards = self.rules.cards

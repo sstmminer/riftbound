@@ -22,10 +22,18 @@ class CLITests(unittest.TestCase):
         self.assertFalse(json.loads(out)["full_origins_supported"])
         code, out, _ = self.invoke(["catalog", "--supported"])
         cards = [json.loads(line) for line in out.splitlines()]
-        self.assertEqual(len(cards), 26)
+        self.assertEqual(len(cards), 32)
         self.assertTrue(all(card["supported"] for card in cards))
         code, out, _ = self.invoke(["deck"])
         self.assertEqual(len(json.loads(out)["main"]), 40)
+        code, out, _ = self.invoke(["deck", "--variant", "vision"])
+        vision = json.loads(out)
+        self.assertEqual(vision["legend"], "OGN-251")
+        self.assertIn("OGN-171", vision["main"])
+
+    def test_gui_module_is_importable_without_opening_a_window(self):
+        from riftbound.gui import OriginsGUI
+        self.assertTrue(callable(OriginsGUI))
 
     def test_export_truncation_replay_and_tamper_detection(self):
         with tempfile.TemporaryDirectory() as tmp:

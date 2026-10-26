@@ -211,10 +211,14 @@ class OriginsGUI(tk.Tk):
                  "assign_damage": "分配伤害", "predict": "洞察：" + ("回收牌顶" if args.get("recycle") else "保留牌顶"),
                  "discard_card": "弃置此牌", "mulligan": "调度 " + ("、".join(str(i + 1) for i in args.get("slots", [])) or "不换牌")}
         text = names.get(action.kind, action.kind)
+        if action.kind in {"exhaust_rune", "recycle_rune"}:
+            text += " · " + str(args.get("rune"))
         if action.kind == "play_unit":
             text += " → " + str(args.get("location"))
         if action.kind == "play_spell":
             text += " → " + ",".join(args.get("targets", []))
+        if action.kind == "order_triggers":
+            text = "触发顺序：" + " → ".join(str(index + 1) for index in args.get("order", []))
         return text
 
     def choose_action(self, actions, title):

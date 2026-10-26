@@ -40,6 +40,7 @@ class OriginsGUI(tk.Tk):
         self.seed = seed
         self.opponent = GreedyPolicy() if opponent == "greedy" else None
         self.drag_card = None
+        self.selected_units = set()
         self.labels = {}
         self._photo_cache = {}
         self._decision_signature = None
@@ -133,13 +134,17 @@ class OriginsGUI(tk.Tk):
         return self.rules.cards.get(code, {}).get("name", code)
 
     def _image_card(self, parent, code, *, uid=None, zone=None, owner=None, factor=3,
-                    private=False, compact_label=None, click=True, exhausted=False):
+                    private=False, compact_label=None, click=True, exhausted=False,
+                    selected=False):
         wrapper = tk.Frame(parent, bg="#24364d", padx=2, pady=2)
         wrapper.pack(side="left", padx=2, pady=2, anchor="n")
         image = self._photo(BACK_CODE if private else code, factor, horizontal=exhausted)
         color = "#d9a441" if owner == 0 else "#6885a6"
         button = tk.Button(wrapper, image=image, relief="raised", bd=2,
-                           bg=color, activebackground="#f6d78b", cursor="hand2")
+                           bg=color, activebackground="#f6d78b", cursor="hand2",
+                           highlightthickness=3 if selected else 1,
+                           highlightbackground="#f4c542" if selected else color,
+                           highlightcolor="#f4c542" if selected else color)
         button.pack()
         label = compact_label or (self._card_name(code) if code != BACK_CODE else "牌背")
         if label:
@@ -177,7 +182,11 @@ class OriginsGUI(tk.Tk):
             render_item(row, item)
 
     def set_hint(self, text):
-        self.hint.configure(text=text)
+        self.hint.configure(text=text, fg="#9fb4ce")
+
+    def set_notice(self, text):
+        self.hint.configure(text=text, fg="#ffb39f")
+        self.log_add(text)
 
     # ---------- interactions ----------
 
@@ -193,6 +202,7 @@ class OriginsGUI(tk.Tk):
         self.rules = OriginsRules(self._decks(), extra_fields=self.extra_fields)
         self.env = Environment(self.rules, max_steps=3000)
         self.env.reset(seed=self.seed)
+        self.selected_units.clear()
         self._decision_signature = None
         self._winner_announced = False
         self.log_clear()
@@ -231,7 +241,10 @@ class OriginsGUI(tk.Tk):
         started = self.drag_card
         self.drag_card = None
         if abs(event.x_root - started[2]) < 6 and abs(event.y_root - started[3]) < 6:
-            self.card_menu(event, uid)
+            if zone in {"field", "base"} and self.env.current_player == 0 and self.env.observe(0)["phase"] == "main":
+                self.unit_click(uid)
+            else:
+                self.card_menu(event, uid)
             return
         widget = self.winfo_containing(event.x_root, event.y_root)
         target = None
@@ -244,34 +257,98 @@ class OriginsGUI(tk.Tk):
                 break
             widget = widget.master
         if target is None:
+            self.set_notice("请把已选单位拖到基地或战场区域。")
+            return
+        if zone not in {"field", "base"}:
             self.card_menu(event, uid)
             return
-        candidates = []
-        for action in self.env.legal_actions():
-            args = json.loads(action.arguments)
-            if action.kind == "play_unit" and args.get("card") == uid and args.get("location") == target:
-                candidates.append(action)
-            if action.kind == "begin_move" and args.get("destination") == target:
-                candidates.append(action)
-        if len(candidates) == 1:
-            action = candidates[0]
-            if action.kind == "begin_move" and zone in {"field", "base"}:
-                self.perform(action)
-                self.after(20, lambda u=uid: self._select_dragged_unit(u))
-            else:
-                self.perform(action)
-        elif candidates:
-            self.choose_action(candidates, "选择拖拽操作")
-        else:
-            self.log_add("该拖拽位置没有合法操作。")
-
-    def _select_dragged_unit(self, uid):
-        if self.env.done or self.env.current_player != 0:
+        if self.env.observe(0)["phase"] != "main" or self.env.current_player != 0:
+            self.set_notice("单位只能在自己的主要阶段拖动移动。")
             return
-        for action in self.env.legal_actions():
-            if action.kind == "select_unit" and json.loads(action.arguments).get("unit") == uid:
-                self.perform(action)
+        if uid not in self.selected_units:
+            if not self._try_select_unit(uid):
                 return
+        self._move_selected_units(target)
+
+    def _movement_options(self):
+        """Return destination -> units that can be selected after beginning it."""
+        if self.env.done or self.env.current_player != 0 or self.env.observe(0)["phase"] != "main":
+            return {}
+        options = {}
+        for action in self.env.legal_actions():
+            if action.kind != "begin_move":
+                continue
+            destination = json.loads(action.arguments)["destination"]
+            clone = self.env.clone()
+            clone.step(action)
+            options[destination] = {
+                json.loads(select.arguments)["unit"]
+                for select in clone.legal_actions() if select.kind == "select_unit"
+            }
+        return options
+
+    def _unit_by_id(self, uid):
+        return next((u for u in self.env.observe(0)["units"] if u["id"] == uid), None)
+
+    def _try_select_unit(self, uid):
+        unit = self._unit_by_id(uid)
+        if unit is None or unit["owner"] != 0:
+            self.set_notice("只能选择自己的单位。")
+            return False
+        if unit["exhausted"]:
+            self.set_notice(f"不能选择休眠单位：{self._card_name(unit['code'])}。")
+            return False
+        options = self._movement_options()
+        common = {destination for destination, units in options.items() if uid in units}
+        common &= {destination for destination, units in options.items()
+                   if self.selected_units | {uid} <= units}
+        if not common:
+            self.set_notice("该单位与当前已选单位没有共同的合法移动目的地。")
+            return False
+        self.selected_units.add(uid)
+        self.set_notice(f"已选择 {self._card_name(unit['code'])}；可继续多选。")
+        self.render()
+        return True
+
+    def unit_click(self, uid):
+        if self.env.current_player != 0 or self.env.observe(0)["phase"] != "main":
+            self.card_menu(type("Event", (), {"x_root": self.winfo_pointerx(), "y_root": self.winfo_pointery()})(), uid)
+            return
+        if uid in self.selected_units:
+            self.selected_units.remove(uid)
+            self.set_notice("已取消选择该单位。")
+            self.render()
+            return
+        self._try_select_unit(uid)
+
+    def _move_selected_units(self, destination):
+        selected = set(self.selected_units)
+        options = self._movement_options()
+        units = options.get(destination, set())
+        if not selected or not selected <= units:
+            self.set_notice("所选单位不能一起移动到这个目的地。")
+            return
+        begin = next((a for a in self.env.legal_actions()
+                      if a.kind == "begin_move" and json.loads(a.arguments)["destination"] == destination), None)
+        if begin is None:
+            self.set_notice("这个目的地当前没有合法移动。")
+            return
+        try:
+            self.env.step(begin)
+            for uid in selected:
+                select = next(a for a in self.env.legal_actions()
+                              if a.kind == "select_unit" and json.loads(a.arguments)["unit"] == uid)
+                self.env.step(select)
+            commit = next(a for a in self.env.legal_actions() if a.kind == "commit_move")
+            self.env.step(commit)
+            self.selected_units.clear()
+            self.log_add(f"玩家 0：移动 {len(selected)} 个单位到 {destination}（自动横置）")
+            self.set_notice("移动完成，单位已横置。")
+            self.render()
+        except (InvalidAction, ValueError, StopIteration) as error:
+            self.set_notice(f"移动未完成：{error}")
+            self.selected_units.clear()
+            self.render()
 
     def card_menu(self, event, uid):
         menu = tk.Menu(self, tearoff=False)
@@ -379,6 +456,8 @@ class OriginsGUI(tk.Tk):
 
     def render(self):
         obs = self.env.observe(0)
+        if obs["phase"] != "main" or obs["to_act"] != 0:
+            self.selected_units.clear()
         turn_text = "玩家 0 行动" if obs["to_act"] == 0 else "对手行动"
         self.status.configure(text=f"回合 {obs['turn']} · {turn_text} · 比分 {obs['points'][0]}–{obs['points'][1]} / {obs['victory']}")
         self.render_opponent(obs)
@@ -466,7 +545,7 @@ class OriginsGUI(tk.Tk):
                 self._image_card(units, unit["code"], uid=unit["id"], owner=unit["owner"],
                                  zone="field", factor=4,
                                  compact_label=f"P{unit['owner']} · M{unit['might']} · {unit['damage']}伤",
-                                 exhausted=unit["exhausted"])
+                                 exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
             self._image_card(frame, field["code"], factor=4, compact_label="战场卡", click=False)
         bases = self._subzone(body, "基地区 / Bases")
         bases.grid(row=1, column=0, sticky="ew", padx=2, pady=(2, 0))
@@ -478,7 +557,7 @@ class OriginsGUI(tk.Tk):
                 self._image_card(base, unit["code"], uid=unit["id"], owner=unit["owner"],
                                  zone="base", factor=5,
                                  compact_label=f"P{unit['owner']} · M{unit['might']}",
-                                 exhausted=unit["exhausted"])
+                                 exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
 
     def render_player(self, obs):
         body = self._clear("player")
@@ -536,7 +615,7 @@ class OriginsGUI(tk.Tk):
             if action.kind in {"end_turn", "pass", "legend_energy", "commit_move", "cancel_move", "order_triggers"}:
                 ttk.Button(self.actions, text=self.action_text(action),
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
-        prompt = "手牌/单位点击或右键；拖到基地/战场执行操作"
+        prompt = "左键选择/多选单位，再拖到基地/战场移动；右键查看其他操作"
         if self.env.observe(0)["phase"] == "damage":
             prompt = "点击或右键对手单位分配伤害"
         tk.Label(self.actions, text=prompt, bg="#101b2b", fg="#9fb4ce").pack(side="right")

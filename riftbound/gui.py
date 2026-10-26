@@ -43,6 +43,9 @@ class OriginsGUI(tk.Tk):
         self.selected_units = set()
         self.labels = {}
         self._photo_cache = {}
+        self._high_photo_cache = {}
+        self._hover_job = None
+        self._preview = None
         self._decision_signature = None
         self._opponent_job = None
         self._winner_announced = False
@@ -130,6 +133,20 @@ class OriginsGUI(tk.Tk):
         self._photo_cache[key] = image
         return image
 
+    def _high_photo(self, code):
+        if code in self._high_photo_cache:
+            return self._high_photo_cache[code]
+        path = IMAGE_ROOT / "high" / f"{code}.png"
+        try:
+            image = tk.PhotoImage(file=str(path))
+        except tk.TclError:
+            image = self._photo(code, 2)
+        else:
+            # Keep the original source ratio while fitting a desktop preview.
+            image = image.subsample(2, 2)
+        self._high_photo_cache[code] = image
+        return image
+
     def _card_name(self, code):
         return self.rules.cards.get(code, {}).get("name", code)
 
@@ -152,12 +169,12 @@ class OriginsGUI(tk.Tk):
         if label:
             tk.Label(wrapper, text=label, bg="#24364d", fg="#e9f1fc",
                      font=("TkDefaultFont", 8), wraplength=110).pack(fill="x")
+        button.bind("<Enter>", lambda _event, c=code: self._arm_preview(button, c))
+        button.bind("<Leave>", lambda _event: self._cancel_preview())
         if uid is not None and click:
             button.bind("<ButtonPress-1>", lambda event, u=uid: self.start_drag(event, u, zone))
             button.bind("<ButtonRelease-1>", lambda event, u=uid: self.end_drag(event, u, zone))
             button.bind("<Button-3>", lambda event, u=uid: self.card_menu(event, u))
-            button.bind("<Enter>", lambda _event, c=code: self.set_hint(self._card_name(c)))
-            button.bind("<Leave>", lambda _event: self.set_hint(""))
         return wrapper
 
     def _stack(self, parent, cards, *, owner=None, title="", limit=4, factor=4, count=None):
@@ -189,6 +206,45 @@ class OriginsGUI(tk.Tk):
     def set_notice(self, text):
         self.hint.configure(text=text, fg="#ffb39f")
         self.log_add(text)
+
+    def _arm_preview(self, widget, code):
+        self.set_hint(self._card_name(code))
+        self._cancel_preview()
+        if code == BACK_CODE:
+            return
+        self._hover_job = self.after(1000, lambda w=widget, c=code: self._show_preview(w, c))
+
+    def _cancel_preview(self):
+        if self._hover_job is not None:
+            try:
+                self.after_cancel(self._hover_job)
+            except tk.TclError:
+                pass
+            self._hover_job = None
+        if self._preview is not None:
+            try:
+                self._preview.destroy()
+            except tk.TclError:
+                pass
+            self._preview = None
+
+    def _show_preview(self, widget, code):
+        if not widget.winfo_exists() or self._preview is not None:
+            return
+        popup = tk.Toplevel(self)
+        popup.overrideredirect(True)
+        popup.attributes("-topmost", True)
+        image = self._high_photo(code)
+        label = tk.Label(popup, image=image, bd=3, relief="solid", bg="black")
+        label.pack()
+        popup.update_idletasks()
+        x = self.winfo_pointerx() + 18
+        y = self.winfo_pointery() + 18
+        x = min(x, self.winfo_screenwidth() - popup.winfo_width() - 8)
+        y = min(y, self.winfo_screenheight() - popup.winfo_height() - 8)
+        popup.geometry(f"+{max(4, x)}+{max(4, y)}")
+        self._preview = popup
+        self._hover_job = None
 
     # ---------- interactions ----------
 
@@ -380,6 +436,8 @@ class OriginsGUI(tk.Tk):
         button = tk.Button(wrapper, image=self._photo(rune["code"], 5, horizontal=rune["exhausted"]), relief="raised", bd=2,
                            bg="#111111", cursor="hand2")
         button.pack()
+        button.bind("<Enter>", lambda _event, c=rune["code"]: self._arm_preview(button, c))
+        button.bind("<Leave>", lambda _event: self._cancel_preview())
         if rune["exhausted"]:
             tk.Label(wrapper, text="横置", bg="#8e2930", fg="white",
                      font=("TkDefaultFont", 8, "bold")).place(relx=.5, rely=.5, anchor="center")

@@ -16,4 +16,4 @@ riftbound-sim = "riftbound.cli:main"
 include = ["riftbound*"]
 
 [tool.setuptools.package-data]
-riftbound = ["data/*.json", "data/images/*.png", "data/images/OGN/*.png"]
+riftbound = ["data/*.json", "data/images/*.png", "data/images/OGN/*.png", "data/images/high/*.png"]

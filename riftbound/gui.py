@@ -41,6 +41,7 @@ class OriginsGUI(tk.Tk):
         self.opponent = GreedyPolicy() if opponent == "greedy" else None
         self.drag_card = None
         self.selected_units = set()
+        self.selected_mulligan = set()
         self.labels = {}
         self._photo_cache = {}
         self._high_photo_cache = {}
@@ -261,6 +262,7 @@ class OriginsGUI(tk.Tk):
         self.env = Environment(self.rules, max_steps=3000)
         self.env.reset(seed=self.seed)
         self.selected_units.clear()
+        self.selected_mulligan.clear()
         self._decision_signature = None
         self._winner_announced = False
         self.log_clear()
@@ -299,6 +301,9 @@ class OriginsGUI(tk.Tk):
         started = self.drag_card
         self.drag_card = None
         if abs(event.x_root - started[2]) < 6 and abs(event.y_root - started[3]) < 6:
+            if zone == "hand" and self.env.current_player == 0 and self.env.observe(0)["phase"] == "mulligan":
+                self.mulligan_click(uid)
+                return
             if zone in {"field", "base"} and self.env.current_player == 0 and self.env.observe(0)["phase"] == "main":
                 self.unit_click(uid)
             else:
@@ -407,6 +412,31 @@ class OriginsGUI(tk.Tk):
             self.set_notice(f"移动未完成：{error}")
             self.selected_units.clear()
             self.render()
+
+    def mulligan_click(self, uid):
+        if uid in self.selected_mulligan:
+            self.selected_mulligan.remove(uid)
+            self.set_notice("已取消调度这张牌。")
+        elif len(self.selected_mulligan) >= 2:
+            self.set_notice("调度最多选择两张牌。")
+            return
+        else:
+            self.selected_mulligan.add(uid)
+            self.set_notice(f"已选择调度 {len(self.selected_mulligan)} 张牌。")
+        self.render()
+
+    def commit_mulligan(self):
+        if self.env.current_player != 0 or self.env.observe(0)["phase"] != "mulligan":
+            return
+        hand = self.env.observe(0)["hand"]
+        slots = sorted(index for index, card in enumerate(hand) if card["id"] in self.selected_mulligan)
+        action = next((a for a in self.env.legal_actions()
+                       if a.kind == "mulligan" and json.loads(a.arguments)["slots"] == slots), None)
+        if action is None:
+            self.set_notice("当前调度选择无效。")
+            return
+        self.selected_mulligan.clear()
+        self.perform(action)
 
     def card_menu(self, event, uid):
         menu = tk.Menu(self, tearoff=False)
@@ -518,6 +548,8 @@ class OriginsGUI(tk.Tk):
         obs = self.env.observe(0)
         if obs["phase"] != "main" or obs["to_act"] != 0:
             self.selected_units.clear()
+        if obs["phase"] != "mulligan" or obs["to_act"] != 0:
+            self.selected_mulligan.clear()
         turn_text = "玩家 0 行动" if obs["to_act"] == 0 else "对手行动"
         self.status.configure(text=f"回合 {obs['turn']} · {turn_text} · 比分 {obs['points'][0]}–{obs['points'][1]} / {obs['victory']}")
         self.render_opponent(obs)
@@ -643,7 +675,8 @@ class OriginsGUI(tk.Tk):
         hand_zone.grid(row=0, column=2, sticky="nsew", padx=4)
         self._flow(hand_zone, obs["hand"],
                    lambda row, card: self._image_card(row, card["code"], uid=card["id"],
-                                                     owner=0, zone="hand", factor=4),
+                                                     owner=0, zone="hand", factor=4,
+                                                     selected=card["id"] in self.selected_mulligan),
                    per_row=6)
 
         self._status_box(body, obs, 0, column=3)
@@ -674,8 +707,8 @@ class OriginsGUI(tk.Tk):
             return
         mulligans = [a for a in legal if a.kind == "mulligan"]
         if mulligans:
-            ttk.Button(self.actions, text="调度初始手牌…",
-                       command=lambda actions=mulligans: self.choose_action(actions, "调度初始手牌")).pack(side="left", padx=2)
+            ttk.Button(self.actions, text=f"调度 / Mulligan ({len(self.selected_mulligan)})",
+                       command=self.commit_mulligan).pack(side="left", padx=2)
         for action in legal:
             if action.kind in {"end_turn", "pass", "legend_energy", "commit_move", "cancel_move", "order_triggers"}:
                 ttk.Button(self.actions, text=self.action_text(action),

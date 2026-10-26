@@ -154,7 +154,8 @@ class OriginsGUI(tk.Tk):
     def _image_card(self, parent, code, *, uid=None, zone=None, owner=None, factor=3,
                     private=False, compact_label=None, click=True, exhausted=False,
                     selected=False, pack=True, show_label=True):
-        wrapper = tk.Frame(parent, bg="#24364d", padx=2, pady=2)
+        wrapper = tk.Frame(parent, bg="#f4c542" if selected else "#24364d",
+                           padx=4 if selected else 2, pady=4 if selected else 2)
         if pack:
             wrapper.pack(side="left", padx=2, pady=2, anchor="n")
         image = self._photo(BACK_CODE if private else code, factor, horizontal=exhausted)

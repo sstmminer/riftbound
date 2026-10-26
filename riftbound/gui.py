@@ -139,7 +139,9 @@ class OriginsGUI(tk.Tk):
         wrapper = tk.Frame(parent, bg="#24364d", padx=2, pady=2)
         wrapper.pack(side="left", padx=2, pady=2, anchor="n")
         image = self._photo(BACK_CODE if private else code, factor, horizontal=exhausted)
-        color = "#d9a441" if owner == 0 else "#6885a6"
+        # Card frames stay black like the physical cards; gold is reserved for
+        # the selected-unit highlight.
+        color = "#111111"
         button = tk.Button(wrapper, image=image, relief="raised", bd=2,
                            bg=color, activebackground="#f6d78b", cursor="hand2",
                            highlightthickness=3 if selected else 1,
@@ -376,7 +378,7 @@ class OriginsGUI(tk.Tk):
         wrapper = tk.Frame(parent, bg="#24364d", padx=1, pady=1)
         wrapper.pack(side="left", padx=2, pady=2)
         button = tk.Button(wrapper, image=self._photo(rune["code"], 5, horizontal=rune["exhausted"]), relief="raised", bd=2,
-                           bg="#d9a441" if player == 0 else "#6885a6", cursor="hand2")
+                           bg="#111111", cursor="hand2")
         button.pack()
         if rune["exhausted"]:
             tk.Label(wrapper, text="横置", bg="#8e2930", fg="white",
@@ -542,9 +544,14 @@ class OriginsGUI(tk.Tk):
             units = tk.Frame(frame, bg="#263a54")
             units.pack(fill="both", expand=True)
             for unit in [u for u in obs["units"] if u["location"] == index]:
+                pending = 0
+                if obs["battle"] and obs["battle"].get("damage"):
+                    pending = sum(assignment.get(unit["id"], 0)
+                                  for assignment in obs["battle"]["damage"]["assignments"])
+                damage_label = f"{unit['damage']}伤" + (f" / 待{pending}" if pending else "")
                 self._image_card(units, unit["code"], uid=unit["id"], owner=unit["owner"],
                                  zone="field", factor=4,
-                                 compact_label=f"P{unit['owner']} · M{unit['might']} · {unit['damage']}伤",
+                                 compact_label=f"P{unit['owner']} · M{unit['might']} · {damage_label}",
                                  exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
             self._image_card(frame, field["code"], factor=4, compact_label="战场卡", click=False)
         bases = self._subzone(body, "基地区 / Bases")

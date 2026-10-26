@@ -552,12 +552,24 @@ class OriginsRules:
         targets = self._units(state, 1-player, state["battle"]["field"])
         assignments = damage["assignments"][player]
         unit = self._unit(state, target_id)
-        if all(u["id"] in assignments for u in targets):
-            amount = damage["remaining"][player]
-        else:
-            amount = min(damage["remaining"][player], max(1, self.might(state, unit))-unit["damage"])
-        assignments[target_id] = assignments.get(target_id, 0) + amount
-        damage["remaining"][player] -= amount
+        if unit is None or unit not in targets:
+            raise ValueError("invalid damage target")
+        # One target choice performs the complete mandatory assignment to that
+        # target. It stops at lethal damage while another target remains, and
+        # automatically continues with overkill when this is the last target.
+        while damage["remaining"][player]:
+            pending = assignments.get(target_id, 0)
+            lethal_needed = max(0, max(1, self.might(state, unit)) - unit["damage"] - pending)
+            amount = min(damage["remaining"][player], lethal_needed) if lethal_needed else damage["remaining"][player]
+            if amount <= 0:
+                break
+            assignments[target_id] = pending + amount
+            damage["remaining"][player] -= amount
+            if not damage["remaining"][player]:
+                break
+            other_targets = [u for u in targets if u["id"] != target_id and u["id"] not in assignments]
+            if other_targets:
+                break
         self._advance_damage(state, rng)
 
     def _advance_damage(self, state, rng):

@@ -243,6 +243,21 @@ class OriginsTests(unittest.TestCase):
         self.assertFalse(state["units"])
         self.assertIsNone(state["fields"][0]["controller"])
 
+    def test_single_damage_target_finishes_forced_overkill_in_one_choice(self):
+        state = self.scenario()
+        attacker = self.unit(state, "OGN-015", location=0)
+        defender = self.unit(state, "OGN-219", player=1, location=0)
+        state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+        state["phase"], state["actor"], state["passes"] = "showdown", 0, 0
+        self.act(state, "pass")
+        self.act(state, "pass")
+        self.assertEqual(state["phase"], "damage")
+        self.act(state, "assign_damage", target=defender["id"])
+        assigned = state["battle"]["damage"]["assignments"][0][defender["id"]]
+        self.assertEqual(state["battle"]["damage"]["remaining"][0], 0)
+        self.assertEqual(assigned, self.rules.might(state, attacker))
+        self.assertEqual(state["actor"], 1)
+
     def test_fiora_mighty_shield_and_battlefield_ganking(self):
         state = self.scenario()
         state["fields"][0]["code"] = "OGN-276"

@@ -72,9 +72,12 @@ class OriginsGUI(tk.Tk):
 
         self.board = tk.Frame(self, bg="#0e1725")
         self.board.pack(fill="both", expand=True, padx=8, pady=4)
+        self.board.grid_propagate(False)
         self.board.grid_columnconfigure(0, weight=1)
         self.board.grid_columnconfigure(1, weight=0, minsize=170)
-        self.board.grid_rowconfigure(1, weight=1)
+        self.board.grid_rowconfigure(0, weight=0, minsize=150)
+        self.board.grid_rowconfigure(1, weight=1, minsize=300)
+        self.board.grid_rowconfigure(2, weight=0, minsize=300)
         self._panel("opponent", "对手区域 / Opponent", 0, height=150)
         self._panel("battlefields", "战场区 / Battlefields", 1, height=380)
         self._panel("player", "我方区域 / Player", 2, height=300)
@@ -93,6 +96,7 @@ class OriginsGUI(tk.Tk):
                               padx=6, pady=5, height=height)
         frame.grid(row=row, column=column, rowspan=rowspan, sticky="nsew", padx=3, pady=3)
         frame.grid_propagate(False)
+        frame.pack_propagate(False)
         body = tk.Frame(frame, bg="#1b2a3e")
         body.pack(fill="both", expand=True)
         frame._body = body
@@ -659,19 +663,29 @@ class OriginsGUI(tk.Tk):
                                   bg="#263a54", fg="#e9f1fc", padx=4, pady=3)
             frame.grid(row=0, column=index, sticky="nsew", padx=3, pady=2)
             frame._field_index = index
+            field_card_zone = tk.Frame(frame, bg="#263a54")
+            field_card_zone.pack(side="bottom", fill="x")
+            self._image_card(field_card_zone, field["code"], factor=4,
+                             compact_label="战场卡", click=False)
             units = tk.Frame(frame, bg="#263a54")
             units.pack(fill="both", expand=True)
+            units.grid_rowconfigure(0, weight=1)
+            units.grid_rowconfigure(1, weight=1)
+            opponent_row = tk.Frame(units, bg="#263a54")
+            opponent_row.grid(row=0, column=0, sticky="new")
+            player_row = tk.Frame(units, bg="#263a54")
+            player_row.grid(row=1, column=0, sticky="sew")
             for unit in [u for u in obs["units"] if u["location"] == index]:
                 pending = 0
                 if obs["battle"] and obs["battle"].get("damage"):
                     pending = sum(assignment.get(unit["id"], 0)
                                   for assignment in obs["battle"]["damage"]["assignments"])
                 damage_label = f"{unit['damage']}伤" + (f" / 待{pending}" if pending else "")
-                self._image_card(units, unit["code"], uid=unit["id"], owner=unit["owner"],
-                                 zone="field", factor=4,
+                row = player_row if unit["owner"] == 0 else opponent_row
+                self._image_card(row, unit["code"], uid=unit["id"], owner=unit["owner"],
+                                 zone="field", factor=5,
                                  compact_label=f"P{unit['owner']} · M{unit['might']} · {damage_label}",
                                  exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
-            self._image_card(frame, field["code"], factor=4, compact_label="战场卡", click=False)
         bases = self._subzone(body, "基地区 / Bases")
         bases.grid(row=1, column=0, sticky="ew", padx=2, pady=(2, 0))
         for player in (0, 1):

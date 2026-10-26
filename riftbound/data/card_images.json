@@ -1,7 +1,7 @@
 {
   "source_commit": "a330ca8325ae792548660b1ccef0e7dd97062bd7",
   "source": "official Origins archive image snapshot",
-  "display_note": "Bundled thumbnails are for the local table UI; repeated physical copies share one image.",
+  "display_note": "Bundled card images are for the local table UI; repeated physical copies share one image. Portrait cards with a ready/exhausted state also have a -horizontal.png variant.",
   "cards": {
     "OGN-001": "images/OGN/OGN-001.png",
     "OGN-004": "images/OGN/OGN-004.png",

@@ -36,11 +36,13 @@ class CLITests(unittest.TestCase):
         self.assertTrue(callable(OriginsGUI))
 
     def test_supported_card_images_are_bundled(self):
-        from riftbound.support import SUPPORTED
+        from riftbound.support import LEGENDS, RUNES, SUPPORTED, UNIT_CODES
         root = Path(__file__).parents[1] / "riftbound" / "data" / "images"
         self.assertTrue((root / "card-back.png").is_file())
         for code in SUPPORTED:
             self.assertTrue((root / "OGN" / f"{code}.png").is_file(), code)
+        for code in UNIT_CODES | RUNES | LEGENDS:
+            self.assertTrue((root / "OGN" / f"{code}-horizontal.png").is_file(), code)
 
     def test_export_truncation_replay_and_tamper_detection(self):
         with tempfile.TemporaryDirectory() as tmp:

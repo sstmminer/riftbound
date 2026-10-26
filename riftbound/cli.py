@@ -9,7 +9,7 @@ from .catalog import load_origins
 from .engine import Environment, RulesUnavailable, replay
 from .origins import OriginsRules
 from .policies import GreedyPolicy
-from .support import FIELD_CODES, SUPPORTED, starter_deck, vision_deck
+from .support import SUPPORTED, starter_deck, vision_deck
 from .training import RandomPolicy, self_play
 
 
@@ -78,8 +78,6 @@ def main(argv=None):
     commands.add_parser("status")
     gui = commands.add_parser("gui", help="launch the local Tk graphical client")
     gui.add_argument("--variant", choices=("starter", "vision"), default="starter")
-    gui.add_argument("--extra-field", action="append", choices=sorted(FIELD_CODES), default=[],
-                     help="add a special battlefield; may be repeated up to four times")
     catalog = commands.add_parser("catalog")
     catalog.add_argument("--supported", action="store_true")
     deck_cmd = commands.add_parser("deck", help="print the included legal constructed deck")
@@ -107,7 +105,7 @@ def main(argv=None):
                               "training_status": "experimental subset only; not a full-game benchmark"}, indent=2))
         elif args.command == "gui":
             from .gui import main as gui_main
-            gui_main(variant=args.variant, extra_fields=args.extra_field)
+            gui_main(variant=args.variant)
         elif args.command == "catalog":
             for card in load_origins():
                 if not args.supported or card["code"] in SUPPORTED:

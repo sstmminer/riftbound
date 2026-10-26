@@ -5,7 +5,8 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 ROOT = Path(__file__).resolve().parents[1]
 PATTERNS = ["README.md", "pyproject.toml", ".gitignore", ".python-version", "riftbound/*.py",
-            "riftbound/data/*.json", "tests/*.py", "tools/*.py", "docs/*.md",
+            "riftbound/data/*.json", "riftbound/data/images/*.png", "riftbound/data/images/OGN/*.png",
+            "tests/*.py", "tools/*.py", "docs/*.md",
             "docs/*.json", "examples/*.json", ".github/workflows/*.yml"]
 
 

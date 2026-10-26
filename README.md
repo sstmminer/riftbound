@@ -2,11 +2,11 @@
 
 Python 3.12+，支持双人自动对战、自博弈样本和确定性回放。**0.3.0 可运行一个明确限定的 Origins 卡池；尚不支持完整 Origins。**
 
-规则依据：用户提供的 RUP5（2026-10-09）。卡牌、标签及已知勘误来自本仓库 `archive-download` 分支的固定官方来源归档（a330ca8）。运行时完全离线，无需模型、API 密钥、GPU、卡图或 1.3 GB 原图包。
+规则依据：用户提供的 RUP5（2026-10-09）。卡牌、标签及已知勘误来自本仓库 `archive-download` 分支的固定官方来源归档（a330ca8）。运行时完全离线，无需模型、API 密钥、GPU 或额外下载卡图；当前支持牌的缩略卡图已随模拟器打包。
 
 - **代码分支**：[simulator](https://github.com/sstmminer/riftbound/tree/simulator)
 - **小型下载包**：[riftbound-simulator-0.3.0.zip](https://github.com/sstmminer/riftbound/raw/refs/heads/simulator/downloads/riftbound-simulator-0.3.0.zip)
-- **图形界面**：运行 `python -m riftbound gui`，支持点击、右键菜单、拖拽、动态战场和洞察弹窗；`--variant vision` 可直接演示 Vision。
+- **图形界面**：运行 `python -m riftbound gui`，支持卡图、符文区、点击、右键菜单、拖拽、动态战场和洞察弹窗；`--variant vision` 可直接演示 Vision。
 - **下载、安装和测试攻略**：[docs/quickstart-zh.md](docs/quickstart-zh.md)
 - **32 张可执行卡牌**：[docs/supported-cards.md](docs/supported-cards.md)
 - **规则覆盖与限制**：[docs/rules-coverage.md](docs/rules-coverage.md)

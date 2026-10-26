@@ -7,6 +7,7 @@
 - 用户提供的 `RiftboundCoreRulesRUP5_En_EN.pdf`，142 页，更新于 2026-10-09。来源元数据和 SHA-256 见 [rules-source.json](rules-source.json)。PDF 不随轻量下载包分发；云工作区缓存位于忽略路径 `artifacts/rules/`。
 - 官方来源归档：本仓库 `archive-download` 分支提交 a330ca8325ae792548660b1ccef0e7dd97062bd7。基础印刷编号逐一存在，保存的 raw_record 与官方 HTML 快照逐条一致；本次接入时核对过来源哈希。
 - [origins-source.json](../riftbound/data/origins-source.json) 固定原始 cards.json、errata.json 和归一化数据的哈希。已关联的修订文本优先，原文本与 errata_check_incomplete 状态保留。
+- 支持表中的卡图来自同一官方归档提交，缩略图映射见 `riftbound/data/card_images.json`；完整原图归档不随轻量包分发。
 - 公开图鉴 1,408 条与元数据 1,416 条的差额原因仍未知；另有 Unleashed 的 LeBlanc 未关联勘误。这些不是已经确认的 Origins 基础编号缺失，不能据此宣称官方全球卡池完整性。
 
 ## 执行覆盖

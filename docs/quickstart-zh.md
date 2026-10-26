@@ -48,15 +48,17 @@ python3.12 -m venv .venv
 python -m riftbound gui
 ```
 
-默认使用 starter 体验套牌。要演示包含 Mystic Poro 的 Vision/洞察交互，运行 `python -m riftbound gui --variant vision`；窗口顶部也可以切换套牌并点击“重新开始”。点击“增加特殊战场”会在重开时追加一个动态战场；也可以用 `--extra-field OGN-276 --extra-field OGN-297` 预先追加。
+默认使用 starter 体验套牌。要演示包含 Mystic Poro 的 Vision/洞察交互，运行 `python -m riftbound gui --variant vision`；窗口顶部也可以切换套牌并点击“重新开始”。战场数量由规则状态和卡牌效果决定，界面会自动显示新增战场。
 
 Windows 将 `python` 换成 `.\.venv\Scripts\python.exe`，macOS/Linux 换成 `.venv/bin/python`。窗口包含传奇区、英雄区（规则中的 Champion Zone）、动态战场区、两个基地/手牌、弃牌区、放逐区和公开状态区。
 
-- 点击或右键手牌/己方单位打开合法操作菜单。
+- 点击或右键手牌/己方单位打开合法操作菜单；符文左键横置，右键选择回收。
 - 将手牌拖到基地或任意战场执行出牌；将单位拖到目标区域开始移动，再确认选择。
 - 洞察（Vision）会弹出选择窗口，可选择保留牌顶或回收到牌库底。
 - 对手使用内置贪心策略自动行动；只显示其公开区域和手牌数量。
 - 当前窗口使用默认体验套牌和 2 个随机战场；引擎支持动态追加战场，尚未开放多玩家模式。
+
+当前支持牌和符文均使用随包附带的官方来源缩略卡图显示，不需要另外下载图片。
 
 如果 Linux 的 Python 没有 Tk 支持，Debian/Ubuntu 通常需要安装与当前 Python 版本对应的 `python3-tk`（例如 `sudo apt install python3-tk`）；Windows 官方 Python 和 macOS 通常已自带 Tk。
 

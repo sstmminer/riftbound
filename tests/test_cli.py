@@ -35,6 +35,13 @@ class CLITests(unittest.TestCase):
         from riftbound.gui import OriginsGUI
         self.assertTrue(callable(OriginsGUI))
 
+    def test_supported_card_images_are_bundled(self):
+        from riftbound.support import SUPPORTED
+        root = Path(__file__).parents[1] / "riftbound" / "data" / "images"
+        self.assertTrue((root / "card-back.png").is_file())
+        for code in SUPPORTED:
+            self.assertTrue((root / "OGN" / f"{code}.png").is_file(), code)
+
     def test_export_truncation_replay_and_tamper_detection(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp)/"run"

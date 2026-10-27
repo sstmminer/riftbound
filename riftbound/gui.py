@@ -27,7 +27,7 @@ class OriginsGUI(tk.Tk):
     def __init__(self, *, seed=42, opponent="greedy", variant="starter", extra_fields=()):
         super().__init__()
         self.title("Riftbound Origins · 自动对战与结算")
-        self.geometry("1600x1250")
+        self.geometry("1600x1300")
         self.minsize(1200, 900)
         self.configure(bg="#0e1725")
         self.variant = variant
@@ -84,14 +84,14 @@ class OriginsGUI(tk.Tk):
         self.board.grid_propagate(False)
         self.board.grid_columnconfigure(0, weight=1)
         self.board.grid_columnconfigure(1, weight=0, minsize=220)
-        self.board.grid_rowconfigure(0, weight=0, minsize=420)
-        self.board.grid_rowconfigure(1, weight=1, minsize=420)
-        self.board.grid_rowconfigure(2, weight=0, minsize=420)
-        self._panel("opponent", "对手区域 / Opponent", 0, height=420)
-        self._panel("battlefields", "战场区 / Battlefields", 1, height=500)
-        self._panel("player", "我方区域 / Player", 2, height=420)
-        self._panel("chain", "结算链 / Chain", 0, column=1, height=420)
-        self._panel("banishment", "放逐区 / Banishment", 1, column=1, rowspan=2, height=920)
+        self.board.grid_rowconfigure(0, weight=0, minsize=360)
+        self.board.grid_rowconfigure(1, weight=1, minsize=500)
+        self.board.grid_rowconfigure(2, weight=0, minsize=350)
+        self._panel("opponent", "对手区域 / Opponent", 0, height=360)
+        self._panel("battlefields", "战场区 / Battlefields", 1, height=560)
+        self._panel("player", "我方区域 / Player", 2, height=350)
+        self._panel("chain", "结算链 / Chain", 0, column=1, height=360)
+        self._panel("banishment", "放逐区 / Banishment", 1, column=1, rowspan=2, height=900)
 
         bottom = tk.Frame(self, bg="#101b2b", padx=8, pady=5)
         bottom.pack(fill="x")
@@ -694,29 +694,31 @@ class OriginsGUI(tk.Tk):
         body = self._clear("opponent")
         body.grid_columnconfigure(1, weight=2, minsize=320)
         body.grid_columnconfigure(2, weight=1, minsize=260)
-        body.grid_columnconfigure(3, weight=0, minsize=90)
+        body.grid_columnconfigure(3, weight=0, minsize=180)
         body.grid_columnconfigure(4, weight=0, minsize=100)
         identity = tk.Frame(body, bg="#1b2a3e")
         identity.grid(row=0, column=0, sticky="nsw")
         self._identity(identity, obs, 1, compact=True)
-        hand = self._subzone(body, f"对手手牌 · {obs['players'][1]['hand_count']} 张", width=500, height=210)
+        hand = self._subzone(body, f"对手手牌 · {obs['players'][1]['hand_count']} 张", width=500, height=170)
         hand.grid(row=0, column=1, sticky="nsew", padx=4)
         self._fan(hand, range(min(10, obs["players"][1]["hand_count"])),
                   lambda parent, _item: self._image_card(parent, BACK_CODE, factor=4,
                                                          compact_label="", pack=False, show_label=False),
                   per_row=10, row_height=135)
-        rune_zone = self._subzone(body, "对手符文区", width=280, height=210)
+        rune_zone = self._subzone(body, "对手符文区", width=280, height=170)
         rune_zone.grid(row=0, column=2, sticky="nse", padx=4)
         self._fan(rune_zone, obs["players"][1]["runes"],
                   lambda parent, rune: self._rune_card(parent, rune, player=1,
                                                         pack=False, show_label=False),
                   per_row=10, row_height=130)
-        discard = tk.Frame(body, bg="#1b2a3e")
-        discard.grid(row=0, column=3, sticky="nse", padx=4)
-        self._stack(discard, obs["players"][1]["trash"], owner=1,
-                    title="P1 弃牌区 / Trash", factor=5)
+        piles = self._subzone(body, "对手牌堆 / Opponent Piles", width=180, height=170)
+        piles.grid(row=0, column=3, sticky="nsew", padx=4)
+        self._stack(piles, obs["players"][1]["trash"], owner=1,
+                    title="P1 弃牌 / Trash", factor=5)
+        self._stack(piles, [], title="牌库 / Deck", factor=5,
+                    count=obs["players"][1]["main_count"])
         self._status_box(body, obs, 1, column=4)
-        base_zone = self._subzone(body, "对手基地 / Opponent Base", height=210)
+        base_zone = self._subzone(body, "对手基地 / Opponent Base", height=170)
         base_zone.grid(row=1, column=0, columnspan=5, sticky="ew", padx=4, pady=(3, 0))
         base = tk.Frame(base_zone, bg="#263a54")
         base.pack(fill="both", expand=True)
@@ -807,6 +809,7 @@ class OriginsGUI(tk.Tk):
         body.grid_columnconfigure(1, weight=1, minsize=300)
         body.grid_columnconfigure(2, weight=2, minsize=500)
         body.grid_columnconfigure(3, weight=0, minsize=100)
+        body.grid_columnconfigure(4, weight=0, minsize=180)
         identity = tk.Frame(body, bg="#1b2a3e")
         identity.grid(row=0, column=0, sticky="nsw")
         self._identity(identity, obs, 0)
@@ -818,7 +821,7 @@ class OriginsGUI(tk.Tk):
                                                         pack=False, show_label=False),
                   per_row=6, row_height=135)
 
-        hand_zone = self._subzone(body, f"手牌 / Hand · {len(obs['hand'])} 张", width=500, height=210)
+        hand_zone = self._subzone(body, f"手牌 / Hand · {len(obs['hand'])} 张", width=500, height=170)
         hand_zone.grid(row=0, column=2, sticky="nsew", padx=4)
         self._fan(hand_zone, obs["hand"],
                   lambda parent, card: self._image_card(parent, card["code"], uid=card["id"],
@@ -828,10 +831,12 @@ class OriginsGUI(tk.Tk):
                   per_row=10, row_height=132)
 
         self._status_box(body, obs, 0, column=3)
-        piles = self._subzone(body, "公开牌堆 / Public Piles")
-        piles.grid(row=1, column=0, columnspan=4, sticky="ew", padx=3, pady=(2, 0))
-        self._stack(piles, obs["players"][0]["trash"], owner=0, title="P0 弃牌区 / Trash", factor=5)
-        self._stack(piles, [], title="牌库 / Deck", factor=5, count=obs["players"][0]["main_count"])
+        piles = self._subzone(body, "牌堆 / Player Piles", width=180, height=170)
+        piles.grid(row=0, column=4, sticky="nsew", padx=4)
+        self._stack(piles, obs["players"][0]["trash"], owner=0,
+                    title="P0 弃牌 / Trash", factor=5)
+        self._stack(piles, [], title="牌库 / Deck", factor=5,
+                    count=obs["players"][0]["main_count"])
 
     def render_banishment(self, obs):
         body = self._clear("banishment")

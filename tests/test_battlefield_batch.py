@@ -38,7 +38,7 @@ class BattlefieldBatchTests(unittest.TestCase):
         self.assertEqual(len(row["hand"]), before_hand)
         self.assertEqual(len(row["trash"]), 1)
 
-    def test_void_gate_field_blocks_return_to_base(self):
+    def test_vilemaws_lair_blocks_return_to_base(self):
         self.state["fields"][0]["code"] = "OGN-295"
         unit = self.rules._new_unit(self.state, "OGN-001", 0, 0, card=None, exhausted=False)
         self.assertNotIn(unit["id"], self.rules._movable(self.state, "base:0"))

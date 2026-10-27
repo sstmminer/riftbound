@@ -337,6 +337,14 @@ class OriginsGUI(tk.Tk):
         self.log.configure(state="disabled")
 
     def start_drag(self, event, uid, zone):
+        if (zone == "hand" and self.env.current_player == 0
+                and self.env.observe(0)["phase"] == "mulligan"):
+            # Mulligan is a direct card selection.  Handle it on press so the
+            # first opening render cannot lose the release event while the
+            # hand fan is being rebuilt.
+            self.mulligan_click(uid)
+            self.drag_card = None
+            return "break"
         self.drag_card = (uid, zone, event.x_root, event.y_root)
 
     def end_drag(self, event, uid, zone):
@@ -694,7 +702,7 @@ class OriginsGUI(tk.Tk):
         body = self._clear("opponent")
         body.grid_columnconfigure(1, weight=2, minsize=320)
         body.grid_columnconfigure(2, weight=1, minsize=260)
-        body.grid_columnconfigure(3, weight=0, minsize=180)
+        body.grid_columnconfigure(3, weight=0, minsize=230)
         body.grid_columnconfigure(4, weight=0, minsize=100)
         identity = tk.Frame(body, bg="#1b2a3e")
         identity.grid(row=0, column=0, sticky="nsw")
@@ -741,12 +749,12 @@ class OriginsGUI(tk.Tk):
             self._image_card(champion, card["code"], uid=card["id"] if player == 0 else None,
                              owner=player, zone="champion", factor=4 if compact else 3)
 
-    def _status_box(self, parent, obs, player, *, column=None):
+    def _status_box(self, parent, obs, player, *, column=None, row=0):
         frame = self._subzone(parent, f"P{player} 状态", width=110)
         if column is None:
             frame.pack(side="left", fill="y", padx=3)
         else:
-            frame.grid(row=0, column=column, sticky="nse", padx=4)
+            frame.grid(row=row, column=column, sticky="nse", padx=4)
         row = obs["players"][player]
         text = (f"能量 {row['energy']}\n力量 {' '.join(row['power']) or '—'}\n"
                 f"牌库 {row['main_count']}\n符文 {len(row['runes'])}\n阶段 {obs['phase']}")
@@ -794,25 +802,25 @@ class OriginsGUI(tk.Tk):
                                  exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
     def render_player(self, obs):
         body = self._clear("player")
-        body.grid_rowconfigure(0, weight=0, minsize=170)
+        body.grid_rowconfigure(0, weight=0, minsize=120)
         body.grid_rowconfigure(1, weight=1, minsize=170)
         body.grid_columnconfigure(1, weight=1, minsize=300)
         body.grid_columnconfigure(2, weight=2, minsize=500)
         body.grid_columnconfigure(3, weight=0, minsize=100)
-        body.grid_columnconfigure(4, weight=0, minsize=180)
+        body.grid_columnconfigure(4, weight=0, minsize=230)
         identity = tk.Frame(body, bg="#1b2a3e")
-        identity.grid(row=0, column=0, sticky="nsw")
+        identity.grid(row=1, column=0, sticky="nsw")
         self._identity(identity, obs, 0)
 
         rune_zone = self._subzone(body, "符文区 / Runes · 左键横置 · 右键回收", width=300, height=270)
-        rune_zone.grid(row=0, column=1, sticky="nsew", padx=4)
+        rune_zone.grid(row=1, column=1, sticky="nsew", padx=4)
         self._fan(rune_zone, obs["players"][0]["runes"],
                   lambda parent, rune: self._rune_card(parent, rune, player=0,
                                                         pack=False, show_label=False),
                   per_row=6, row_height=135)
 
         hand_zone = self._subzone(body, f"手牌 / Hand · {len(obs['hand'])} 张", width=500, height=170)
-        hand_zone.grid(row=0, column=2, sticky="nsew", padx=4)
+        hand_zone.grid(row=1, column=2, sticky="nsew", padx=4)
         self._fan(hand_zone, obs["hand"],
                   lambda parent, card: self._image_card(parent, card["code"], uid=card["id"],
                                                         owner=0, zone="hand", factor=4,
@@ -820,24 +828,26 @@ class OriginsGUI(tk.Tk):
                                                         pack=False, show_label=False),
                   per_row=10, row_height=132)
 
-        self._status_box(body, obs, 0, column=3)
-        piles = self._subzone(body, "牌堆 / Player Piles", width=180, height=170)
-        piles.grid(row=0, column=4, sticky="nsew", padx=4)
-        self._stack(piles, obs["players"][0]["trash"], owner=0,
-                    title="P0 弃牌 / Trash", factor=5)
-        self._stack(piles, [], title="牌库 / Deck", factor=5,
-                    count=obs["players"][0]["main_count"])
-
-        bases = self._subzone(body, "我方基地 / Player Base", height=170)
-        bases.grid(row=1, column=0, columnspan=5, sticky="nsew", padx=3, pady=(3, 0))
+        self._status_box(body, obs, 0, column=3, row=1)
+        # The player's base is above the hand row, matching the physical table
+        # orientation and keeping it outside the battlefield panel.
+        bases = self._subzone(body, "我方基地 / Player Base", height=120)
+        bases.grid(row=0, column=0, columnspan=5, sticky="nsew", padx=3, pady=(2, 0))
         base = tk.LabelFrame(bases, text="P0 基地", bg="#263a54", fg="#e9f1fc", padx=4)
         base.pack(side="left", fill="both", expand=True, padx=3)
         base._base_player = 0
         for unit in [u for u in obs["units"] if u["location"] == "base:0"]:
             self._image_card(base, unit["code"], uid=unit["id"], owner=unit["owner"],
-                             zone="base", factor=4,
+                             zone="base", factor=5,
                              compact_label=f"P{unit['owner']} · M{unit['might']}",
                              exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
+        piles = self._subzone(body, "牌堆 / Player Piles", width=230, height=170)
+        piles.grid(row=1, column=4, sticky="nsew", padx=4)
+        self._stack(piles, obs["players"][0]["trash"], owner=0,
+                    title="P0 弃牌 / Trash", factor=5)
+        self._stack(piles, [], title="牌库 / Deck", factor=5,
+                    count=obs["players"][0]["main_count"])
+
 
     def render_banishment(self, obs):
         body = self._clear("banishment")

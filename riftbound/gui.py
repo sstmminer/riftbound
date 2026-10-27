@@ -307,7 +307,7 @@ class OriginsGUI(tk.Tk):
     def show_scope(self):
         messagebox.showinfo(
             "当前范围",
-            "RUP5 2026-10-09\n双人 Duel；32 张显式实现的 Origins 卡牌。\n\n"
+            "RUP5 2026-10-09\n双人 Duel；37 张显式实现的 Origins 卡牌。\n\n"
             "战场数量由规则状态和卡牌效果决定，界面不会手动添加战场。\n"
             "未支持的牌和效果会在开局前拒绝，不会静默当作白板。",
         )
@@ -539,6 +539,7 @@ class OriginsGUI(tk.Tk):
             "play_unit": "打出单位 / Play unit", "play_spell": "施放法术 / Play spell",
             "begin_move": "移动到目标 / Move", "exhaust_rune": "横置符文 / Exhaust rune",
             "recycle_rune": "回收符文 / Recycle rune", "legend_energy": "传奇能力 / Legend energy",
+            "legend_spell_power": "传奇能力 / Spell rainbow power",
             "end_turn": "结束回合 / End turn", "pass": "让过 / Pass", "commit_move": "确认移动 / Commit",
             "cancel_move": "取消移动 / Cancel", "select_unit": "选择单位 / Select unit",
             "assign_damage": "分配伤害 / Assign damage",
@@ -800,7 +801,8 @@ class OriginsGUI(tk.Tk):
             ttk.Button(self.actions, text=f"调度 / Mulligan ({len(self.selected_mulligan)})",
                        command=self.commit_mulligan).pack(side="left", padx=2)
         for action in legal:
-            if action.kind in {"end_turn", "pass", "legend_energy", "commit_move", "cancel_move", "order_triggers"}:
+            if action.kind in {"end_turn", "pass", "legend_energy", "legend_spell_power",
+                               "commit_move", "cancel_move", "order_triggers"}:
                 ttk.Button(self.actions, text=self.action_text(action),
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
         prompt = "左键选择/多选单位，再拖到基地/战场移动；右键查看其他操作"

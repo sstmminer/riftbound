@@ -369,11 +369,49 @@ class OriginsTests(unittest.TestCase):
         self.assertFalse(state["units"][-1]["exhausted"])
         self.assertEqual(state["players"][0]["energy"], before - 5)
 
+    def test_kaisa_draws_after_conquering(self):
+        state = self.scenario()
+        uid = self.take_card(state, "OGN-219")
+        state["cards"][uid]["code"] = "OGN-039"
+        kaisa = self.rules._new_unit(state, "OGN-039", 0, 0, card=uid, exhausted=False)
+        state["battle"] = {"field": 0, "attacker": 0, "combat": False}
+        before = len(state["players"][0]["hand"])
+        self.rules._settle_battle(state, random.Random(7))
+        self.assertEqual(state["points"][0], 1)
+        self.assertEqual(len(state["players"][0]["hand"]), before + 1)
+        self.assertIn(kaisa, state["units"])
+
     def test_all_six_domain_runes_are_valid_resources(self):
         state = self.scenario()
         state["players"][0]["power"] = ["fury", "calm", "mind", "body", "chaos", "order"]
         self.rules.validate(state)
         self.assertTrue(any(a.kind == "play_unit" for a in self.rules.legal_actions(state)))
+
+    def test_daughter_of_the_void_adds_spell_only_rainbow_power(self):
+        state = self.scenario()
+        row = state["players"][0]
+        row["legend"] = "OGN-247"
+        row["energy"] = 4
+        row["power"] = ["fury"]
+        self.assertTrue(any(a.kind == "legend_spell_power" for a in self.rules.legal_actions(state)))
+        self.act(state, "legend_spell_power")
+        self.assertEqual(row["power"], ["fury", "spell_any"])
+        self.assertTrue(row["legend_exhausted"])
+        enemy = self.unit(state, "OGN-013", player=1, location=0)
+        spell = self.hand(state, "OGN-009")
+        actions = [a for a in self.rules.legal_actions(state)
+                   if a.kind == "play_spell" and json.loads(a.arguments)["card"] == spell
+                   and json.loads(a.arguments)["targets"] == [enemy["id"]]]
+        self.assertTrue(actions)
+        self.rules.apply(state, actions[0], random.Random(7))
+        self.rules.validate(state)
+        self.assertEqual(row["power"], [])
+
+        # The generated resource is restricted to spells and cannot pay a unit.
+        row["power"] = ["spell_any"]
+        unit = self.hand(state, "OGN-010")
+        self.assertFalse(any(a.kind == "play_unit" and json.loads(a.arguments)["card"] == unit
+                             for a in self.rules.legal_actions(state)))
 
 
 if __name__ == "__main__":

@@ -13,8 +13,9 @@ import json
 import random
 
 from .catalog import load_origins, require_supported
-from .core import Card, Deck, Scoreboard, Unit, channel_count, draw_cards, mulligan, validate_deck
+from .core import DOMAINS, Card, Deck, Scoreboard, Unit, channel_count, draw_cards, mulligan, validate_deck
 from .engine import Action, canonical
+from .effects import EffectRegistry
 from .support import ACCELERATE, FIELD_CODES, LEGENDS, REACTIONS, RUNES, SPELL_CODES, TOKEN, UNIT_CODES, starter_deck
 
 
@@ -27,6 +28,7 @@ def card_model(row):
 class OriginsRules:
     def __init__(self, decks=None, *, extra_fields=()):
         self.cards = {row["code"]: row for row in load_origins()}
+        self.effects = self._build_effect_registry()
         self.extra_fields = list(extra_fields)
         if len(self.extra_fields) > 4 or not set(self.extra_fields) <= FIELD_CODES:
             raise ValueError("extra_fields must contain at most four supported battlefield codes")
@@ -45,6 +47,19 @@ class OriginsRules:
         digest = hashlib.sha256(canonical({"cards": list(self.cards.values()), "decks": self.decks,
                                            "extra_fields": self.extra_fields}).encode()).hexdigest()
         self.id = f"origins-subset/0.3.0/RUP5-2026-10-09/{digest}"
+
+    def _build_effect_registry(self):
+        """Register every chain effect implemented by this backend explicitly."""
+
+        registry = EffectRegistry()
+        registry.register("darius", self._effect_darius)
+        registry.register("buff_self", self._effect_buff_self)
+        registry.register("peak", self._effect_peak)
+        registry.register("drummer", self._effect_drummer)
+        registry.register("vision", self._effect_vision)
+        registry.register("discard_two", self._effect_discard_two)
+        registry.register("spell", self._effect_spell)
+        return registry
 
     def initial_state(self, rng):
         first = rng.randrange(2)
@@ -208,16 +223,19 @@ class OriginsRules:
             result.append(Action.make("recycle_rune", rune=rune["id"]))
         if row["legend"] == "OGN-253" and not row["legend_exhausted"] and row["played"]:
             result.append(Action.make("legend_energy"))
+        if row["legend"] == "OGN-247" and not row["legend_exhausted"]:
+            result.append(Action.make("legend_spell_power"))
         return result
 
-    def _payments(self, state, player, energy, domains, power_count, any_count=0):
+    def _payments(self, state, player, energy, domains, power_count, any_count=0, *, spell=False):
         row = state["players"][player]
         if row["energy"] < energy:
             return []
         result = []
         for chosen in combinations(range(len(row["power"])), power_count+any_count):
             # All colored costs of supported spells use the same card domain.
-            if sum(row["power"][i] in domains or row["power"][i] == "any" for i in chosen) >= power_count:
+            if sum(row["power"][i] in domains or row["power"][i] == "any"
+                   or (spell and row["power"][i] == "spell_any") for i in chosen) >= power_count:
                 result.append(list(chosen))
         return result
 
@@ -244,7 +262,8 @@ class OriginsRules:
                 for spend in buffs:
                     energy = 0 if spend is not None else data["energy"]
                     power = 0 if spend is not None else data["power_cost"]
-                    for payment in self._payments(state, player, energy, data["domains"], power, deflect):
+                    for payment in self._payments(state, player, energy, data["domains"], power, deflect,
+                                                  spell=True):
                         result.append(Action.make("play_spell", card=card, targets=selected,
                                                   spend_buff=spend, payment=payment))
         return result
@@ -356,6 +375,72 @@ class OriginsRules:
         row["energy"] -= energy
         row["power"] = [power for index, power in enumerate(row["power"]) if index not in slots]
 
+    # Effect handlers return False only when they opened a decision window and
+    # the chain must remain paused.  All other handlers return True after their
+    # effect has resolved; the registry caller then advances the chain.
+    def _effect_darius(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if source:
+            source["temporary"] += 2
+            source["exhausted"] = False
+        return True
+
+    def _effect_buff_self(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if source:
+            source["buff"] = 1
+        return True
+
+    def _effect_peak(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if source:
+            source["buff"] = 1
+            if self._is_field(state, source["location"]):
+                for unit in self._units(state, item["owner"], source["location"]):
+                    unit["buff"] = 1
+        return True
+
+    def _effect_drummer(self, state, item, rng):
+        self._new_unit(state, TOKEN, item["owner"], item["location"])
+        return True
+
+    def _effect_vision(self, state, item, rng):
+        owner = item["owner"]
+        if state["players"][owner]["main"]:
+            state["decision"] = {"kind": "predict", "player": owner, "remaining": 1}
+            state["phase"], state["actor"] = "decision", owner
+            return False
+        return True
+
+    def _effect_discard_two(self, state, item, rng):
+        owner = item["owner"]
+        hand = state["players"][owner]["hand"]
+        if hand:
+            state["decision"] = {"kind": "discard", "player": owner,
+                                  "remaining": min(2, len(hand))}
+            state["phase"], state["actor"] = "decision", owner
+            return False
+        return True
+
+    def _effect_spell(self, state, item, rng):
+        code, owner = item["code"], item["owner"]
+        for uid in item["targets"]:
+            unit = self._unit(state, uid)
+            if unit is None or (code in {"OGN-009", "OGN-024"}
+                                and not self._is_field(state, unit["location"])):
+                continue
+            if code in {"OGN-206", "OGN-207"}:
+                unit["temporary"] += 2 if code == "OGN-206" else 3
+            elif code == "OGN-004":
+                unit["assault"] += 3
+            elif code in {"OGN-009", "OGN-024"}:
+                unit["damage"] += 3 if code == "OGN-009" else 4
+        self._cleanup(state)
+        if code == "OGN-024" and state["winner"] is None:
+            self._draw(state, owner, 1, rng)
+        state["players"][owner]["trash"].append(item["card"])
+        return True
+
     def apply(self, state, action, rng):
         kind, args = action.kind, json.loads(action.arguments)
         player = state["actor"]
@@ -393,6 +478,10 @@ class OriginsRules:
         elif kind == "legend_energy":
             row["legend_exhausted"] = True
             row["energy"] += 1
+            state["passes"] = 0
+        elif kind == "legend_spell_power":
+            row["legend_exhausted"] = True
+            row["power"].append("spell_any")
             state["passes"] = 0
         elif kind in {"play_unit", "play_spell"}:
             card = args["card"]
@@ -485,42 +574,10 @@ class OriginsRules:
 
     def _resolve_chain_item(self, state, rng):
         item = state["chain"].pop()
-        effect, owner = item["effect"], item["owner"]
-        source = self._unit(state, item.get("source"))
-        if ((effect == "vision" and state["players"][owner]["main"])
-                or (effect == "discard_two" and state["players"][owner]["hand"])):
-            state["decision"] = {"kind": "predict" if effect == "vision" else "discard",
-                                  "player": owner, "remaining": 1 if effect == "vision" else min(2, len(state["players"][owner]["hand"]))}
-            state["phase"], state["actor"] = "decision", owner
-            return
-        if effect == "darius" and source:
-            source["temporary"] += 2
-            source["exhausted"] = False
-        elif effect in {"buff_self", "peak"} and source:
-            source["buff"] = 1
-            if effect == "peak" and self._is_field(state, source["location"]):
-                for unit in self._units(state, owner, source["location"]):
-                    unit["buff"] = 1
-        elif effect == "drummer":
-            self._new_unit(state, TOKEN, owner, item["location"])
-        elif effect == "spell":
-            code = item["code"]
-            for uid in item["targets"]:
-                unit = self._unit(state, uid)
-                if unit is None or (code in {"OGN-009", "OGN-024"} and not self._is_field(state, unit["location"])):
-                    continue
-                if code in {"OGN-206", "OGN-207"}:
-                    unit["temporary"] += 2 if code == "OGN-206" else 3
-                elif code == "OGN-004":
-                    unit["assault"] += 3
-                elif code in {"OGN-009", "OGN-024"}:
-                    unit["damage"] += 3 if code == "OGN-009" else 4
+        completed = self.effects.dispatch(item["effect"], state, item, rng)
+        if completed:
+            self._finish_resolution(state)
             self._cleanup(state)
-            if code == "OGN-024" and state["winner"] is None:
-                self._draw(state, owner, 1, rng)
-            state["players"][owner]["trash"].append(item["card"])
-        self._finish_resolution(state)
-        self._cleanup(state)
 
     def _finish_resolution(self, state):
         if state["chain"]:
@@ -602,6 +659,13 @@ class OriginsRules:
         state["battle"], state["phase"], state["actor"] = None, "main", state["turn_player"]
         if controller is not None and controller != previous:
             self._score(state, controller, field, "conquer", rng)
+            # Kai'Sa, Survivor draws once for each copy that conquered this field.
+            # Resolve immediately after scoring, matching the simple draw trigger
+            # used by this closed card pool.
+            kaisa_count = sum(u["code"] == "OGN-039" and u["owner"] == controller
+                              for u in self._units(state, controller, field))
+            if kaisa_count:
+                self._draw(state, controller, kaisa_count, rng)
         self._cleanup(state)
 
     def observe(self, state, player):
@@ -642,7 +706,7 @@ class OriginsRules:
             runes = row["runes"] + row["rune_deck"]
             if len(runes) != 12 or len({r["id"] for r in runes}) != 12:
                 raise ValueError("rune conservation failed")
-            if row["energy"] < 0 or any(p not in {"fury", "order", "chaos"} for p in row["power"]):
+            if row["energy"] < 0 or any(p not in DOMAINS | {"spell_any"} for p in row["power"]):
                 raise ValueError("invalid resource pool")
         located.extend(u["card"] for u in state["units"] if u["card"] is not None)
         located.extend(item["card"] for item in state["chain"] if item["effect"] == "spell")

@@ -90,10 +90,10 @@ class OriginsGUI(tk.Tk):
         # that made the two player areas look detached from the table.  The
         # top and bottom rows share any modest extra height, while the middle
         # row stays at the intended battlefield size.
-        self.board.grid_rowconfigure(0, weight=1, minsize=300)
+        self.board.grid_rowconfigure(0, weight=1, minsize=345)
         self.board.grid_rowconfigure(1, weight=0, minsize=390)
         self.board.grid_rowconfigure(2, weight=1, minsize=300)
-        self._panel("opponent", "对手区域 / Opponent", 0, height=300)
+        self._panel("opponent", "对手区域 / Opponent", 0, height=345)
         self._panel("battlefields", "战场区 / Battlefields", 1, height=390)
         self._panel("player", "我方区域 / Player", 2, height=300)
         self._panel("chain", "结算链 / Chain", 0, column=1, height=360)
@@ -859,8 +859,9 @@ class OriginsGUI(tk.Tk):
         # orientation and keeping it outside the battlefield panel.
         bases = self._subzone(body, "我方基地 / Player Base", height=120)
         bases.grid(row=0, column=0, columnspan=5, sticky="nsew", padx=3, pady=(2, 0))
-        base = tk.LabelFrame(bases, text="P0 基地", bg="#263a54", fg="#e9f1fc", padx=4)
-        base.pack(side="left", fill="both", expand=True, padx=3)
+        # The outer player-base zone already provides the label and border;
+        # use it directly so there is no redundant nested "P0 基地" panel.
+        base = bases
         base._base_player = 0
         for unit in [u for u in obs["units"] if u["location"] == "base:0"]:
             self._image_card(base, unit["code"], uid=unit["id"], owner=unit["owner"],

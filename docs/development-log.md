@@ -64,6 +64,17 @@ Strength，复用目标选择、Stun、反应时机和战场范围伤害窗口�
 和 Grand Strategem。Confront 的后续单位 Ready 状态会在回合开始时清除；Morbid
 Return 在结算链中选择弃牌区单位，目标选择不会提前泄漏给对手。
 
+本轮补入传奇 Herald of the Arcane（OGN-265）：在主阶段支付 1 点能量并横置传奇，
+在控制者基地生成 1 Might Recruit 单位衍生物。该主动能力复用现有传奇资源动作与
+Recruit token 原语，并加入能量、横置和生成位置回归测试。
+
+本轮补入 5 张可执行战场：Back-Alley Bar（OGN-277）在单位离开该战场时给予本回合
+1 Might；Grove of the God-Willow（OGN-280）持有时抽 1；Startipped Peak（OGN-288）
+持有时引导 1 枚横置符文；Vilemaw's Lair（OGN-295）禁止单位从该战场移动回基地；
+Zaun Warrens（OGN-298）征服时弃 1 再抽 1。后三类触发接入统一的 hold/conquer
+计分入口；移动限制在合法移动生成阶段生效。Zaun Warrens 当前在无选择窗口的场景中按
+手牌顺序弃牌，后续若接入通用弃牌选择窗口应替换为显式玩家选择。
+
 ## 尚未完成
 
 - 第一弹 298 张尚未全部执行。当前支持集仍然是 73 张，完整扩展需要按机制层逐步增加处理器和回归测试。

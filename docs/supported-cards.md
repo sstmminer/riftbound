@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 59 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 62 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -27,10 +27,12 @@
 | OGN-093 | Smoke Screen | spell | Give a unit -4 :rb_might: this turn, minimum 1. |
 | OGN-095 | Stupefy | spell | Give a unit -1 :rb_might: this turn, minimum 1; draw 1. |
 | OGN-049 | Playful Phantom | unit |  |
+| OGN-051 | Solari Shieldbearer | unit | When you play me, stun a unit. |
 | OGN-052 | Stalwart Poro | unit | [Shield] (+1 :rb_might: while defending.) |
 | OGN-055 | Wielder of Water | unit | +2 :rb_might: while attacking or defending alone. |
 | OGN-065 | Wizened Elder | unit | +1 additional :rb_might: while buffed. |
 | OGN-066 | Ahri, Alluring | unit | When I hold, score 1 point. |
+| OGN-082 | Whiteflame Protector | unit | When you play me, give a unit +8 :rb_might: this turn. |
 | OGN-105 | Singularity | spell | Deal 6 to each of up to two units. |
 | OGN-114 | Progress Day | spell | Draw 4. |
 | OGN-131 | Dune Drake | unit | +2 :rb_might: while attacking if a ready enemy is here. |
@@ -40,6 +42,7 @@
 | OGN-211 | Faithful Manufactor | unit | When you play me, play a Recruit token here. |
 | OGN-201 | Invert Timelines | spell | Each player discards their hand, then draws 4. |
 | OGN-229 | Vengeance | spell | Kill a unit. |
+| OGN-234 | Harnessed Dragon | unit | When you play me, choose and kill an enemy unit. |
 | OGN-166 | Chaos Rune | rune |  |
 | OGN-089 | Mind Rune | rune |  |
 | OGN-126 | Body Rune | rune |  |

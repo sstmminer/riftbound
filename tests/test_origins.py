@@ -94,6 +94,46 @@ class OriginsTests(unittest.TestCase):
         self.act_with_rules(rules, state, "predict", recycle=True)
         self.assertNotEqual(state["phase"], "decision")
 
+    def test_harnessed_dragon_opens_private_target_choice(self):
+        state = self.scenario()
+        dragon = self.hand(state, "OGN-219")
+        state["cards"][dragon]["code"] = "OGN-234"
+        enemy = self.unit(state, "OGN-219", player=1, location=0)
+        self.act(state, "play_unit", card=dragon, location="base:0")
+        self.assertEqual(state["phase"], "chain")
+        self.act(state, "pass")
+        self.act(state, "pass")
+        self.assertEqual(state["phase"], "decision")
+        self.assertIsNone(self.rules.observe(state, 1)["decision"])
+        decision = self.rules.observe(state, 0)["decision"]
+        self.assertEqual(decision["kind"], "target")
+        self.assertEqual(decision["targets"], [enemy["id"]])
+        self.act(state, "choose_target", target=enemy["id"])
+        self.assertNotIn(enemy, state["units"])
+
+    def test_solari_shieldbearer_stuns_an_explicit_target(self):
+        state = self.scenario()
+        card = self.hand(state, "OGN-219")
+        state["cards"][card]["code"] = "OGN-051"
+        enemy = self.unit(state, player=1, location=0)
+        self.act(state, "play_unit", card=card, location="base:0")
+        self.drain(state)
+        self.assertEqual(state["phase"], "decision")
+        self.act(state, "choose_target", target=enemy["id"])
+        self.assertTrue(enemy["stunned"])
+
+    def test_whiteflame_protector_gives_eight_temporary_might(self):
+        state = self.scenario()
+        card = self.hand(state, "OGN-219")
+        state["cards"][card]["code"] = "OGN-082"
+        state["players"][0]["power"] = ["calm", "calm"]
+        target = self.unit(state, "OGN-219", location="base:0")
+        self.act(state, "play_unit", card=card, location="base:0")
+        self.drain(state)
+        self.assertEqual(state["phase"], "decision")
+        self.act(state, "choose_target", target=target["id"])
+        self.assertEqual(target["temporary"], 8)
+
     def act_with_rules(self, rules, state, kind, **args):
         options = [a for a in rules.legal_actions(state) if a.kind == kind
                    and all(json.loads(a.arguments).get(k) == v for k, v in args.items())]
@@ -420,6 +460,17 @@ class OriginsTests(unittest.TestCase):
         self.rules._close_showdown(state, random.Random(8))
         self.assertNotIn(defender, state["units"])
         self.assertTrue(warwick["exhausted"] is False)
+
+    def test_stunned_unit_deals_no_combat_damage_until_end_of_turn(self):
+        state = self.scenario()
+        attacker = self.unit(state, player=0, location=0)
+        defender = self.unit(state, player=1, location=0)
+        attacker["stunned"] = True
+        state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+        self.rules._close_showdown(state, random.Random(8))
+        self.assertEqual(state["battle"]["damage"]["remaining"][0], 0)
+        self.assertGreater(state["battle"]["damage"]["remaining"][1], 0)
+        self.assertTrue(attacker["stunned"])
 
     def test_magma_wurm_also_readies_played_recruit_tokens(self):
         state = self.scenario()

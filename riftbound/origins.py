@@ -59,6 +59,9 @@ class OriginsRules:
         registry.register("vision", self._effect_vision)
         registry.register("discard_two", self._effect_discard_two)
         registry.register("discard_one", self._effect_discard_one)
+        registry.register("kill_target", self._effect_kill_target)
+        registry.register("stun_target", self._effect_stun_target)
+        registry.register("buff_eight", self._effect_buff_eight)
         registry.register("spell", self._effect_spell)
         return registry
 
@@ -206,6 +209,7 @@ class OriginsRules:
             rune["exhausted"] = False
         for unit in self._units(state, player):
             unit["exhausted"] = False
+            unit["stunned"] = False
         # Loose Cannon has a forced draw; this closed card pool has no
         # Fury/Chaos Reactions, so the forced beginning trigger can settle here.
         if row["legend"] == "OGN-251" and len(row["hand"]) <= 1:
@@ -313,7 +317,8 @@ class OriginsRules:
                                                data["power_cost"]+int(accelerate)):
                     for location in permitted:
                         result.append(Action.make("play_unit", card=card, location=location,
-                                                  accelerate=accelerate, payment=payment))
+                                                  accelerate=accelerate, payment=payment,
+                                                  enter_target=None))
         return result
 
     def _movable(self, state, destination):
@@ -331,6 +336,9 @@ class OriginsRules:
         if phase == "decision":
             if state["decision"]["kind"] == "predict":
                 return (Action.make("predict", recycle=False), Action.make("predict", recycle=True))
+            if state["decision"]["kind"] == "target":
+                return tuple(Action.make("choose_target", target=uid)
+                             for uid in state["decision"]["targets"])
             return tuple(Action.make("discard_card", card=uid) for uid in state["players"][player]["hand"])
         if phase == "mulligan":
             hand = state["players"][player]["hand"]
@@ -387,7 +395,7 @@ class OriginsRules:
             exhausted = not any(u["code"] == "OGN-011" for u in self._units(state, owner))
         unit = {"id": self._object(state), "card": card, "code": code, "owner": owner,
                 "location": location, "exhausted": exhausted, "buff": 0,
-                "temporary": 0, "assault": 0, "damage": 0}
+                "temporary": 0, "assault": 0, "damage": 0, "stunned": False}
         state["units"].append(unit)
         return unit
 
@@ -457,6 +465,43 @@ class OriginsRules:
             return False
         return True
 
+    def _open_target_choice(self, state, item, targets):
+        """Pause a chain item until its controller chooses one legal target."""
+        target_ids = [u["id"] if isinstance(u, dict) else u for u in targets]
+        if not target_ids:
+            return True
+        state["decision"] = {"kind": "target", "player": item["owner"],
+                              "targets": target_ids, "item": item}
+        state["phase"], state["actor"] = "decision", item["owner"]
+        return False
+
+    def _effect_kill_target(self, state, item, rng):
+        if item.get("target") is None:
+            return self._open_target_choice(state, item,
+                                            [u for u in state["units"] if u["owner"] != item["owner"]])
+        target = self._unit(state, item["target"])
+        if target is not None and target["owner"] != item["owner"]:
+            target["damage"] = self.might(state, target)
+            self._cleanup(state)
+        return True
+
+    def _effect_stun_target(self, state, item, rng):
+        if item.get("target") is None:
+            return self._open_target_choice(state, item, list(state["units"]))
+        target = self._unit(state, item.get("target"))
+        if target is not None:
+            target["stunned"] = True
+        return True
+
+    def _effect_buff_eight(self, state, item, rng):
+        if item.get("target") is None:
+            return self._open_target_choice(state, item,
+                                            [u for u in state["units"] if u["owner"] == item["owner"]])
+        target = self._unit(state, item.get("target"))
+        if target is not None:
+            target["temporary"] += 8
+        return True
+
     def _effect_spell(self, state, item, rng):
         code, owner = item["code"], item["owner"]
         for uid in item["targets"]:
@@ -500,17 +545,25 @@ class OriginsRules:
         kind, args = action.kind, json.loads(action.arguments)
         player = state["actor"]
         row = state["players"][player]
-        if kind in {"predict", "discard_card"}:
+        if kind in {"predict", "discard_card", "choose_target"}:
             if kind == "predict":
                 if args["recycle"] and row["main"]:
                     row["main"].append(row["main"].pop(0))
                 state["decision"] = None
-            else:
+            elif kind == "discard_card":
                 row["hand"].remove(args["card"])
                 row["trash"].append(args["card"])
                 state["decision"]["remaining"] -= 1
                 if not state["decision"]["remaining"] or not row["hand"]:
                     state["decision"] = None
+            elif kind == "choose_target":
+                decision = state["decision"]
+                if args["target"] not in decision["targets"]:
+                    raise ValueError("invalid target choice")
+                item = dict(decision["item"])
+                item["target"] = args["target"]
+                state["decision"] = None
+                self.effects.dispatch(item["effect"], state, item, rng)
             if state["decision"] is None:
                 self._finish_resolution(state)
                 self._cleanup(state)
@@ -557,6 +610,14 @@ class OriginsRules:
                     triggers.append({"effect": "buff_self", "source": unit["id"], "owner": player})
                 if code == "OGN-003":
                     triggers.append({"effect": "discard_one", "source": unit["id"], "owner": player})
+                if code == "OGN-234":
+                    triggers.append({"effect": "kill_target", "source": unit["id"], "owner": player})
+                if code == "OGN-051":
+                    triggers.append({"effect": "stun_target", "source": unit["id"],
+                                     "owner": player})
+                if code == "OGN-082":
+                    triggers.append({"effect": "buff_eight", "source": unit["id"],
+                                     "owner": player})
                 if code == "OGN-211":
                     triggers.append({"effect": "drummer", "owner": player, "location": args["location"]})
                 if code == "OGN-223":
@@ -622,7 +683,7 @@ class OriginsRules:
             # End-turn cleanup: lethal first, then heal all, expire all this-turn effects.
             self._cleanup(state)
             for unit in state["units"]:
-                unit["damage"], unit["temporary"], unit["assault"] = 0, 0, 0
+                unit["damage"], unit["temporary"], unit["assault"], unit["stunned"] = 0, 0, 0, False
             for obj in state["players"]:
                 obj["energy"], obj["power"] = 0, []
             self._cleanup(state)
@@ -672,7 +733,8 @@ class OriginsRules:
         if not self._units(state, 0, field) or not self._units(state, 1, field):
             self._settle_battle(state, rng)
             return
-        battle["damage"] = {"remaining": [sum(max(0, self.might(state, u)) for u in self._units(state, p, field))
+        battle["damage"] = {"remaining": [sum(0 if u["stunned"] else max(0, self.might(state, u))
+                                               for u in self._units(state, p, field))
                                            for p in (0, 1)], "assignments": [{}, {}]}
         state["phase"], state["actor"] = "damage", battle["attacker"]
         self._advance_damage(state, rng)
@@ -789,7 +851,7 @@ class OriginsRules:
         if len({u["id"] for u in state["units"]}) != len(state["units"]):
             raise ValueError("duplicate object IDs")
         for unit in state["units"]:
-            if (not self._is_field(state, unit["location"]) and unit["location"] != f"base:{unit['owner']}") or unit["damage"] < 0 or unit["buff"] not in (0, 1):
+            if (not self._is_field(state, unit["location"]) and unit["location"] != f"base:{unit['owner']}") or unit["damage"] < 0 or unit["buff"] not in (0, 1) or type(unit.get("stunned")) is not bool:
                 raise ValueError("invalid unit state")
         if state["phase"] == "main":
             for field, obj in enumerate(state["fields"]):

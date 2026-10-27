@@ -268,7 +268,7 @@ class OriginsRules:
             if code not in SPELL_CODES or (state["phase"] == "chain" and code not in REACTIONS):
                 continue
             data = self.cards[code]
-            if code in {"OGN-114", "OGN-201"}:
+            if code in {"OGN-114", "OGN-127", "OGN-133", "OGN-201"}:
                 targets = [[]]
             elif code == "OGN-105":
                 field_units = [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
@@ -524,6 +524,21 @@ class OriginsRules:
                 unit["temporary"] -= 4
             elif code == "OGN-095":
                 unit["temporary"] -= 1
+            elif code == "OGN-050":
+                unit["stunned"] = True
+            elif code == "OGN-058":
+                unit["temporary"] += 2
+            elif code == "OGN-154":
+                unit["temporary"] += 7
+        if code == "OGN-127" and state["battle"] is not None:
+            field = state["battle"]["field"]
+            for unit in self._units(state, location=field):
+                if unit["owner"] != owner:
+                    unit["damage"] += 2
+        elif code == "OGN-133":
+            for unit in self._units(state):
+                if self._is_field(state, unit["location"]):
+                    unit["damage"] += 1
         target_ids = set(item["targets"])
         self._cleanup(state)
         killed = any(uid not in {u["id"] for u in state["units"]} for uid in target_ids)
@@ -535,7 +550,7 @@ class OriginsRules:
                 trash.extend(state["players"][player]["hand"])
                 state["players"][player]["hand"] = []
                 self._draw(state, player, 4, rng)
-        elif code in {"OGN-024", "OGN-095"} or (code == "OGN-005" and killed):
+        elif code in {"OGN-024", "OGN-058", "OGN-095"} or (code == "OGN-005" and killed):
             if state["winner"] is None:
                 self._draw(state, owner, 1, rng)
         state["players"][owner]["trash"].append(item["card"])

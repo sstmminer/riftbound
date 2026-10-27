@@ -237,13 +237,12 @@ class CatalogTests(unittest.TestCase):
             require_supported(("invented",))
 
 class GearZoneTests(unittest.TestCase):
-    def test_gear_enters_exhausted_and_resource_ability_is_explicit(self):
+    def test_gear_enters_ready_and_resource_ability_is_explicit(self):
         from riftbound.core import GearZone
         card = Card("seal", "Seal of Rage", "gear", frozenset({"fury"}))
         zone, pool = GearZone(), Pool()
         gear = zone.play(card, controller=0, resource_domain="fury")
-        self.assertTrue(gear.exhausted)
-        zone.ready("seal", controller=0)
+        self.assertFalse(gear.exhausted)
         zone.activate_resource("seal", controller=0, pool=pool)
         self.assertEqual(pool.power, ["fury"])
         with self.assertRaisesRegex(ValueError, "already exhausted"):

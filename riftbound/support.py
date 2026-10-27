@@ -2,8 +2,8 @@
 
 UNIT_CODES = frozenset(f"OGN-{n:03d}" for n in
                       (1, 3, 10, 11, 12, 13, 15, 27, 28, 30, 39, 49, 51, 52, 55, 65, 66, 82, 88, 131, 142, 148, 159, 171, 175, 176, 210, 211, 215, 217, 219, 222, 223, 232, 234))
-SPELL_CODES = frozenset(f"OGN-{n:03d}" for n in (4, 5, 9, 24, 29, 85, 93, 95, 105, 114, 201, 206, 207, 229))
-REACTIONS = frozenset({"OGN-093", "OGN-095", "OGN-206", "OGN-207"})
+SPELL_CODES = frozenset(f"OGN-{n:03d}" for n in (4, 5, 9, 24, 29, 50, 58, 85, 93, 95, 105, 114, 127, 133, 154, 201, 206, 207, 229))
+REACTIONS = frozenset({"OGN-058", "OGN-093", "OGN-095", "OGN-127", "OGN-133", "OGN-206", "OGN-207"})
 ACCELERATE = frozenset({"OGN-001", "OGN-010", "OGN-030", "OGN-039"})
 FIELD_CODES = frozenset({"OGN-276", "OGN-294", "OGN-297"})
 LEGEND = "OGN-253"

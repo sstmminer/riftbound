@@ -64,7 +64,12 @@
     "OGN-211": "images/OGN/OGN-211.png",
     "OGN-234": "images/OGN/OGN-234.png",
     "OGN-051": "images/OGN/OGN-051.png",
-    "OGN-082": "images/OGN/OGN-082.png"
+    "OGN-082": "images/OGN/OGN-082.png",
+    "OGN-050": "images/OGN/OGN-050.png",
+    "OGN-058": "images/OGN/OGN-058.png",
+    "OGN-127": "images/OGN/OGN-127.png",
+    "OGN-133": "images/OGN/OGN-133.png",
+    "OGN-154": "images/OGN/OGN-154.png"
   },
   "back": "images/card-back.png"
 }

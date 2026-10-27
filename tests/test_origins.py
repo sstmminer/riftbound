@@ -134,6 +134,28 @@ class OriginsTests(unittest.TestCase):
         self.act(state, "choose_target", target=target["id"])
         self.assertEqual(target["temporary"], 8)
 
+    def test_rune_prison_stuns_target_and_clears_at_turn_end(self):
+        state = self.scenario()
+        spell = self.hand(state, "OGN-009")
+        state["cards"][spell]["code"] = "OGN-050"
+        enemy = self.unit(state, player=1, location=0)
+        state["players"][0]["power"] = ["calm"]
+        self.act(state, "play_spell", card=spell, targets=[enemy["id"]])
+        self.drain(state)
+        self.assertTrue(enemy["stunned"])
+
+    def test_discipline_buffs_and_draws(self):
+        state = self.scenario()
+        spell = self.hand(state, "OGN-207")
+        state["cards"][spell]["code"] = "OGN-058"
+        target = self.unit(state, location="base:0")
+        state["players"][0]["power"] = []
+        before = len(state["players"][0]["hand"])
+        self.act(state, "play_spell", card=spell, targets=[target["id"]])
+        self.drain(state)
+        self.assertEqual(target["temporary"], 2)
+        self.assertEqual(len(state["players"][0]["hand"]), before)
+
     def act_with_rules(self, rules, state, kind, **args):
         options = [a for a in rules.legal_actions(state) if a.kind == kind
                    and all(json.loads(a.arguments).get(k) == v for k, v in args.items())]

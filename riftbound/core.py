@@ -184,7 +184,7 @@ class Gear:
     """A face-up gear permanent in a player's equipment zone."""
     id: str
     controller: int
-    exhausted: bool = True
+    exhausted: bool = False  # Gear enters ready/vertical unless its text says otherwise.
     resource_domain: str | None = None
 
     def __post_init__(self) -> None:
@@ -207,7 +207,7 @@ class GearZone:
             raise ValueError("invalid gear controller")
         if any(g.id == card.id for g in self.cards):
             raise ValueError("gear ID is already in the equipment zone")
-        gear = Gear(card.id, controller, True, resource_domain)
+        gear = Gear(card.id, controller, False, resource_domain)
         self.cards.append(gear)
         return gear
 

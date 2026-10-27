@@ -30,6 +30,18 @@ class BattlefieldBatchTests(unittest.TestCase):
         self.assertEqual(row["runes"][-1]["id"], rune["id"])
         self.assertTrue(row["runes"][-1]["exhausted"])
 
+    def test_arena_greatest_awards_each_player_once_at_first_beginning(self):
+        self.state["fields"][0]["code"] = "OGN-290"
+        self.state["players"][0]["turns"] = 0
+        self.state["players"][1]["turns"] = 0
+        self.state["turn_player"] = 0
+        before = self.state["points"][0]
+        self.rules._start_turn(self.state, random.Random(3))
+        self.assertEqual(self.state["points"][0], before + 1)
+        self.state["turn_player"] = 1
+        self.rules._start_turn(self.state, random.Random(3))
+        self.assertEqual(self.state["points"][1], 1)
+
     def test_zaun_warrens_discards_then_draws_when_conquering(self):
         self.state["fields"][0]["code"] = "OGN-298"
         row = self.state["players"][0]

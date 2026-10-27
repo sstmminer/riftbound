@@ -456,10 +456,12 @@ class OriginsRules:
                 unit["temporary"] -= 4
             elif code == "OGN-095":
                 unit["temporary"] -= 1
-        before = len(state["units"])
+        target_ids = set(item["targets"])
         self._cleanup(state)
-        if code in {"OGN-005", "OGN-024", "OGN-095"} and state["winner"] is None:
-            self._draw(state, owner, 1, rng)
+        killed = any(uid not in {u["id"] for u in state["units"]} for uid in target_ids)
+        if code in {"OGN-024", "OGN-095"} or (code == "OGN-005" and killed):
+            if state["winner"] is None:
+                self._draw(state, owner, 1, rng)
         state["players"][owner]["trash"].append(item["card"])
         return True
 

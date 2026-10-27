@@ -360,6 +360,21 @@ class OriginsTests(unittest.TestCase):
         actual = self.rules.initial_state(random.Random(2))
         self.assertEqual(actual["victory"], 8+sum(f["code"] == "OGN-276" for f in actual["fields"]))
 
+    def test_kaisa_accelerate_is_ready_and_uses_fury_power(self):
+        state = self.scenario()
+        uid = self.hand(state, "OGN-219")
+        state["cards"][uid]["code"] = "OGN-039"
+        before = state["players"][0]["energy"]
+        self.act(state, "play_unit", card=uid, accelerate=True, location="base:0")
+        self.assertFalse(state["units"][-1]["exhausted"])
+        self.assertEqual(state["players"][0]["energy"], before - 5)
+
+    def test_all_six_domain_runes_are_valid_resources(self):
+        state = self.scenario()
+        state["players"][0]["power"] = ["fury", "calm", "mind", "body", "chaos", "order"]
+        self.rules.validate(state)
+        self.assertTrue(any(a.kind == "play_unit" for a in self.rules.legal_actions(state)))
+
 
 if __name__ == "__main__":
     unittest.main()

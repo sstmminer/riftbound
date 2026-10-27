@@ -342,15 +342,6 @@ class OriginsRules:
                 }
                 state["phase"], state["actor"] = "decision", player
                 return False
-        elif effect == "reaver_recall_target":
-            target = self._unit(state, item.get("target"))
-            if target is not None and self._is_field(state, target["location"]):
-                target["location"] = f"base:{target['owner']}"
-        elif effect == "fortified_shield":
-            target = self._unit(state, item.get("target"))
-            if target is not None and target["location"] == state.get("battle", {}).get("field"):
-                target["combat_shield"] = 2
-
     def _recycle_one_rune(self, state, player):
         row = state["players"][player]
         if not row["runes"]:

@@ -156,6 +156,63 @@ class OriginsTests(unittest.TestCase):
         self.assertEqual(target["temporary"], 2)
         self.assertEqual(len(state["players"][0]["hand"]), before)
 
+    def test_confront_makes_future_units_enter_ready(self):
+        state = self.scenario()
+        spell = self.hand(state, "OGN-024")
+        state["cards"][spell]["code"] = "OGN-129"
+        state["players"][0]["power"] = ["body", "order"]
+        self.act(state, "play_spell", card=spell, targets=[])
+        self.drain(state)
+        unit_card = self.hand(state, "OGN-219")
+        self.act(state, "play_unit", card=unit_card, location="base:0")
+        self.assertFalse(state["units"][-1]["exhausted"])
+
+    def test_morbid_return_chooses_a_unit_from_trash(self):
+        state = self.scenario()
+        returned = self.take_card(state, "OGN-219")
+        state["players"][0]["trash"].append(returned)
+        spell = self.hand(state, "OGN-024")
+        state["cards"][spell]["code"] = "OGN-170"
+        self.act(state, "play_spell", card=spell, targets=[])
+        self.drain(state)
+        self.assertEqual(state["phase"], "decision")
+        self.act(state, "choose_target", target=returned)
+        self.assertIn(returned, state["players"][0]["hand"])
+
+    def test_en_garde_buffs_a_friendly_unit(self):
+        state = self.scenario()
+        spell = self.hand(state, "OGN-207")
+        state["cards"][spell]["code"] = "OGN-046"
+        target = self.unit(state, location=0)
+        state["players"][0]["power"] = []
+        self.act(state, "play_spell", card=spell, targets=[target["id"]])
+        self.drain(state)
+        self.assertEqual(target["temporary"], 2)
+
+    def test_find_your_center_draws_and_channels(self):
+        state = self.scenario()
+        spell = self.hand(state, "OGN-024")
+        state["cards"][spell]["code"] = "OGN-047"
+        state["players"][0]["power"] = []
+        before_hand = len(state["players"][0]["hand"])
+        rune = state["players"][0]["rune_deck"].pop()
+        state["players"][0]["runes"].append(rune)
+        self.act(state, "play_spell", card=spell, targets=[])
+        self.drain(state)
+        self.assertEqual(len(state["players"][0]["hand"]), before_hand)
+        self.assertTrue(rune["exhausted"])
+
+    def test_grand_stratagem_buffs_all_friendly_units(self):
+        state = self.scenario()
+        first = self.unit(state, location="base:0")
+        second = self.unit(state, "OGN-219", location="base:0")
+        spell = self.hand(state, "OGN-024")
+        state["cards"][spell]["code"] = "OGN-233"
+        state["players"][0]["power"] = ["order"] * 3
+        self.act(state, "play_spell", card=spell, targets=[])
+        self.drain(state)
+        self.assertEqual((first["temporary"], second["temporary"]), (5, 5))
+
     def act_with_rules(self, rules, state, kind, **args):
         options = [a for a in rules.legal_actions(state) if a.kind == kind
                    and all(json.loads(a.arguments).get(k) == v for k, v in args.items())]

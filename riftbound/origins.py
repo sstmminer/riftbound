@@ -287,7 +287,7 @@ class OriginsRules:
                 targets = [[u["id"]] for u in state["units"] if self._is_field(state, u["location"])]
             else:
                 targets = [[u["id"]] for u in state["units"]
-                           if code not in {"OGN-005", "OGN-009", "OGN-024", "OGN-085", "OGN-105"}
+                           if code not in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085", "OGN-105"}
                            or self._is_field(state, u["location"])]
             buffs = [None]
             if code == "OGN-207":
@@ -297,6 +297,12 @@ class OriginsRules:
                               if self._unit(state, uid)["owner"] != player)
                 for spend in buffs:
                     energy = 0 if spend is not None else data["energy"]
+                    if code == "OGN-014" and spend is None:
+                        highest = max((self.might(state, u) for u in self._units(state, player)), default=0)
+                        energy = max(0, energy - highest)
+                    if code == "OGN-047" and spend is None:
+                        if state["victory"] - state["points"][1-player] <= 3:
+                            energy = max(0, energy - 2)
                     power = 0 if spend is not None else data["power_cost"]
                     for payment in self._payments(state, player, energy, data["domains"], power, deflect,
                                                   spell=True):
@@ -528,7 +534,7 @@ class OriginsRules:
         code, owner = item["code"], item["owner"]
         for uid in item["targets"]:
             unit = self._unit(state, uid)
-            if unit is None or (code in {"OGN-005", "OGN-009", "OGN-024", "OGN-085", "OGN-105"}
+            if unit is None or (code in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085", "OGN-105"}
                                 and not self._is_field(state, unit["location"])):
                 continue
             if code in {"OGN-206", "OGN-207"}:

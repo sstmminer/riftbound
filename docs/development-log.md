@@ -8,7 +8,7 @@
 - 当前分支：`simulator`。
 - 当前规则实现版本仍为 `origins-subset/0.3.0`。
 - 第一弹目录有 298 张基础编号：142 unit、84 spell、30 gear、24 battlefield、12 legend、6 rune。
-- 目前显式执行 67 张；其余 231 张在构筑时拒绝，不会静默当作白板。
+- 目前显式执行 73 张；其余 225 张在构筑时拒绝，不会静默当作白板。
 
 ## 本轮已完成
 
@@ -60,9 +60,13 @@ GUI 也把对手 Base 放回对手手牌与身份区一侧；我方 Base 保留�
 随后加入 Rune Prison、Discipline、Cannon Barrage、Flurry of Blades 和 Primal
 Strength，复用目标选择、Stun、反应时机和战场范围伤害窗口。
 
+本轮继续加入 Sky Splitter、En Garde、Find Your Center、Confront、Morbid Return
+和 Grand Strategem。Confront 的后续单位 Ready 状态会在回合开始时清除；Morbid
+Return 在结算链中选择弃牌区单位，目标选择不会提前泄漏给对手。
+
 ## 尚未完成
 
-- 第一弹 298 张尚未全部执行。当前支持集仍然是 67 张，完整扩展需要按机制层逐步增加处理器和回归测试。
+- 第一弹 298 张尚未全部执行。当前支持集仍然是 73 张，完整扩展需要按机制层逐步增加处理器和回归测试。
 - 装备、Hidden、Deathknell、Tank/Shield/Prevent、反制、控制权变化、复杂替代效果和通用分割伤害还没有完成。
 - 当前事件日志是派生调试记录，不是完整裁判级事件溯源；若未来支持复杂替代效果，需要把事件、替代窗口和触发窗口进一步拆成显式对象。
 - 目前没有独立官方裁判或第二套引擎做差分验证。

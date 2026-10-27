@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 67 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 73 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -8,6 +8,7 @@
 | OGN-003 | Chemtech Enforcer | unit | [Assault 2]; when played, discard 1. |
 | OGN-004 | Cleave | spell | [Action] (Play on your turn or in showdowns.) Give a unit [Assault 3] this turn. (+3 :rb_might: while it's an attacker.) |
 | OGN-005 | Disintegrate | spell | Deal 3 to a unit at a battlefield; draw 1 if it is killed. |
+| OGN-014 | Sky Splitter | spell | Energy cost reduced by your highest Might; deal 5 to a battlefield unit. |
 | OGN-007 | Fury Rune | rune |  |
 | OGN-009 | Hextech Ray | spell | [Action] (Play on your turn or in showdowns.) Deal 3 to a unit at a battlefield. |
 | OGN-010 | Legion Rearguard | unit | [Accelerate] (You may pay :rb_energy_1::rb_rune_fury: as an additional cost to have me enter ready.) |
@@ -27,6 +28,8 @@
 | OGN-093 | Smoke Screen | spell | Give a unit -4 :rb_might: this turn, minimum 1. |
 | OGN-095 | Stupefy | spell | Give a unit -1 :rb_might: this turn, minimum 1; draw 1. |
 | OGN-049 | Playful Phantom | unit |  |
+| OGN-046 | En Garde | spell | Give a friendly unit +1, plus another +1 if alone. |
+| OGN-047 | Find Your Center | spell | Draw 1 and channel 1 rune. |
 | OGN-051 | Solari Shieldbearer | unit | When you play me, stun a unit. |
 | OGN-050 | Rune Prison | spell | Stun a unit. |
 | OGN-052 | Stalwart Poro | unit | [Shield] (+1 :rb_might: while defending.) |
@@ -47,6 +50,7 @@
 | OGN-211 | Faithful Manufactor | unit | When you play me, play a Recruit token here. |
 | OGN-201 | Invert Timelines | spell | Each player discards their hand, then draws 4. |
 | OGN-229 | Vengeance | spell | Kill a unit. |
+| OGN-233 | Grand Strategem | spell | Give friendly units +5 this turn. |
 | OGN-234 | Harnessed Dragon | unit | When you play me, choose and kill an enemy unit. |
 | OGN-166 | Chaos Rune | rune |  |
 | OGN-089 | Mind Rune | rune |  |

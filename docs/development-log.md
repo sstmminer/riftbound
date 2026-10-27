@@ -125,6 +125,15 @@ Startipped Peak、Bandle Tree、Hallowed Tomb、Obelisk of Power、The Grand Pla
 效果时，先明确触发顺序再逐项处理。Singularity 与 Back to Back 增加了点选多目标、
 显式确认的交互路径，底部状态栏会持续显示目标窗口、可选队列和结算链。
 
+为便于验收，新增 `complex` 合法 Fury/Mind 试验套牌，集中包含 Legion、Buff、Vision、
+Deathknell、Assault、Reaction、Singularity 和 Reaver's Row 等已完成机制，可通过 GUI
+变体或 CLI 导出。单位卡下方现在显示横置/就绪、当前战力、临时战力增减、伤害、待分配
+伤害、Buff、眩晕、Assault、Shield、Ganking 和临时单位标记；这些标记直接来自引擎状态。
+
+新增 `complex_test_deck()` 试验卡组及 `--variant complex` 图形界面入口。该合法
+Daughter of the Void（Fury/Mind）套牌集中放入 Legion、Buff、Vision、Deathknell、
+Assault、Reaction、Singularity 和 Reaver's Row 等已完成机制，便于手动回归复杂结算。
+
 同一批次补入低复杂度单位与法术：OGN-016/037/074/078/079/084/086/103/118/119、
 OGN-125/139/151/164/165/218/225/240/243/246/161/174/185/195/239，以及
 OGN-048/123/128/138/146/209/252/260/262/266/270。范围覆盖 Legion/Assault、

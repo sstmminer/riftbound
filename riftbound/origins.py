@@ -1763,7 +1763,17 @@ class OriginsRules:
         if len({u["id"] for u in state["units"]}) != len(state["units"]):
             raise ValueError("duplicate object IDs")
         for unit in state["units"]:
-            if (not self._is_field(state, unit["location"]) and unit["location"] != f"base:{unit['owner']}") or unit["damage"] < 0 or unit["buff"] < 0 or (unit["code"] != "OGN-078" and unit["buff"] not in (0, 1)) or type(unit.get("stunned")) is not bool:
+            if (not self._is_field(state, unit["location"])
+                    and unit["location"] != f"base:{unit['owner']}"):
+                raise ValueError("invalid unit location")
+            if (type(unit.get("damage")) is not int or unit["damage"] < 0
+                    or type(unit.get("temporary")) is not int
+                    or type(unit.get("assault")) is not int or unit["assault"] < 0
+                    or type(unit.get("combat_shield")) is not int
+                    or unit["combat_shield"] < 0
+                    or type(unit.get("buff")) is not int or unit["buff"] < 0
+                    or (unit["code"] != "OGN-078" and unit["buff"] not in (0, 1))
+                    or type(unit.get("stunned")) is not bool):
                 raise ValueError("invalid unit state")
         if state["phase"] == "main":
             for field, obj in enumerate(state["fields"]):

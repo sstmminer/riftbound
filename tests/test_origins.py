@@ -6,7 +6,7 @@ import unittest
 from riftbound.engine import Environment, InvalidAction, RulesUnavailable, replay
 from riftbound.origins import OriginsRules
 from riftbound.policies import GreedyPolicy
-from riftbound.support import daughter_deck, starter_deck, vision_deck
+from riftbound.support import complex_test_deck, daughter_deck, starter_deck, vision_deck
 from riftbound.training import RandomPolicy, self_play
 
 
@@ -72,6 +72,20 @@ class OriginsTests(unittest.TestCase):
         rules = OriginsRules([deck, deck])
         self.assertEqual(rules.decks[0]["legend"], "OGN-247")
         self.assertEqual(len(deck["main"]), 40)
+
+    def test_complex_test_deck_is_constructed_legal(self):
+        deck = complex_test_deck()
+        rules = OriginsRules([deck, deck])
+        self.assertEqual(rules.decks[0]["legend"], "OGN-247")
+        self.assertEqual(len(deck["main"]), 40)
+        self.assertIn("OGN-105", deck["main"])
+        self.assertIn("OGN-285", deck["battlefields"])
+
+    def test_complex_test_deck_greedy_smoke(self):
+        deck = complex_test_deck()
+        env = Environment(OriginsRules([deck, deck]), max_steps=300)
+        episode = self_play(env, [GreedyPolicy(), GreedyPolicy()], seed=23)
+        self.assertTrue(episode.terminated or episode.truncated)
 
     def test_vision_deck_opens_private_predict_decision(self):
         rules = OriginsRules([vision_deck(), vision_deck()])

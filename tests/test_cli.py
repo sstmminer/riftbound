@@ -34,6 +34,11 @@ class CLITests(unittest.TestCase):
         daughter = json.loads(out)
         self.assertEqual(daughter["legend"], "OGN-247")
         self.assertEqual(len(daughter["main"]), 40)
+        code, out, _ = self.invoke(["deck", "--variant", "complex"])
+        complex_deck = json.loads(out)
+        self.assertEqual(complex_deck["legend"], "OGN-247")
+        self.assertEqual(len(complex_deck["main"]), 40)
+        self.assertIn("OGN-105", complex_deck["main"])
 
     def test_gui_module_is_importable_without_opening_a_window(self):
         from riftbound.gui import OriginsGUI

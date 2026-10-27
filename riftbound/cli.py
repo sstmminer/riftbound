@@ -9,7 +9,7 @@ from .catalog import load_origins
 from .engine import Environment, RulesUnavailable, replay
 from .origins import OriginsRules
 from .policies import GreedyPolicy
-from .support import SUPPORTED, daughter_deck, starter_deck, vision_deck
+from .support import SUPPORTED, complex_test_deck, daughter_deck, starter_deck, vision_deck
 from .training import RandomPolicy, self_play
 
 
@@ -77,12 +77,12 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("status")
     gui = commands.add_parser("gui", help="launch the local Tk graphical client")
-    gui.add_argument("--variant", choices=("starter", "vision", "daughter"), default="starter")
+    gui.add_argument("--variant", choices=("starter", "vision", "daughter", "complex"), default="starter")
     catalog = commands.add_parser("catalog")
     catalog.add_argument("--supported", action="store_true")
     deck_cmd = commands.add_parser("deck", help="print the included legal constructed deck")
     deck_cmd.add_argument("--output", type=Path)
-    deck_cmd.add_argument("--variant", choices=("starter", "vision", "daughter"), default="starter")
+    deck_cmd.add_argument("--variant", choices=("starter", "vision", "daughter", "complex"), default="starter")
     validate = commands.add_parser("validate-deck")
     validate.add_argument("path", type=Path)
     sim = commands.add_parser("simulate")
@@ -112,7 +112,8 @@ def main(argv=None):
                     print(json.dumps({**card, "supported": card["code"] in SUPPORTED}, ensure_ascii=False))
         elif args.command == "deck":
             deck = (vision_deck() if args.variant == "vision" else
-                    daughter_deck() if args.variant == "daughter" else starter_deck())
+                    daughter_deck() if args.variant == "daughter" else
+                    complex_test_deck() if args.variant == "complex" else starter_deck())
             if args.output:
                 write_json(args.output, deck)
             else:

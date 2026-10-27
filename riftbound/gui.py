@@ -14,7 +14,7 @@ from tkinter import messagebox, ttk
 from .engine import Environment, InvalidAction
 from .origins import OriginsRules
 from .policies import GreedyPolicy
-from .support import daughter_deck, starter_deck, vision_deck
+from .support import complex_test_deck, daughter_deck, starter_deck, vision_deck
 
 
 IMAGE_ROOT = Path(__file__).with_name("data") / "images"
@@ -77,7 +77,7 @@ class OriginsGUI(tk.Tk):
         ttk.Button(toolbar, text="规则/范围", command=self.show_scope).pack(side="right", padx=3)
         ttk.Button(toolbar, text="重新开始", command=self.restart).pack(side="right", padx=3)
         self.variant_box = ttk.Combobox(toolbar, state="readonly", width=10,
-                                        values=("starter", "vision", "daughter"))
+                                        values=("starter", "vision", "daughter", "complex"))
         self.variant_box.set(self.variant)
         self.variant_box.pack(side="right", padx=5)
 
@@ -174,6 +174,36 @@ class OriginsGUI(tk.Tk):
 
     def _card_name(self, code):
         return self.rules.cards.get(code, {}).get("name", code)
+
+    def _unit_status_label(self, unit, *, pending=0):
+        """Return a compact, explicit status readout for a unit card.
+
+        The card art remains the source of truth for identity.  These markers
+        expose transient rules state that is otherwise easy to miss when the
+        card is exhausted or displayed in a compact battlefield row.
+        """
+        markers = ["横置" if unit.get("exhausted") else "就绪"]
+        temporary = unit.get("temporary", 0)
+        if temporary:
+            markers.append(f"临时战力 {'+' if temporary > 0 else ''}{temporary}")
+        if unit.get("damage", 0):
+            markers.append(f"伤害 {unit['damage']}")
+        if pending:
+            markers.append(f"待分配 {pending}")
+        if unit.get("buff", 0):
+            markers.append(f"增益 {unit['buff']}")
+        if unit.get("assault", 0):
+            markers.append(f"强攻 {unit['assault']}")
+        if unit.get("combat_shield", 0):
+            markers.append(f"护盾 {unit['combat_shield']}")
+        if unit.get("stunned"):
+            markers.append("眩晕")
+        if unit.get("temporary_ganking"):
+            markers.append("Ganking")
+        if unit.get("temporary_unit"):
+            markers.append("临时单位")
+        head = f"P{unit['owner']} · 战力 {unit.get('might', '?')}"
+        return head + ("\n" + " · ".join(markers) if markers else "")
 
     def _image_card(self, parent, code, *, uid=None, zone=None, owner=None, factor=3,
                     private=False, compact_label=None, click=True, exhausted=False,
@@ -323,7 +353,7 @@ class OriginsGUI(tk.Tk):
                 pass
             self._opponent_job = None
         selected = self.variant_box.get() or self.variant
-        self.variant = selected if selected in {"starter", "vision", "daughter"} else "starter"
+        self.variant = selected if selected in {"starter", "vision", "daughter", "complex"} else "starter"
         self.rules = OriginsRules(self._decks(), extra_fields=self.extra_fields)
         self.env = Environment(self.rules, max_steps=3000)
         self.env.reset(seed=self.seed)
@@ -339,7 +369,8 @@ class OriginsGUI(tk.Tk):
 
     def _decks(self):
         deck = (vision_deck() if self.variant == "vision" else
-                daughter_deck() if self.variant == "daughter" else starter_deck())
+                daughter_deck() if self.variant == "daughter" else
+                complex_test_deck() if self.variant == "complex" else starter_deck())
         return [deck, deck]
 
     def show_scope(self):
@@ -866,7 +897,7 @@ class OriginsGUI(tk.Tk):
         for unit in [u for u in obs["units"] if u["location"] == "base:1"]:
             self._image_card(base, unit["code"], uid=unit["id"], owner=unit["owner"],
                              zone="base", factor=4,
-                             compact_label=f"P{unit['owner']} · M{unit['might']}",
+                             compact_label=self._unit_status_label(unit),
                              exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
 
     def _identity(self, parent, obs, player, *, compact=False):
@@ -928,11 +959,10 @@ class OriginsGUI(tk.Tk):
                 if obs["battle"] and obs["battle"].get("damage"):
                     pending = sum(assignment.get(unit["id"], 0)
                                   for assignment in obs["battle"]["damage"]["assignments"])
-                damage_label = f"{unit['damage']}伤" + (f" / 待{pending}" if pending else "")
                 row = player_row if unit["owner"] == 0 else opponent_row
                 self._image_card(row, unit["code"], uid=unit["id"], owner=unit["owner"],
                                  zone="field", factor=5,
-                                 compact_label=f"P{unit['owner']} · M{unit['might']} · {damage_label}",
+                                 compact_label=self._unit_status_label(unit, pending=pending),
                                  exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
     def render_player(self, obs):
         body = self._clear("player")
@@ -974,7 +1004,7 @@ class OriginsGUI(tk.Tk):
         for unit in [u for u in obs["units"] if u["location"] == "base:0"]:
             self._image_card(base, unit["code"], uid=unit["id"], owner=unit["owner"],
                              zone="base", factor=4,
-                             compact_label=f"P{unit['owner']} · M{unit['might']}",
+                             compact_label=self._unit_status_label(unit),
                              exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
         piles = self._subzone(body, "牌堆 / Player Piles", width=250)
         piles.grid(row=1, column=4, sticky="nsew", padx=4)

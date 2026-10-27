@@ -42,3 +42,23 @@ def daughter_deck() -> dict:
     return {"legend": "OGN-247", "chosen_champion": "OGN-039", "main": main,
             "runes": ["OGN-007"] * 6 + ["OGN-089"] * 6,
             "battlefields": list(DEFAULT_FIELDS)}
+
+
+def complex_test_deck() -> dict:
+    """A legal Fury/Mind sandbox for exercising the implemented windows.
+
+    The list intentionally concentrates the currently executable mechanics:
+    optional Legion buffs, Vision, Deathknell, temporary Might, Assault,
+    reactions, movement and the explicit multi-target Singularity path.
+    It is a deterministic QA fixture, not a competitive list.
+    """
+    counts = {
+        1: 2, 3: 3, 10: 2, 13: 2, 16: 3, 39: 3,
+        86: 3, 87: 2, 88: 3, 96: 3, 103: 3, 119: 3,
+        24: 2, 93: 2, 104: 2, 105: 2,
+    }
+    main = [f"OGN-{n:03d}" for n, count in counts.items() for _ in range(count)]
+    assert len(main) == 40
+    return {"legend": "OGN-247", "chosen_champion": "OGN-039", "main": main,
+            "runes": ["OGN-007"] * 6 + ["OGN-089"] * 6,
+            "battlefields": ["OGN-281", "OGN-285", "OGN-288"]}

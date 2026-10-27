@@ -27,15 +27,17 @@ class GreedyPolicy:
         if phase == "decision":
             if obs["decision"]["kind"] == "predict":
                 return next(a for a, args in options if not args["recycle"])
-            if obs["decision"]["kind"] == "target" and obs["decision"].get("multi"):
-                selected = set(obs["decision"].get("selected", []))
-                if len(selected) < obs["decision"].get("min", 1):
-                    return next(a for a, args in options if a.kind == "choose_target")
-                if len(selected) < obs["decision"].get("max", len(selected)):
-                    choices = [a for a, _ in options if a.kind == "choose_target"]
-                    if choices:
-                        return choices[0]
-                return next(a for a, _ in options if a.kind == "confirm_targets")
+            if obs["decision"]["kind"] == "target":
+                if obs["decision"].get("multi"):
+                    selected = set(obs["decision"].get("selected", []))
+                    if len(selected) < obs["decision"].get("min", 1):
+                        return next(a for a, args in options if a.kind == "choose_target")
+                    if len(selected) < obs["decision"].get("max", len(selected)):
+                        choices = [a for a, _ in options if a.kind == "choose_target"]
+                        if choices:
+                            return choices[0]
+                    return next(a for a, _ in options if a.kind == "confirm_targets")
+                return next(a for a, _ in options if a.kind == "choose_target")
             own = {c["id"]: c["code"] for c in obs["hand"]}
             return max(options, key=lambda pair: self.cards[own[pair[1]["card"]]]["energy"])[0]
         if phase == "mulligan":

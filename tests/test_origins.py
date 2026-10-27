@@ -6,7 +6,7 @@ import unittest
 from riftbound.engine import Environment, InvalidAction, RulesUnavailable, replay
 from riftbound.origins import OriginsRules
 from riftbound.policies import GreedyPolicy
-from riftbound.support import starter_deck, vision_deck
+from riftbound.support import daughter_deck, starter_deck, vision_deck
 from riftbound.training import RandomPolicy, self_play
 
 
@@ -66,6 +66,12 @@ class OriginsTests(unittest.TestCase):
         deck["main"][0] = "OGN-002"
         with self.assertRaises(RulesUnavailable):
             OriginsRules([deck, starter_deck()])
+
+    def test_daughter_cluster_deck_is_constructed_legal(self):
+        deck = daughter_deck()
+        rules = OriginsRules([deck, deck])
+        self.assertEqual(rules.decks[0]["legend"], "OGN-247")
+        self.assertEqual(len(deck["main"]), 40)
 
     def test_vision_deck_opens_private_predict_decision(self):
         rules = OriginsRules([vision_deck(), vision_deck()])
@@ -412,6 +418,21 @@ class OriginsTests(unittest.TestCase):
         unit = self.hand(state, "OGN-010")
         self.assertFalse(any(a.kind == "play_unit" and json.loads(a.arguments)["card"] == unit
                              for a in self.rules.legal_actions(state)))
+
+    def test_chemtech_enforcer_enters_chain_for_one_discard(self):
+        state = self.scenario()
+        uid = self.hand(state, "OGN-219")
+        state["cards"][uid]["code"] = "OGN-003"
+        before = len(state["players"][0]["hand"])
+        self.act(state, "play_unit", card=uid, location="base:0")
+        self.assertEqual(state["phase"], "chain")
+        self.assertIn("discard_one", [item["effect"] for item in state["chain"]])
+        self.act(state, "pass")
+        self.act(state, "pass")
+        self.assertEqual(state["phase"], "decision")
+        card = state["players"][0]["hand"][0]
+        self.act(state, "discard_card", card=card)
+        self.assertEqual(len(state["players"][0]["hand"]), before - 2)
 
 
 if __name__ == "__main__":

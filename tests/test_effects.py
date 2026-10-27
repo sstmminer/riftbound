@@ -35,7 +35,7 @@ class EffectRegistryTests(unittest.TestCase):
         rules = OriginsRules()
         self.assertEqual(
             rules.effects.names(),
-            ("buff_self", "darius", "discard_two", "drummer", "peak", "spell", "vision"),
+            ("buff_self", "darius", "discard_one", "discard_two", "drummer", "peak", "spell", "vision"),
         )
 
 

@@ -58,6 +58,7 @@ class OriginsRules:
         registry.register("drummer", self._effect_drummer)
         registry.register("vision", self._effect_vision)
         registry.register("discard_two", self._effect_discard_two)
+        registry.register("discard_one", self._effect_discard_one)
         registry.register("spell", self._effect_spell)
         return registry
 
@@ -125,7 +126,7 @@ class OriginsRules:
         role = self._role(state, unit)
         if role == "attacker":
             value += int(unit["code"] in {"OGN-210", "OGN-215"}) + unit["assault"]
-            value += 2 if unit["code"] == "OGN-030" else 0
+            value += 2 if unit["code"] in {"OGN-003", "OGN-030"} else 0
             value += sum(other["code"] == "OGN-015" and other["id"] != unit["id"]
                          for other in self._units(state, unit["owner"], location))
         if role == "defender" and unit["code"] == "OGN-232" and value >= 5:
@@ -422,6 +423,15 @@ class OriginsRules:
             return False
         return True
 
+    def _effect_discard_one(self, state, item, rng):
+        owner = item["owner"]
+        hand = state["players"][owner]["hand"]
+        if hand:
+            state["decision"] = {"kind": "discard", "player": owner, "remaining": 1}
+            state["phase"], state["actor"] = "decision", owner
+            return False
+        return True
+
     def _effect_spell(self, state, item, rng):
         code, owner = item["code"], item["owner"]
         for uid in item["targets"]:
@@ -499,6 +509,8 @@ class OriginsRules:
                 triggers = self._second_card_triggers(state, player)
                 if code == "OGN-217" and was_legion:
                     triggers.append({"effect": "buff_self", "source": unit["id"], "owner": player})
+                if code == "OGN-003":
+                    triggers.append({"effect": "discard_one", "source": unit["id"], "owner": player})
                 if code == "OGN-223":
                     triggers.append({"effect": "peak", "source": unit["id"], "owner": player})
                 if code in {"OGN-030", "OGN-171"}:

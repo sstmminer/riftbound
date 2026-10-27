@@ -14,7 +14,7 @@ from tkinter import messagebox, ttk
 from .engine import Environment, InvalidAction
 from .origins import OriginsRules
 from .policies import GreedyPolicy
-from .support import starter_deck, vision_deck
+from .support import daughter_deck, starter_deck, vision_deck
 
 
 IMAGE_ROOT = Path(__file__).with_name("data") / "images"
@@ -66,7 +66,7 @@ class OriginsGUI(tk.Tk):
         ttk.Button(toolbar, text="规则/范围", command=self.show_scope).pack(side="right", padx=3)
         ttk.Button(toolbar, text="重新开始", command=self.restart).pack(side="right", padx=3)
         self.variant_box = ttk.Combobox(toolbar, state="readonly", width=10,
-                                        values=("starter", "vision"))
+                                        values=("starter", "vision", "daughter"))
         self.variant_box.set(self.variant)
         self.variant_box.pack(side="right", padx=5)
 
@@ -287,7 +287,7 @@ class OriginsGUI(tk.Tk):
                 pass
             self._opponent_job = None
         selected = self.variant_box.get() or self.variant
-        self.variant = selected if selected in {"starter", "vision"} else "starter"
+        self.variant = selected if selected in {"starter", "vision", "daughter"} else "starter"
         self.rules = OriginsRules(self._decks(), extra_fields=self.extra_fields)
         self.env = Environment(self.rules, max_steps=3000)
         self.env.reset(seed=self.seed)
@@ -301,13 +301,14 @@ class OriginsGUI(tk.Tk):
         self.render()
 
     def _decks(self):
-        deck = vision_deck() if self.variant == "vision" else starter_deck()
+        deck = (vision_deck() if self.variant == "vision" else
+                daughter_deck() if self.variant == "daughter" else starter_deck())
         return [deck, deck]
 
     def show_scope(self):
         messagebox.showinfo(
             "当前范围",
-            "RUP5 2026-10-09\n双人 Duel；37 张显式实现的 Origins 卡牌。\n\n"
+            "RUP5 2026-10-09\n双人 Duel；39 张显式实现的 Origins 卡牌。\n\n"
             "战场数量由规则状态和卡牌效果决定，界面不会手动添加战场。\n"
             "未支持的牌和效果会在开局前拒绝，不会静默当作白板。",
         )

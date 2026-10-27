@@ -1,7 +1,7 @@
 """Explicit implementations, never inferred by parsing card text at runtime."""
 
 UNIT_CODES = frozenset(f"OGN-{n:03d}" for n in
-                      (1, 10, 11, 12, 13, 15, 27, 30, 39, 171, 175, 176, 210, 215, 217, 219, 222, 223, 232))
+                      (1, 3, 10, 11, 12, 13, 15, 27, 30, 39, 88, 171, 175, 176, 210, 215, 217, 219, 222, 223, 232))
 SPELL_CODES = frozenset(f"OGN-{n:03d}" for n in (4, 9, 24, 206, 207))
 REACTIONS = frozenset({"OGN-206", "OGN-207"})
 ACCELERATE = frozenset({"OGN-001", "OGN-010", "OGN-030", "OGN-039"})
@@ -29,4 +29,15 @@ def vision_deck() -> dict:
     return {"legend": "OGN-251", "chosen_champion": "OGN-030",
             "main": [f"OGN-{n:03d}" for n in codes for _ in range(3)] + ["OGN-175"],
             "runes": ["OGN-007"] * 6 + ["OGN-166"] * 6,
+            "battlefields": sorted(FIELD_CODES)}
+
+
+def daughter_deck() -> dict:
+    """A legal Fury/Mind sample deck for the Daughter of the Void cluster."""
+    counts = {1: 3, 3: 3, 4: 3, 9: 3, 10: 3, 11: 2, 12: 3, 13: 3,
+              15: 2, 24: 3, 27: 3, 30: 3, 39: 3, 88: 3}
+    main = [f"OGN-{n:03d}" for n, count in counts.items() for _ in range(count)]
+    assert len(main) == 40
+    return {"legend": "OGN-247", "chosen_champion": "OGN-039", "main": main,
+            "runes": ["OGN-007"] * 6 + ["OGN-089"] * 6,
             "battlefields": sorted(FIELD_CODES)}

@@ -22,7 +22,7 @@ class CLITests(unittest.TestCase):
         self.assertFalse(json.loads(out)["full_origins_supported"])
         code, out, _ = self.invoke(["catalog", "--supported"])
         cards = [json.loads(line) for line in out.splitlines()]
-        self.assertEqual(len(cards), 37)
+        self.assertEqual(len(cards), 39)
         self.assertTrue(all(card["supported"] for card in cards))
         code, out, _ = self.invoke(["deck"])
         self.assertEqual(len(json.loads(out)["main"]), 40)
@@ -30,6 +30,10 @@ class CLITests(unittest.TestCase):
         vision = json.loads(out)
         self.assertEqual(vision["legend"], "OGN-251")
         self.assertIn("OGN-171", vision["main"])
+        code, out, _ = self.invoke(["deck", "--variant", "daughter"])
+        daughter = json.loads(out)
+        self.assertEqual(daughter["legend"], "OGN-247")
+        self.assertEqual(len(daughter["main"]), 40)
 
     def test_gui_module_is_importable_without_opening_a_window(self):
         from riftbound.gui import OriginsGUI

@@ -1,6 +1,6 @@
 # 下载、安装和测试攻略
 
-本攻略针对 **0.3.0 / simulator 分支**。它能自动运行内置的合法 Origins 套牌及所列 37 张卡牌；尚未实现完整 Origins。包含本地图形界面，也可用命令行查看状态和生成对局文件。
+本攻略针对 **0.3.0 / simulator 分支**。它能自动运行内置的合法 Origins 套牌及所列 39 张卡牌；尚未实现完整 Origins。包含本地图形界面，也可用命令行查看状态和生成对局文件。
 
 ## 1. 下载
 
@@ -38,7 +38,7 @@ python3.12 -m venv .venv
 .venv/bin/python -m riftbound status
 ```
 
-状态应包含 `catalog_cards: 298`、`executable_cards: 37`、`supported_subset_playable: true` 和 `full_origins_supported: false`。
+状态应包含 `catalog_cards: 298`、`executable_cards: 39`、`supported_subset_playable: true` 和 `full_origins_supported: false`。
 
 ## 3. 启动图形界面
 
@@ -48,7 +48,7 @@ python3.12 -m venv .venv
 python -m riftbound gui
 ```
 
-默认使用 starter 体验套牌。要演示包含 Mystic Poro 的 Vision/洞察交互，运行 `python -m riftbound gui --variant vision`；窗口顶部也可以切换套牌并点击“重新开始”。战场数量由规则状态和卡牌效果决定，界面会自动显示新增战场。
+默认使用 starter 体验套牌。要演示包含 Mystic Poro 的 Vision/洞察交互，运行 `python -m riftbound gui --variant vision`；运行 `python -m riftbound gui --variant daughter` 可测试 Daughter of the Void、Kai'Sa、Chemtech Enforcer 和六域资源簇。窗口顶部也可以切换套牌并点击“重新开始”。战场数量由规则状态和卡牌效果决定，界面会自动显示新增战场。
 
 Windows 将 `python` 换成 `.\.venv\Scripts\python.exe`，macOS/Linux 换成 `.venv/bin/python`。窗口包含传奇区、英雄区（规则中的 Champion Zone）、动态战场区、两个基地/手牌、弃牌区、放逐区和公开状态区。
 

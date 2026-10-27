@@ -333,6 +333,25 @@ class OriginsTests(unittest.TestCase):
         self.drain(state)
         self.assertEqual(len(state["players"][0]["hand"]), before+1)
 
+    def test_simple_damage_and_debuff_spell_cluster(self):
+        state = self.scenario()
+        enemy = self.unit(state, "OGN-219", player=1, location=0)
+        ray = self.hand(state, "OGN-024")
+        state["cards"][ray]["code"] = "OGN-085"
+        state["players"][0]["energy"] = 6
+        self.act(state, "play_spell", card=ray, targets=[enemy["id"]])
+        self.drain(state)
+        self.assertEqual(enemy["damage"], 6)
+        debuff = self.hand(state, "OGN-207")
+        state["cards"][debuff]["code"] = "OGN-095"
+        state["players"][0]["energy"] = 1
+        state["players"][0]["power"] = ["mind"]
+        before = len(state["players"][0]["hand"])
+        self.act(state, "play_spell", card=debuff, targets=[enemy["id"]])
+        self.drain(state)
+        self.assertEqual(enemy["temporary"], -1)
+        self.assertEqual(len(state["players"][0]["hand"]), before + 1)
+
     def test_magma_wurm_also_readies_played_recruit_tokens(self):
         state = self.scenario()
         self.unit(state, "OGN-011", location="base:0")
@@ -433,6 +452,15 @@ class OriginsTests(unittest.TestCase):
         card = state["players"][0]["hand"][0]
         self.act(state, "discard_card", card=card)
         self.assertEqual(len(state["players"][0]["hand"]), before - 2)
+
+    def test_draven_might_scales_with_points(self):
+        state = self.scenario()
+        uid = self.hand(state, "OGN-219")
+        state["cards"][uid]["code"] = "OGN-028"
+        unit = self.rules._new_unit(state, "OGN-028", 0, "base:0", card=uid, exhausted=False)
+        self.assertEqual(self.rules.might(state, unit), 5 + state["points"][0])
+        state["points"][0] = 3
+        self.assertEqual(self.rules.might(state, unit), 8)
 
 
 if __name__ == "__main__":

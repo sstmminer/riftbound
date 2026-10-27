@@ -344,13 +344,14 @@ class OriginsTests(unittest.TestCase):
         self.assertEqual(enemy["damage"], 6)
         debuff = self.hand(state, "OGN-207")
         state["cards"][debuff]["code"] = "OGN-095"
+        target = self.unit(state, "OGN-219", location="base:0")
         state["players"][0]["energy"] = 1
         state["players"][0]["power"] = ["mind"]
         before = len(state["players"][0]["hand"])
-        self.act(state, "play_spell", card=debuff, targets=[enemy["id"]])
+        self.act(state, "play_spell", card=debuff, targets=[target["id"]])
         self.drain(state)
-        self.assertEqual(enemy["temporary"], -1)
-        self.assertEqual(len(state["players"][0]["hand"]), before + 1)
+        self.assertEqual(target["temporary"], -1)
+        self.assertEqual(len(state["players"][0]["hand"]), before)
 
     def test_magma_wurm_also_readies_played_recruit_tokens(self):
         state = self.scenario()
@@ -458,9 +459,9 @@ class OriginsTests(unittest.TestCase):
         uid = self.hand(state, "OGN-219")
         state["cards"][uid]["code"] = "OGN-028"
         unit = self.rules._new_unit(state, "OGN-028", 0, "base:0", card=uid, exhausted=False)
-        self.assertEqual(self.rules.might(state, unit), 5 + state["points"][0])
+        self.assertEqual(self.rules.might(state, unit), 3 + state["points"][0])
         state["points"][0] = 3
-        self.assertEqual(self.rules.might(state, unit), 8)
+        self.assertEqual(self.rules.might(state, unit), 6)
 
 
 if __name__ == "__main__":

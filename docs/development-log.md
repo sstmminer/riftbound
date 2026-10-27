@@ -125,6 +125,11 @@ Startipped Peak、Bandle Tree、Hallowed Tomb、Obelisk of Power、The Grand Pla
 效果时，先明确触发顺序再逐项处理。Singularity 与 Back to Back 增加了点选多目标、
 显式确认的交互路径，底部状态栏会持续显示目标窗口、可选队列和结算链。
 
+本轮修正了目标选择时机：Dangerous Duo 的目标在能力进入结算链前选择，Retreat 支持直接
+点击手牌后选择目标或取消打出并恢复费用/手牌/链状态；Ravenbloom Student 的“when you
+play a spell”按 RUP5 383.3/383.4 作为独立触发链项处理。符文区新增连续资源操作回撤，
+任何其他动作或跳过时点都会关闭回撤窗口。
+
 为便于验收，新增 `complex` 合法 Fury/Mind 试验套牌，集中包含 Legion、Buff、Vision、
 Deathknell、Assault、Reaction、Singularity 和 Reaver's Row 等已完成机制，可通过 GUI
 变体或 CLI 导出。单位卡下方现在显示横置/就绪、当前战力、临时战力增减、伤害、待分配

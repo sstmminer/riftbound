@@ -235,6 +235,34 @@ class OriginsTests(unittest.TestCase):
         self.assertEqual(len(state["players"][0]["rune_deck"]), before_deck - 1)
         self.assertTrue(state["players"][0]["runes"][-1]["exhausted"])
 
+    def test_contiguous_rune_actions_can_be_rolled_back(self):
+        state = self.scenario()
+        row = state["players"][0]
+        row["runes"] = [row["rune_deck"].pop(0), row["rune_deck"].pop(0)]
+        row["energy"], row["power"] = 0, []
+        first, second = (rune["id"] for rune in row["runes"])
+        self.act(state, "exhaust_rune", rune=first)
+        self.act(state, "exhaust_rune", rune=second)
+        self.assertEqual(row["energy"], 2)
+        self.assertEqual(len(state["rune_undo"]), 2)
+        self.act(state, "undo_rune")
+        self.assertTrue(row["runes"][0]["exhausted"])
+        self.assertFalse(row["runes"][1]["exhausted"])
+        self.assertEqual(row["energy"], 1)
+        self.act(state, "undo_rune")
+        self.assertFalse(any(rune["exhausted"] for rune in row["runes"]))
+        self.assertEqual(row["energy"], 0)
+        self.assertFalse(any(action.kind == "undo_rune" for action in self.rules.legal_actions(state)))
+
+    def test_rune_rollback_closes_after_a_non_rune_action(self):
+        state = self.scenario()
+        row = state["players"][0]
+        rune = row["rune_deck"].pop(0)
+        row["runes"].append(rune)
+        self.act(state, "exhaust_rune", rune=rune["id"])
+        self.act(state, "end_turn")
+        self.assertFalse(any(action.kind == "undo_rune" for action in self.rules.legal_actions(state)))
+
     def test_vayne_enters_ready_and_has_assault_three(self):
         state = self.scenario()
         state["fields"][0]["controller"] = 1
@@ -850,13 +878,29 @@ class OriginsTests(unittest.TestCase):
         spell = self.hand(state, "OGN-024")
         state["cards"][spell]["code"] = "OGN-104"
         state["players"][0]["power"] = ["mind"]
-        self.act(state, "play_spell", card=spell, targets=[target["id"]])
+        self.act(state, "play_spell_targeted", card=spell)
+        self.act(state, "choose_target", target=target["id"])
         self.drain(state)
         self.assertNotIn(target, state["units"])
         self.assertIn(target["card"], state["players"][0]["hand"])
         self.assertEqual(len(state["players"][0]["rune_deck"]), before_deck - 1)
         self.assertTrue(state["players"][0]["runes"][-1]["exhausted"])
         self.assertEqual(state["players"][0]["energy"], 19)
+
+    def test_retreat_target_window_can_cancel_without_paying(self):
+        state = self.scenario()
+        target = self.unit(state, location=0)
+        spell = self.hand(state, "OGN-024")
+        state["cards"][spell]["code"] = "OGN-104"
+        state["players"][0]["power"] = ["mind"]
+        before_energy = state["players"][0]["energy"]
+        self.act(state, "play_spell_targeted", card=spell)
+        self.act(state, "cancel_play", card=spell)
+        self.assertEqual(state["phase"], "main")
+        self.assertIn(spell, state["players"][0]["hand"])
+        self.assertEqual(state["players"][0]["energy"], before_energy)
+        self.assertIn(target, state["units"])
+        self.assertFalse(state["chain"])
 
     def test_gust_and_rebuke_return_battlefield_units(self):
         for code, energy, power in (("OGN-169", 1, 0), ("OGN-172", 2, 2)):

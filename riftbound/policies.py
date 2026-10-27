@@ -27,7 +27,9 @@ class GreedyPolicy:
         if phase == "decision":
             if obs["decision"]["kind"] == "predict":
                 return next(a for a, args in options if not args["recycle"])
-            if obs["decision"]["kind"] == "target":
+            if obs["decision"]["kind"] in {"target", "unit_target"}:
+                if obs["decision"]["kind"] == "unit_target":
+                    return next(a for a, _ in options if a.kind == "choose_target")
                 if obs["decision"].get("multi"):
                     selected = set(obs["decision"].get("selected", []))
                     if len(selected) < obs["decision"].get("min", 1):

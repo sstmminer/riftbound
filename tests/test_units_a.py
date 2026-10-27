@@ -46,6 +46,11 @@ class UnitBatchATests(unittest.TestCase):
         action = next(a for a in self.rules.legal_actions(self.state)
                       if a.kind == "play_spell" and spell in a.arguments)
         self.rules.apply(self.state, action, random.Random(3))
+        self.assertEqual(student["temporary"], 0)
+        self.assertEqual(self.state["chain"][-1]["effect"], "ravenbloom")
+        while self.state["phase"] == "chain":
+            self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                              if a.kind == "pass"), random.Random(3))
         self.assertEqual(student["temporary"], 1)
 
     def test_dangerous_duo_legion_trigger_opens_target_choice(self):
@@ -59,12 +64,16 @@ class UnitBatchATests(unittest.TestCase):
         self.state["cards"][card]["code"] = "OGN-016"
         self.state["players"][0]["played"] = 1
         action = next(a for a in self.rules.legal_actions(self.state)
-                      if a.kind == "play_unit" and card in a.arguments)
+                      if a.kind == "play_unit_targeted" and card in a.arguments)
         self.rules.apply(self.state, action, random.Random(4))
+        self.assertEqual(self.state["phase"], "decision")
+        self.assertEqual(self.state["decision"]["kind"], "unit_target")
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target"), random.Random(4))
+        self.assertEqual(self.state["phase"], "chain")
+        self.assertIsNone(self.state["decision"])
         while self.state["phase"] == "chain":
             self.rules.apply(self.state, self.rules.legal_actions(self.state)[0], random.Random(4))
-        self.assertEqual(self.state["phase"], "decision")
-        self.rules.apply(self.state, self.rules.legal_actions(self.state)[0], random.Random(4))
         self.assertEqual(target["temporary"], 2)
 
 

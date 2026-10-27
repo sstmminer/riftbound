@@ -423,6 +423,13 @@ class OriginsGUI(tk.Tk):
             if zone == "hand" and self.env.current_player == 0 and self.env.observe(0)["phase"] == "mulligan":
                 self.mulligan_click(uid)
                 return
+            if zone == "hand" and self.env.current_player == 0:
+                direct = next((a for a in self.env.legal_actions()
+                               if a.kind in {"play_spell_targeted", "play_unit_targeted"}
+                               and json.loads(a.arguments).get("card") == uid), None)
+                if direct is not None:
+                    self.perform(direct)
+                    return
             if zone in {"field", "base"} and self.env.current_player == 0 and self.env.observe(0)["phase"] == "main":
                 self.unit_click(uid)
             else:
@@ -675,6 +682,13 @@ class OriginsGUI(tk.Tk):
                 return
         self.log_add("这枚符文当前不能横置。右键可查看回收操作。")
 
+    def undo_rune(self):
+        action = next((a for a in self.env.legal_actions() if a.kind == "undo_rune"), None)
+        if action is None:
+            self.set_notice("当前没有可回撤的连续符文操作。")
+            return
+        self.perform(action)
+
     def rune_menu(self, event, uid):
         menu = tk.Menu(self, tearoff=False)
         actions = [a for a in self.env.legal_actions()
@@ -693,6 +707,7 @@ class OriginsGUI(tk.Tk):
             "play_unit": "打出单位 / Play unit", "play_spell": "施放法术 / Play spell",
             "begin_move": "移动到目标 / Move", "exhaust_rune": "横置符文 / Exhaust rune",
             "recycle_rune": "回收符文 / Recycle rune", "legend_energy": "传奇能力 / Legend energy",
+            "undo_rune": "回撤上一步符文操作 / Undo rune action",
             "legend_spell_power": "传奇能力 / Spell rainbow power",
             "legend_recruit": "传奇能力 / Recruit token",
             "legend_channel": "传奇能力 / Channel exhausted rune",
@@ -706,8 +721,10 @@ class OriginsGUI(tk.Tk):
             "optional_effect": "可选效果 / Optional effect",
             "order_optional": "选择可选效果顺序 / Order optional effects",
             "play_spell_targeted": "施放法术并选择目标 / Cast and choose targets",
+            "play_unit_targeted": "打出单位并选择技能目标 / Play and choose ability target",
             "choose_target": "选择目标 / Choose target",
             "confirm_targets": "确认目标 / Confirm targets",
+            "cancel_play": "取消打出 / Cancel play",
             "predict": "洞察 / Vision：" + ("回收牌顶" if args.get("recycle") else "保留牌顶"),
             "discard_card": "弃置此牌 / Discard",
             "mulligan": "调度 / Mulligan：" + ("、".join(str(i + 1) for i in args.get("slots", [])) or "不换牌"),
@@ -982,6 +999,12 @@ class OriginsGUI(tk.Tk):
                   lambda parent, rune: self._rune_card(parent, rune, player=0,
                                                         pack=False, show_label=False),
                   per_row=10, row_height=130)
+        undo_count = obs.get("rune_undo_count", 0)
+        if undo_count:
+            controls = tk.Frame(rune_zone, bg="#24364d")
+            controls.place(relx=0.99, rely=0.98, anchor="se")
+            ttk.Button(controls, text=f"回撤符文操作 ({undo_count})",
+                       command=self.undo_rune).pack(side="left", padx=2)
 
         hand_zone = self._subzone(body, f"手牌 / Hand · {len(obs['hand'])} 张", width=500)
         hand_zone.grid(row=1, column=2, sticky="nsew", padx=4)
@@ -1052,7 +1075,7 @@ class OriginsGUI(tk.Tk):
                                "legend_recruit", "legend_channel", "unit_buff", "legend_buff",
                                "legend_move", "legend_ganking",
                                "commit_move", "cancel_move", "order_triggers",
-                               "play_spell_targeted"}:
+                               "play_spell_targeted", "play_unit_targeted"}:
                 ttk.Button(self.actions, text=self.action_text(action),
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
         prompt = "左键选择/多选单位，再拖到基地/战场移动；右键查看其他操作"
@@ -1069,6 +1092,8 @@ class OriginsGUI(tk.Tk):
             prompt = "选择要弃置的牌：点击手牌中的目标"
         elif kind == "predict":
             prompt = "洞察：选择保留或回收牌库顶牌"
+        elif kind == "unit_target":
+            prompt = "选择技能目标：点击场上或基地中的合法单位"
         else:
             prompt = f"等待选择：{kind}"
         tk.Label(self.actions, text=prompt, bg="#101b2b", fg="#f3d58b").pack(side="left", padx=4)

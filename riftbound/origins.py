@@ -54,6 +54,7 @@ class OriginsRules:
         registry = EffectRegistry()
         registry.register("darius", self._effect_darius)
         registry.register("buff_self", self._effect_buff_self)
+        registry.register("ravenbloom", self._effect_ravenbloom)
         registry.register("peak", self._effect_peak)
         registry.register("drummer", self._effect_drummer)
         registry.register("vision", self._effect_vision)
@@ -85,7 +86,7 @@ class OriginsRules:
                  "beginning_awarded": [False, False], "dreaming_tree_used": [], "selection": None,
                  "decision": None, "optional": [], "optional_return": None,
                  "optional_ordered": False, "pending_showdown": False,
-                 "legend_options": [], "winner": None, "next_object": 0}
+                 "legend_options": [], "rune_undo": [], "winner": None, "next_object": 0}
         for player, deck in enumerate(self.decks):
             physical = []
             for index, code in enumerate(deck["main"]):
@@ -474,6 +475,8 @@ class OriginsRules:
             if not rune["exhausted"]:
                 result.append(Action.make("exhaust_rune", rune=rune["id"]))
             result.append(Action.make("recycle_rune", rune=rune["id"]))
+        if state.get("rune_undo") and state["phase"] == "main":
+            result.append(Action.make("undo_rune"))
         for unit in self._units(state, player):
             if unit["code"] == "OGN-078" and not unit["exhausted"]:
                 result.append(Action.make("unit_buff", unit=unit["id"]))
@@ -520,6 +523,7 @@ class OriginsRules:
             if code not in SPELL_CODES or (state["phase"] == "chain" and code not in REACTIONS):
                 continue
             data = self.cards[code]
+            targeted_only = code == "OGN-104"
             if code in {"OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-170", "OGN-201", "OGN-233"}:
                 targets = [[]]
             elif code == "OGN-048":
@@ -603,22 +607,25 @@ class OriginsRules:
                         power = 0 if spend is not None else data["power_cost"]
                         for payment in self._payments(state, player, energy, data["domains"], power, deflect,
                                                       spell=True):
-                            result.append(Action.make("play_spell", card=card, targets=selected,
-                                                      destination=destination, spend_buff=spend, payment=payment))
+                            if not targeted_only:
+                                result.append(Action.make("play_spell", card=card, targets=selected,
+                                                          destination=destination, spend_buff=spend, payment=payment))
                             # Offer a UI-driven target window alongside the legacy
                             # fully-expanded actions.  Existing agents remain
                             # compatible while interactive clients can select and
                             # confirm targets one at a time.
-                            if code in {"OGN-105", "OGN-206"} and not targeted_added:
-                                candidates = ([u["id"] for u in state["units"]
+                            if code in {"OGN-104", "OGN-105", "OGN-206"} and not targeted_added:
+                                candidates = ([u["id"] for u in self._units(state, player)]
+                                              if code == "OGN-104" else
+                                              [u["id"] for u in state["units"]
                                                if self._is_field(state, u["location"])]
                                               if code == "OGN-105" else
                                               [u["id"] for u in self._units(state, player)])
                                 result.append(Action.make(
                                     "play_spell_targeted", card=card,
                                     target_candidates=candidates,
-                                    target_min=0 if code == "OGN-105" else 2,
-                                    target_max=2,
+                                    target_min=1 if code == "OGN-104" else (0 if code == "OGN-105" else 2),
+                                    target_max=1 if code == "OGN-104" else 2,
                                     destination=destination, spend_buff=spend,
                                     payment=payment))
                                 targeted_added = True
@@ -648,9 +655,19 @@ class OriginsRules:
                 for payment in self._payments(state, player, energy+int(accelerate), data["domains"],
                                                data["power_cost"]+int(accelerate)):
                     for location in permitted:
-                        result.append(Action.make("play_unit", card=card, location=location,
-                                                  accelerate=accelerate, payment=payment,
-                                                  enter_target=None))
+                        enter_targets = [None]
+                        if code == "OGN-016" and row["played"]:
+                            candidates = [unit["id"] for unit in self._units(state, player)]
+                            enter_targets = candidates or [None]
+                        for enter_target in enter_targets:
+                            result.append(Action.make("play_unit", card=card, location=location,
+                                                      accelerate=accelerate, payment=payment,
+                                                      enter_target=enter_target))
+                        if code == "OGN-016" and row["played"] and candidates:
+                            result.append(Action.make(
+                                "play_unit_targeted", card=card, location=location,
+                                accelerate=accelerate, payment=payment,
+                                target_candidates=candidates))
         return result
 
     def _movable(self, state, destination):
@@ -728,7 +745,15 @@ class OriginsRules:
                                for uid in decision["targets"] if uid not in selected]
                     if len(selected) >= decision.get("min", 1):
                         actions.append(Action.make("confirm_targets"))
+                    if decision.get("cancel_play"):
+                        actions.append(Action.make("cancel_play", card=decision["cancel_play"]["card"]))
                     return tuple(actions)
+                actions = [Action.make("choose_target", target=uid)
+                           for uid in decision["targets"]]
+                if decision.get("cancel_play"):
+                    actions.append(Action.make("cancel_play", card=decision["cancel_play"]["card"]))
+                return tuple(actions)
+            if decision["kind"] == "unit_target":
                 return tuple(Action.make("choose_target", target=uid)
                              for uid in decision["targets"])
             return tuple(Action.make("discard_card", card=uid) for uid in state["players"][player]["hand"])
@@ -818,6 +843,12 @@ class OriginsRules:
     def _effect_buff_self(self, state, item, rng):
         source = self._unit(state, item.get("source"))
         self._apply_buff(state, source)
+        return True
+
+    def _effect_ravenbloom(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if source is not None and source["code"] == "OGN-103":
+            source["temporary"] += 1
         return True
 
     def _effect_peak(self, state, item, rng):
@@ -1188,7 +1219,12 @@ class OriginsRules:
         kind, args = action.kind, json.loads(action.arguments)
         player = state["actor"]
         row = state["players"][player]
-        if kind in {"predict", "discard_card", "choose_target", "confirm_targets"}:
+        # Rune rollback is intentionally a narrow transaction: any decision,
+        # pass, card play, movement, or other action closes the rollback
+        # window. Consecutive rune resource actions are the only exception.
+        if kind not in {"exhaust_rune", "recycle_rune", "undo_rune"}:
+            state["rune_undo"] = []
+        if kind in {"predict", "discard_card", "choose_target", "confirm_targets", "cancel_play"}:
             if kind == "predict":
                 if args["recycle"] and row["main"]:
                     row["main"].append(row["main"].pop(0))
@@ -1199,10 +1235,50 @@ class OriginsRules:
                 state["decision"]["remaining"] -= 1
                 if not state["decision"]["remaining"] or not row["hand"]:
                     state["decision"] = None
+            elif kind == "cancel_play":
+                decision = state["decision"]
+                info = decision.get("cancel_play") if decision else None
+                if not info or args.get("card") != info["card"]:
+                    raise ValueError("no cancellable target selection")
+                row["energy"] = info["energy"]
+                row["power"] = list(info["power"])
+                row["played"] = info["played"]
+                if info.get("buff_uid") is not None:
+                    spent = self._unit(state, info["buff_uid"])
+                    if spent is not None:
+                        spent["buff"] = info.get("buff_value", spent["buff"])
+                row["hand"].insert(info["hand_index"], info["card"])
+                state["chain"] = copy.deepcopy(info["chain"])
+                if info.get("chain_return") is None:
+                    state.pop("chain_return", None)
+                else:
+                    state["chain_return"] = info["chain_return"]
+                if info.get("chain_from_spell") is None:
+                    state.pop("chain_from_spell", None)
+                else:
+                    state["chain_from_spell"] = info["chain_from_spell"]
+                if info.get("focus") is None:
+                    state.pop("focus", None)
+                else:
+                    state["focus"] = info["focus"]
+                state["passes"] = info["passes"]
+                state["decision"] = None
+                state["phase"], state["actor"] = info["phase"], info["actor"]
+                return
             elif kind == "choose_target":
                 decision = state["decision"]
                 if args["target"] not in decision["targets"]:
                     raise ValueError("invalid target choice")
+                if decision.get("unit_target"):
+                    item = dict(decision["item"])
+                    state["decision"] = None
+                    state["phase"] = "main"
+                    self.apply(state, Action.make("play_unit", card=item["card"],
+                                                   location=item["location"],
+                                                   accelerate=item["accelerate"],
+                                                   payment=item["payment"],
+                                                   enter_target=args["target"]), rng)
+                    return
                 if decision.get("multi"):
                     selected = decision.setdefault("selected", [])
                     if args["target"] in selected:
@@ -1215,9 +1291,17 @@ class OriginsRules:
                     return
                 item = dict(decision["item"])
                 item["target"] = args["target"]
+                if item.get("effect") == "spell":
+                    item["targets"] = [args["target"]]
                 resume = decision.get("resume")
                 state["decision"] = None
-                self.effects.dispatch(item["effect"], state, item, rng)
+                if decision.get("play_targeted"):
+                    for entry in reversed(state["chain"]):
+                        if entry.get("card") == item.get("card"):
+                            entry["targets"] = [args["target"]]
+                            break
+                else:
+                    self.effects.dispatch(item["effect"], state, item, rng)
             elif kind == "confirm_targets":
                 decision = state["decision"]
                 if not decision.get("multi"):
@@ -1227,10 +1311,14 @@ class OriginsRules:
                     raise ValueError("not enough targets selected")
                 item = dict(decision["item"])
                 item["targets"] = selected
-                if state.get("chain") and state["chain"][-1].get("card") == item.get("card"):
-                    state["chain"].pop()
                 state["decision"] = None
-                self.effects.dispatch(item["effect"], state, item, rng)
+                if decision.get("play_targeted"):
+                    for entry in reversed(state["chain"]):
+                        if entry.get("card") == item.get("card"):
+                            entry["targets"] = selected
+                            break
+                else:
+                    self.effects.dispatch(item["effect"], state, item, rng)
             if state["decision"] is None:
                 resume = locals().get("resume")
                 if resume == "close_showdown":
@@ -1255,6 +1343,13 @@ class OriginsRules:
                 self._start_turn(state, rng)
         elif kind in {"exhaust_rune", "recycle_rune"}:
             rune = next(r for r in row["runes"] if r["id"] == args["rune"])
+            state.setdefault("rune_undo", []).append({
+                "player": player,
+                "runes": copy.deepcopy(row["runes"]),
+                "rune_deck": copy.deepcopy(row["rune_deck"]),
+                "power": list(row["power"]),
+                "energy": row["energy"],
+            })
             if kind == "exhaust_rune":
                 rune["exhausted"] = True
                 row["energy"] += 1
@@ -1262,6 +1357,16 @@ class OriginsRules:
                 row["runes"].remove(rune)
                 row["power"].extend(self.cards[rune["code"]]["domains"])
                 row["rune_deck"].append({**rune, "exhausted": False})
+            state["passes"] = 0
+        elif kind == "undo_rune":
+            history = state.get("rune_undo", [])
+            if state["phase"] != "main" or not history or history[-1]["player"] != player:
+                raise ValueError("rune rollback is no longer available")
+            snapshot = history.pop()
+            row["runes"] = copy.deepcopy(snapshot["runes"])
+            row["rune_deck"] = copy.deepcopy(snapshot["rune_deck"])
+            row["power"] = list(snapshot["power"])
+            row["energy"] = snapshot["energy"]
             state["passes"] = 0
         elif kind == "optional_effect":
             optional = state.get("optional", [])
@@ -1367,11 +1472,21 @@ class OriginsRules:
         elif kind == "play_spell_targeted":
             card = args["card"]
             code = state["cards"][card]["code"]
-            if code not in {"OGN-105", "OGN-206"} or card not in row["hand"]:
+            if code not in {"OGN-104", "OGN-105", "OGN-206"} or card not in row["hand"]:
                 raise ValueError("target-selection spell is unavailable")
             data = self.cards[code]
             payment = args.get("payment", [])
             spend = args.get("spend_buff")
+            before = {
+                "card": card, "energy": row["energy"], "power": list(row["power"]),
+                "played": row["played"], "hand_index": row["hand"].index(card),
+                "buff_uid": spend, "buff_value": self._unit(state, spend)["buff"] if spend else None,
+                "phase": state["phase"], "actor": state["actor"],
+                "chain": copy.deepcopy(state["chain"]),
+                "chain_return": state.get("chain_return"),
+                "chain_from_spell": state.get("chain_from_spell"),
+                "focus": state.get("focus"), "passes": state.get("passes", 0),
+            }
             self._pay(row, 0 if spend is not None else data["energy"], payment)
             if spend is not None:
                 spent = self._unit(state, spend)
@@ -1382,14 +1497,31 @@ class OriginsRules:
             row["played"] += 1
             item = {"effect": "spell", "owner": player, "card": card,
                     "code": code, "targets": [], "destination": args.get("destination")}
-            # Put the spell on the chain before opening the target window.  The
-            # confirmation handler pops and dispatches it exactly once.
+            # Keep a pending spell item while the player chooses its target;
+            # target confirmation fills that item before normal chain resolution.
             self._enter_chain(state, [item])
+            spell_triggers = [{"effect": "ravenbloom", "source": source["id"],
+                               "owner": player}
+                              for source in self._units(state, player)
+                              if source["code"] == "OGN-103"]
+            state["chain"].extend(spell_triggers)
             state["decision"] = {"kind": "target", "player": player,
                                   "targets": list(args.get("target_candidates", [])),
-                                  "multi": True, "min": int(args.get("target_min", 1)),
+                                  "multi": code != "OGN-104", "min": int(args.get("target_min", 1)),
                                   "max": int(args.get("target_max", 1)), "selected": [],
-                                  "item": item}
+                                  "item": item, "play_targeted": True,
+                                  "cancel_play": before if code == "OGN-104" else None}
+            state["phase"], state["actor"] = "decision", player
+            state["passes"] = 0
+        elif kind == "play_unit_targeted":
+            card = args["card"]
+            if card not in row["hand"] or state["cards"][card]["code"] != "OGN-016":
+                raise ValueError("target-selection unit is unavailable")
+            state["decision"] = {
+                "kind": "unit_target", "player": player,
+                "targets": list(args.get("target_candidates", [])),
+                "item": args, "unit_target": True,
+            }
             state["phase"], state["actor"] = "decision", player
             state["passes"] = 0
         elif kind in {"play_unit", "play_spell"}:
@@ -1417,7 +1549,8 @@ class OriginsRules:
                                                                       "source": unit["id"]})
                 triggers = self._second_card_triggers(state, player)
                 if code == "OGN-016" and was_legion:
-                    triggers.append({"effect": "buff_two", "source": unit["id"], "owner": player})
+                    triggers.append({"effect": "buff_two", "source": unit["id"], "owner": player,
+                                     "target": args.get("enter_target")})
                 if code == "OGN-217" and was_legion:
                     triggers.append({"effect": "buff_self", "source": unit["id"], "owner": player})
                 if code == "OGN-003":
@@ -1480,16 +1613,18 @@ class OriginsRules:
                     self._unit(state, spend)["buff"] = 0
                 row["hand"].remove(card)
                 row["played"] += 1
-                if code in SPELL_CODES:
-                    for unit in self._units(state, player):
-                        if unit["code"] == "OGN-103":
-                            unit["temporary"] += 1
                 effect = "return_unit" if code == "OGN-170" else "spell"
+                triggers = self._second_card_triggers(state, player)
+                if code in SPELL_CODES:
+                    triggers.extend({"effect": "ravenbloom", "source": source["id"],
+                                     "owner": player}
+                                    for source in self._units(state, player)
+                                    if source["code"] == "OGN-103")
                 self._enter_chain(state, [{"effect": effect, "owner": player, "card": card,
                                            "code": code, "targets": args["targets"],
                                            "destination": args.get("destination")}])
                 self._cleanup(state, rng)
-                self._triggers(state, self._second_card_triggers(state, player))
+                self._triggers(state, triggers)
         elif kind == "order_triggers":
             pending = state["pending"]
             state["pending"] = []
@@ -1713,6 +1848,8 @@ class OriginsRules:
                 "units": [{**copy.deepcopy(u), "might": self.might(state, u)} for u in state["units"]],
                 "chain": copy.deepcopy(state["chain"]), "pending": copy.deepcopy(state["pending"]),
                 "optional": copy.deepcopy(state.get("optional", [])),
+                "rune_undo_count": (len(state.get("rune_undo", []))
+                                     if player == state["actor"] and state["phase"] == "main" else 0),
                 "battle": copy.deepcopy(state["battle"]),
                 "selection": copy.deepcopy(state["selection"]) if player == state["actor"] else None,
                 "decision": ({**copy.deepcopy(state["decision"]),

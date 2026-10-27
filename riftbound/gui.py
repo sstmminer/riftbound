@@ -195,6 +195,11 @@ class OriginsGUI(tk.Tk):
             button.bind("<ButtonPress-1>", lambda event, u=uid: self.start_drag(event, u, zone))
             button.bind("<ButtonRelease-1>", lambda event, u=uid: self.end_drag(event, u, zone))
             button.bind("<Button-3>", lambda event, u=uid: self.card_menu(event, u))
+            if zone == "hand":
+                # The wrapper catches the opening hand click as well as the
+                # image button, which avoids losing the first mulligan click
+                # when the fan is rebuilt during initial rendering.
+                wrapper.bind("<Button-1>", lambda event, u=uid: self.start_drag(event, u, zone))
         return wrapper
 
     def _stack(self, parent, cards, *, owner=None, title="", limit=4, factor=4, count=None):
@@ -702,7 +707,7 @@ class OriginsGUI(tk.Tk):
         body = self._clear("opponent")
         body.grid_columnconfigure(1, weight=2, minsize=320)
         body.grid_columnconfigure(2, weight=1, minsize=260)
-        body.grid_columnconfigure(3, weight=0, minsize=230)
+        body.grid_columnconfigure(3, weight=0, minsize=250)
         body.grid_columnconfigure(4, weight=0, minsize=100)
         identity = tk.Frame(body, bg="#1b2a3e")
         identity.grid(row=0, column=0, sticky="nsw")
@@ -713,7 +718,7 @@ class OriginsGUI(tk.Tk):
                   lambda parent, _item: self._image_card(parent, BACK_CODE, factor=4,
                                                          compact_label="", pack=False, show_label=False),
                   per_row=10, row_height=135)
-        rune_zone = self._subzone(body, "对手符文区", width=280, height=170)
+        rune_zone = self._subzone(body, "对手符文区", width=280, height=200)
         rune_zone.grid(row=0, column=2, sticky="nse", padx=4)
         self._fan(rune_zone, obs["players"][1]["runes"],
                   lambda parent, rune: self._rune_card(parent, rune, player=1,
@@ -726,7 +731,7 @@ class OriginsGUI(tk.Tk):
         self._stack(piles, [], title="牌库 / Deck", factor=5,
                     count=obs["players"][1]["main_count"])
         self._status_box(body, obs, 1, column=4)
-        base_zone = self._subzone(body, "对手基地 / Opponent Base", height=170)
+        base_zone = self._subzone(body, "对手基地 / Opponent Base", height=120)
         base_zone.grid(row=1, column=0, columnspan=5, sticky="ew", padx=4, pady=(3, 0))
         base = tk.Frame(base_zone, bg="#263a54")
         base.pack(fill="both", expand=True)
@@ -740,14 +745,14 @@ class OriginsGUI(tk.Tk):
         row = obs["players"][player]
         legend = self._subzone(parent, "传奇区 / Legend")
         legend.pack(side="left", fill="y", padx=2)
-        self._image_card(legend, row["legend"], factor=4 if compact else 3,
+        self._image_card(legend, row["legend"], factor=4,
                          compact_label=("横置" if row["legend_exhausted"] else "就绪"),
                          click=False, exhausted=row["legend_exhausted"])
         champion = self._subzone(parent, "英雄区 / Champion")
         champion.pack(side="left", fill="y", padx=2)
         for card in row["champion"]:
             self._image_card(champion, card["code"], uid=card["id"] if player == 0 else None,
-                             owner=player, zone="champion", factor=4 if compact else 3)
+                             owner=player, zone="champion", factor=4)
 
     def _status_box(self, parent, obs, player, *, column=None, row=0):
         frame = self._subzone(parent, f"P{player} 状态", width=110)
@@ -807,17 +812,17 @@ class OriginsGUI(tk.Tk):
         body.grid_columnconfigure(1, weight=1, minsize=300)
         body.grid_columnconfigure(2, weight=2, minsize=500)
         body.grid_columnconfigure(3, weight=0, minsize=100)
-        body.grid_columnconfigure(4, weight=0, minsize=230)
+        body.grid_columnconfigure(4, weight=0, minsize=250)
         identity = tk.Frame(body, bg="#1b2a3e")
         identity.grid(row=1, column=0, sticky="nsw")
         self._identity(identity, obs, 0)
 
-        rune_zone = self._subzone(body, "符文区 / Runes · 左键横置 · 右键回收", width=300, height=270)
+        rune_zone = self._subzone(body, "符文区 / Runes · 左键横置 · 右键回收", width=280, height=200)
         rune_zone.grid(row=1, column=1, sticky="nsew", padx=4)
         self._fan(rune_zone, obs["players"][0]["runes"],
                   lambda parent, rune: self._rune_card(parent, rune, player=0,
                                                         pack=False, show_label=False),
-                  per_row=6, row_height=135)
+                  per_row=10, row_height=130)
 
         hand_zone = self._subzone(body, f"手牌 / Hand · {len(obs['hand'])} 张", width=500, height=170)
         hand_zone.grid(row=1, column=2, sticky="nsew", padx=4)
@@ -838,10 +843,10 @@ class OriginsGUI(tk.Tk):
         base._base_player = 0
         for unit in [u for u in obs["units"] if u["location"] == "base:0"]:
             self._image_card(base, unit["code"], uid=unit["id"], owner=unit["owner"],
-                             zone="base", factor=5,
+                             zone="base", factor=4,
                              compact_label=f"P{unit['owner']} · M{unit['might']}",
                              exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
-        piles = self._subzone(body, "牌堆 / Player Piles", width=230, height=170)
+        piles = self._subzone(body, "牌堆 / Player Piles", width=250, height=170)
         piles.grid(row=1, column=4, sticky="nsew", padx=4)
         self._stack(piles, obs["players"][0]["trash"], owner=0,
                     title="P0 弃牌 / Trash", factor=5)

@@ -8,7 +8,7 @@
 - 当前分支：`simulator`。
 - 当前规则实现版本仍为 `origins-subset/0.3.0`。
 - 第一弹目录有 298 张基础编号：142 unit、84 spell、30 gear、24 battlefield、12 legend、6 rune。
-- 目前显式执行 73 张；其余 225 张在构筑时拒绝，不会静默当作白板。
+- 目前显式执行 96 张；其余 202 张在构筑时拒绝，不会静默当作白板。
 
 ## 本轮已完成
 
@@ -41,7 +41,7 @@ GUI 底部日志现在有序号，并显示回合玩家、当前行动玩家、�
 
 ### 卡池清点
 
-主要缺口集中在装备/永久物、Hidden/reveal、Deathknell、Stun、Tank、Shield、Deflect、反制、牌区移动、动态触发/替代效果、分割伤害和多目标选择。机制计数摘要见 `docs/card-pool-expansion.md`。
+主要缺口集中在装备/永久物、Hidden/reveal、反制、牌区移动、动态触发/替代效果、分割伤害和复杂多目标选择。Deathknell、Stun、Tank、Shield、部分传奇和战场已经有基础实现；机制计数摘要见 `docs/card-pool-expansion.md`。
 
 ### 严格规则修正
 
@@ -72,6 +72,14 @@ Recruit token 原语，并加入能量、横置和生成位置回归测试。
 Relentless Storm（OGN-249）也加入了可选的 `legend_channel` 动作：本回合打出
 Mighty 单位后可横置传奇，从符文牌库顶端横置引导一枚符文；机会不会跨回合保留。
 
+本轮继续补入基础单位与法术簇：Sunlit Guardian（OGN-054）和 Lecturing Yordle
+（OGN-087）加入 Tank/Shield 与入场抽牌，Watchful Sentry（OGN-096）加入 Deathknell
+抽牌，Stormclaw Ursine（OGN-137）加入入场引导，First Mate（OGN-132）和 Pit Rookie
+（OGN-136）加入入场目标选择。Stand United、Last Stand、Consult the Past、Retreat、
+Gust、Rebuke、Hidden Blade 和 Facebreaker（OGN-053/069/083/104/169/172/213/220）
+已接入抽牌、Temporary、回手、击杀和同战场 Stun 结算。所有卡图通过官方归档导入器
+生成并纳入 `card_images.json`。
+
 本轮补入 5 张可执行战场：Back-Alley Bar（OGN-277）在单位离开该战场时给予本回合
 1 Might；Grove of the God-Willow（OGN-280）持有时抽 1；Startipped Peak（OGN-288）
 持有时引导 1 枚横置符文；Vilemaw's Lair（OGN-295）禁止单位从该战场移动回基地；
@@ -82,8 +90,8 @@ The Arena's Greatest（OGN-290）在每名玩家首次开始阶段给予 1 点�
 
 ## 尚未完成
 
-- 第一弹 298 张尚未全部执行。当前支持集仍然是 73 张，完整扩展需要按机制层逐步增加处理器和回归测试。
-- 装备、Hidden、Deathknell、Tank/Shield/Prevent、反制、控制权变化、复杂替代效果和通用分割伤害还没有完成。
+- 第一弹 298 张尚未全部执行。当前支持集已扩展到 96 张，完整扩展需要按机制层逐步增加处理器和回归测试。
+- 装备牌区、Hidden/reveal、反制、控制权变化、复杂替代效果和通用分割伤害还没有完成；Deathknell、Tank、Shield 当前只覆盖已注册卡牌的基础窗口。
 - 当前事件日志是派生调试记录，不是完整裁判级事件溯源；若未来支持复杂替代效果，需要把事件、替代窗口和触发窗口进一步拆成显式对象。
 - 目前没有独立官方裁判或第二套引擎做差分验证。
 

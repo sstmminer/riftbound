@@ -23,12 +23,13 @@ class SimpleOriginsSpellTests(unittest.TestCase):
 
     def test_find_your_center_draws_and_channels(self):
         row = self.state["players"][0]
-        row["runes"].append(row["rune_deck"].pop())
         before_hand = len(row["hand"])
+        before_deck = len(row["rune_deck"])
         self.rules._effect_spell(self.state, {"code": "OGN-047", "owner": 0,
                                               "targets": [], "card": "none"}, random.Random(1))
         self.assertEqual(len(row["hand"]), before_hand + 1)
-        self.assertTrue(any(r["exhausted"] for r in row["runes"]))
+        self.assertEqual(len(row["rune_deck"]), before_deck - 1)
+        self.assertFalse(row["runes"][-1]["exhausted"])
 
     def test_grand_strategem_buffs_all_friendly_units(self):
         first = self.rules._new_unit(self.state, "OGN-001", 0, "base:0", card=None, exhausted=False)

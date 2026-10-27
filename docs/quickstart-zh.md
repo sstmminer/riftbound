@@ -7,6 +7,8 @@
 选择一种方式即可：
 
 - [小型 ZIP](https://github.com/sstmminer/riftbound/raw/refs/heads/simulator/downloads/riftbound-simulator-0.3.0.zip)：解压后进入 `riftbound-simulator` 文件夹。
+
+下载包对新增卡牌使用清晰缩略图以控制在 GitHub 单文件限制内；从源码运行时会使用仓库内完整高清悬浮图。
 - [GitHub 代码页](https://github.com/sstmminer/riftbound/tree/simulator)：确认分支是 `simulator`，再选择 Code → Download ZIP，解压进入项目根目录。
 - 已安装 Git：`git clone --depth 1 --branch simulator https://github.com/sstmminer/riftbound.git`，然后 `cd riftbound`。
 

@@ -1837,6 +1837,7 @@ class OriginsRules:
             public_players.append({"hand_count": len(row["hand"]), "main_count": len(row["main"]),
                                    "rune_deck_count": len(row["rune_deck"]), "runes": copy.deepcopy(row["runes"]),
                                    "energy": row["energy"], "power": row["power"].copy(),
+                                   "power_count": len(row["power"]),
                                    "legend": row["legend"], "legend_exhausted": row["legend_exhausted"],
                                    "champion": [card(uid) for uid in row["champion"]],
                                    "banishment": [card(uid) for uid in row["banishment"]],

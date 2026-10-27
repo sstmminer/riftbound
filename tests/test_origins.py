@@ -254,6 +254,17 @@ class OriginsTests(unittest.TestCase):
         self.assertEqual(row["energy"], 0)
         self.assertFalse(any(action.kind == "undo_rune" for action in self.rules.legal_actions(state)))
 
+    def test_recycling_a_ready_rune_adds_power_without_energy(self):
+        state = self.scenario()
+        row = state["players"][0]
+        rune = row["rune_deck"].pop(0)
+        row["runes"].append(rune)
+        row["energy"], row["power"] = 0, []
+        self.act(state, "recycle_rune", rune=rune["id"])
+        self.assertEqual(row["energy"], 0)
+        self.assertEqual(row["power"], self.rules.cards[rune["code"]]["domains"])
+        self.assertEqual(self.rules.observe(state, 0)["players"][0]["power_count"], 1)
+
     def test_rune_rollback_closes_after_a_non_rune_action(self):
         state = self.scenario()
         row = state["players"][0]

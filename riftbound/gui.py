@@ -7,6 +7,7 @@ Card art is bundled at a small display resolution so the client works offline.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -884,7 +885,7 @@ class OriginsGUI(tk.Tk):
         body.grid_columnconfigure(1, weight=1, minsize=280)
         body.grid_columnconfigure(2, weight=2, minsize=420)
         body.grid_columnconfigure(3, weight=0, minsize=250)
-        body.grid_columnconfigure(4, weight=0, minsize=100)
+        body.grid_columnconfigure(4, weight=0, minsize=150)
         identity = tk.Frame(body, bg="#1b2a3e")
         identity.grid(row=0, column=0, sticky="nsw")
         self._identity(identity, obs, 1, compact=True)
@@ -931,13 +932,23 @@ class OriginsGUI(tk.Tk):
                              owner=player, zone="champion", factor=4)
 
     def _status_box(self, parent, obs, player, *, column=None, row=0):
-        frame = self._subzone(parent, f"P{player} 状态", width=110)
+        frame = self._subzone(parent, f"P{player} 状态", width=150)
         if column is None:
             frame.pack(side="left", fill="y", padx=3)
         else:
             frame.grid(row=row, column=column, sticky="nse", padx=4)
         row = obs["players"][player]
-        text = (f"能量 {row['energy']}\n力量 {' '.join(row['power']) or '—'}\n"
+        power_names = {"fury": "Fury", "calm": "Calm", "mind": "Mind",
+                       "body": "Body", "chaos": "Chaos", "order": "Order",
+                       "spell_any": "万能"}
+        power_counts = Counter(row["power"])
+        power_text = "、".join(
+            f"{power_names.get(domain, domain)}×{count}"
+            for domain, count in power_counts.items()
+        ) or "—"
+        text = (f"法力/能量 {row['energy']}\n"
+                f"符能/力量 {row.get('power_count', len(row['power']))}\n"
+                f"{power_text}\n"
                 f"牌库 {row['main_count']}\n符文 {len(row['runes'])}\n阶段 {obs['phase']}")
         tk.Label(frame, text=text, justify="left", anchor="nw", bg="#24364d", fg="#e6eef9",
                  padx=8, pady=6).pack(fill="both", expand=True)
@@ -987,7 +998,7 @@ class OriginsGUI(tk.Tk):
         body.grid_rowconfigure(1, weight=1, minsize=170)
         body.grid_columnconfigure(1, weight=1, minsize=300)
         body.grid_columnconfigure(2, weight=2, minsize=500)
-        body.grid_columnconfigure(3, weight=0, minsize=100)
+        body.grid_columnconfigure(3, weight=0, minsize=150)
         body.grid_columnconfigure(4, weight=0, minsize=250)
         identity = tk.Frame(body, bg="#1b2a3e")
         identity.grid(row=1, column=0, sticky="nsw")

@@ -179,6 +179,65 @@ class Pool:
         self.power.clear()
 
 
+@dataclass
+class Gear:
+    """A face-up gear permanent in a player's equipment zone."""
+    id: str
+    controller: int
+    exhausted: bool = True
+    resource_domain: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.id or self.controller not in (0, 1):
+            raise ValueError("invalid gear")
+        if self.resource_domain is not None and self.resource_domain not in DOMAINS:
+            raise ValueError("unknown gear resource domain")
+
+
+@dataclass
+class GearZone:
+    """Minimal equipment zone; card text is represented by explicit hooks."""
+    cards: list[Gear] = field(default_factory=list)
+    trash: list[str] = field(default_factory=list)
+
+    def play(self, card: Card, *, controller: int, resource_domain: str | None = None) -> Gear:
+        if card.kind != "gear":
+            raise ValueError("only gear cards can enter the equipment zone")
+        if controller not in (0, 1):
+            raise ValueError("invalid gear controller")
+        if any(g.id == card.id for g in self.cards):
+            raise ValueError("gear ID is already in the equipment zone")
+        gear = Gear(card.id, controller, True, resource_domain)
+        self.cards.append(gear)
+        return gear
+
+    def kill(self, gear_id: str, *, controller: int | None = None) -> str:
+        gear = next((g for g in self.cards if g.id == gear_id), None)
+        if gear is None or (controller is not None and gear.controller != controller):
+            raise ValueError("gear is not controlled in the equipment zone")
+        self.cards.remove(gear)
+        self.trash.append(gear.id)
+        return gear.id
+
+    def ready(self, gear_id: str, *, controller: int) -> None:
+        gear = next((g for g in self.cards if g.id == gear_id), None)
+        if gear is None or gear.controller != controller:
+            raise ValueError("gear is not controlled in the equipment zone")
+        gear.exhausted = False
+
+    def activate_resource(self, gear_id: str, *, controller: int, pool: Pool) -> None:
+        """Exhaust a supported resource gear to add one domain power."""
+        gear = next((g for g in self.cards if g.id == gear_id), None)
+        if gear is None or gear.controller != controller:
+            raise ValueError("gear is not controlled in the equipment zone")
+        if gear.resource_domain is None:
+            raise ValueError("gear has no supported resource ability")
+        if gear.exhausted:
+            raise ValueError("gear is already exhausted")
+        gear.exhausted = True
+        pool.power.append(gear.resource_domain)
+
+
 def channel_count(*, first_turn: bool, second_player: bool, available: int) -> int:
     """315.3 and 487.7: 2 normally, 3 on the second player's first turn."""
     if type(available) is not int or available < 0:

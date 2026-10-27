@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 107 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 158 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -112,6 +112,57 @@
 | OGN-275 | Altar to Unity | battlefield | When you hold here, play a 1 :rb_might: Recruit unit token in your base. |
 | OGN-283 | Navori Fighting Pit | battlefield | When you hold here, buff a unit here. (If it doesn't have a buff, it gets a +1 :rb_might: buff.) |
 | OGN-296 | Void Gate | battlefield | Spells and abilities deal 1 Bonus Damage to units here. (Each instance of damage the spell deals to a unit here is increased by 1.) |
+| OGN-016 | Dangerous Duo | unit | [Legion] — When you play me, give a unit +2 :rb_might: this turn. (Get the effect if you've played another card this turn.) |
+| OGN-037 | Immortal Phoenix | unit | [Assault 2] (+2 :rb_might: while I'm an attacker.) When you kill a unit with a spell, you may pay :rb_energy_1::rb_rune_fury: to play me from your trash. |
+| OGN-048 | Meditation | spell | [Reaction] (Play any time, even before spells and abilities resolve.) As an additional cost to play this, you may exhaust a friendly unit. If you do, draw 2. Otherwise, draw 1. |
+| OGN-074 | Taric, Protector | unit | [Shield] (+1 :rb_might: while I'm a defender.) [Tank] (I must be assigned combat damage first.) Other friendly units here have [Shield]. |
+| OGN-078 | Lee Sin, Ascetic | unit | [Shield] (+1 :rb_might: while I'm a defender.) :rb_exhaust:: Buff me. (I get a +1 :rb_might: buff.) I can have any number of buffs. |
+| OGN-079 | Leona, Zealot | unit | If an opponent's score is within 3 points of the Victory Score, I enter ready. Stunned enemy units here have -8 :rb_might:, to a minimum of 1 :rb_might:. |
+| OGN-084 | Eager Apprentice | unit | While I'm at a battlefield, the Energy costs for spells you play is reduced by :rb_energy_1:, to a minimum of :rb_energy_1:. |
+| OGN-086 | Jeweled Colossus | unit | [Vision] (When you play me, look at the top card of your Main Deck. You may recycle it.) [Shield] (+1 :rb_might: while I'm a defender.) |
+| OGN-103 | Ravenbloom Student | unit | When you play a spell, give me +1 :rb_might: this turn. |
+| OGN-118 | Wraith of Echoes | unit | The first time a friendly unit dies each turn, draw 1. |
+| OGN-119 | Ahri, Inquisitive | unit | When I attack or defend, give an enemy unit here -2 :rb_might: this turn, to a minimum of 1 :rb_might:. |
+| OGN-123 | Unchecked Power | spell | Exhaust all friendly units, then deal 12 to ALL units at battlefields. |
+| OGN-125 | Bilgewater Bully | unit | While I'm buffed, I have [Ganking]. (I can move from battlefield to battlefield.) |
+| OGN-128 | Challenge | spell | [Action] (Play on your turn or in showdowns.) Choose a friendly unit and an enemy unit. They deal damage equal to their Mights to each other. |
+| OGN-138 | Catalyst of Aeons | spell | Channel 2 runes exhausted. If you couldn't channel 2 runes this way, draw 1. |
+| OGN-139 | Cithria of Cloudfield | unit | When you play another unit, buff me. (If I don't have a buff, I get a +1 :rb_might: buff.) |
+| OGN-146 | Wallop | spell | [Action] (Play on your turn or in showdowns.) As you play this, you may spend a buff as an additional cost. If you do, ignore this spell's cost. Ready a unit. |
+| OGN-151 | Lee Sin, Centered | unit | [Accelerate] (You may pay :rb_energy_1::rb_rune_body: as an additional cost to have me enter ready.) Other buffed friendly units at my battlefield have +2 :rb_might:. |
+| OGN-161 | Deadbloom Predator | unit | [Deflect] (Opponents must pay :rb_rune_rainbow: to choose me with a spell or ability.) You may play me to an occupied enemy battlefield. |
+| OGN-164 | Sett, Brawler | unit | When I'm played and when I conquer, buff me. (If I don't have a buff, I get a +1 :rb_might: buff.) Spend my buff: Give me +4 :rb_might: this turn. |
+| OGN-165 | Cemetery Attendant | unit | When you play me, return a unit from your trash to your hand. |
+| OGN-174 | Sai Scout | unit | [Vision] (When you play me, look at the top card of your Main Deck. You may recycle it.) You may play me to an open battlefield. |
+| OGN-185 | Traveling Merchant | unit | When I move, discard 1, then draw 1. |
+| OGN-195 | Rhasa the Sunderer | unit | I cost :rb_energy_1: less for each card in your trash. |
+| OGN-209 | Cull the Weak | spell | Each player kills one of their units. |
+| OGN-218 | Vanguard Captain | unit | [Legion] — When you play me, play two 1 :rb_might: Recruit unit tokens here. (Get the effect if you've played another card this turn.) |
+| OGN-225 | Solari Chief | unit | When you play me, choose an enemy unit. If it is stunned, kill it. Otherwise, stun it. (It doesn't deal combat damage this turn.) |
+| OGN-239 | Machine Evangel | unit | [Deathknell] — Play three 1 :rb_might: Recruit unit tokens into your base. (When I die, get the effect.) |
+| OGN-240 | Sett, Kingpin | unit | [Tank] (I must be assigned combat damage first.) I get +1 :rb_might: for each buffed friendly unit at my battlefield. |
+| OGN-243 | Darius, Executioner | unit | [Legion] — When you play me, ready me. (Get the effect if you've played another card this turn) Other friendly units have +1 :rb_might: here. |
+| OGN-246 | Viktor, Leader | unit | When another non-Recruit unit you control dies, play a 1 :rb_might: Recruit unit token into your base. |
+| OGN-252 | Super Mega Death Rocket!, Jinx | spell | Deal 5 to a unit. When you conquer, you may discard 1 to return this from your trash to your hand. |
+| OGN-257 | Blind Monk | legend | :rb_energy_1:, :rb_exhaust:: Buff a friendly unit. (If it doesn't have a buff, it gets a +1 :rb_might: buff.) |
+| OGN-259 | Unforgiven | legend | [2], [E]: Move a friendly unit to or from its base. |
+| OGN-260 | Last Breath, Yasuo | spell | [Action] (Play on your turn or in showdowns.) Ready a friendly unit. It deals damage equal to its Might to an enemy unit at a battlefield. |
+| OGN-261 | Radiant Dawn | legend | When you stun one or more enemy units, buff a friendly unit. (If it doesn't have a buff, it gets a +1 :rb_might: buff.) |
+| OGN-262 | Zenith Blade, Leona | spell | [Action] (Play on your turn or in showdowns.) Stun an enemy unit at a battlefield. You may move a friendly unit to that enemy unit's battlefield. (A stunned unit doesn't deal combat damage this turn.) |
+| OGN-266 | Siphon Power, Viktor | spell | [Reaction] (Play any time, even before spells and abilities resolve.) Choose a battlefield. Give friendly units there +1 :rb_might: this turn and enemy units there -1 :rb_might: this turn, to a minimum of 1 :rb_might:. |
+| OGN-267 | Bounty Hunter | legend | :rb_exhaust:: Give a unit [Ganking] this turn. (It can move from battlefield to battlefield.) |
+| OGN-269 | The Boss | legend | If a buffed unit you control would die, you may pay [C], exhaust me, and spend its buff to heal it, exhaust it, and recall it instead. (Send it to base. This isn't a move.) When you conquer, ready me. |
+| OGN-270 | Showstopper, Sett | spell | Buff a friendly unit in your base, then move it to a battlefield. (If it doesn't have a buff, it gets a +1 :rb_might: buff.) |
+| OGN-281 | Hallowed Tomb | battlefield | When you hold here, you may return your Chosen Champion from your trash to your Champion Zone if it is empty. |
+| OGN-282 | Monastery of Hirana | battlefield | When you conquer here, you may spend a buff to draw 1. |
+| OGN-284 | Obelisk of Power | battlefield | At the start of each player's first Beginning Phase, that player channels 1 rune. |
+| OGN-285 | Reaver's Row | battlefield | When you defend here, you may move a friendly unit here to base. |
+| OGN-286 | Reckoner's Arena | battlefield | When you hold here, activate the conquer effects of units here. |
+| OGN-287 | Sigil of the Storm | battlefield | When you conquer here, you must recycle one of your runes. (This doesn’t choose anything.) |
+| OGN-289 | Targon's Peak | battlefield | When you conquer here, ready up to 2 runes at the end of this turn. |
+| OGN-291 | The Candlelit Sanctum | battlefield | When you conquer here, look at the top two cards of your Main Deck. You may recycle one or both of them. Put those you don't back in any order. |
+| OGN-292 | The Dreaming Tree | battlefield | When a player chooses a friendly unit here with a spell for the first time each turn, they draw 1. |
+| OGN-293 | The Grand Plaza | battlefield | When you hold here, if you have 7+ units here, you win the game. |
 支持的规则仅就这套封闭卡池验证。Recruit 是衍生物，不可放入构筑主牌库。隐蔽、装备、死亡触发、卡牌反制、控制权改变等机制尚未开放；它们对应卡牌会被拒绝，不会当作白板处理。
 
 扩展卡牌：OGN-039 Kai'Sa, Survivor 支持 Accelerate（额外支付 1 energy 与 fury power 后准备进入），并在征服时每张触发抽 1。可用符文目录现覆盖六个基础 domain（Fury、Calm、Mind、Body、Chaos、Order）；符文资源验证和回收会保留这些 domain。

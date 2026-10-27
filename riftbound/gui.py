@@ -581,6 +581,10 @@ class OriginsGUI(tk.Tk):
             "legend_spell_power": "传奇能力 / Spell rainbow power",
             "legend_recruit": "传奇能力 / Recruit token",
             "legend_channel": "传奇能力 / Channel exhausted rune",
+            "unit_buff": "单位能力 / Buff self",
+            "legend_buff": "传奇能力 / Buff unit",
+            "legend_move": "传奇能力 / Move unit",
+            "legend_ganking": "传奇能力 / Grant Ganking",
             "end_turn": "结束回合 / End turn", "pass": "让过 / Pass", "commit_move": "确认移动 / Commit",
             "cancel_move": "取消移动 / Cancel", "select_unit": "选择单位 / Select unit",
             "assign_damage": "分配伤害 / Assign damage",
@@ -904,7 +908,8 @@ class OriginsGUI(tk.Tk):
                        command=self.commit_mulligan).pack(side="left", padx=2)
         for action in legal:
             if action.kind in {"end_turn", "pass", "legend_energy", "legend_spell_power",
-                               "legend_recruit", "legend_channel",
+                               "legend_recruit", "legend_channel", "unit_buff", "legend_buff",
+                               "legend_move", "legend_ganking",
                                "commit_move", "cancel_move", "order_triggers"}:
                 ttk.Button(self.actions, text=self.action_text(action),
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)

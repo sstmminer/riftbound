@@ -10,16 +10,14 @@ PATTERNS = ["README.md", "pyproject.toml", ".gitignore", ".python-version", "rif
             "tests/*.py", "tools/*.py", "docs/*.md",
             "docs/*.json", "examples/*.json", ".github/workflows/*.yml"]
 
-# GitHub's regular file limit is 100 MB.  Keep the legacy high-resolution
-# hover assets in the lightweight bundle and let newly added cards use their
-# bundled clear thumbnails; source checkouts still contain every high image.
-OMIT_HIGH_CODES = frozenset({
-    "OGN-053", "OGN-069", "OGN-083", "OGN-087", "OGN-096", "OGN-104",
-    "OGN-132", "OGN-136", "OGN-137", "OGN-169", "OGN-172", "OGN-213",
-    "OGN-220", "OGN-249", "OGN-255", "OGN-277", "OGN-280", "OGN-288",
-    "OGN-290", "OGN-295", "OGN-298",
-    "OGN-035", "OGN-043", "OGN-130", "OGN-134", "OGN-173", "OGN-216",
-    "OGN-238", "OGN-241", "OGN-275", "OGN-283", "OGN-296",
+# GitHub's regular file limit is 100 MB.  The source tree contains every
+# high-resolution hover asset; the lightweight bundle keeps a curated set and
+# falls back to the clear thumbnail for the remaining cards.
+KEEP_HIGH_CODES = frozenset({
+    "OGN-001", "OGN-003", "OGN-027", "OGN-030", "OGN-039", "OGN-065",
+    "OGN-066", "OGN-088", "OGN-131", "OGN-142", "OGN-148", "OGN-159",
+    "OGN-171", "OGN-210", "OGN-215", "OGN-217", "OGN-219", "OGN-232",
+    "OGN-234", "OGN-247", "OGN-251", "OGN-253", "OGN-265",
 })
 
 
@@ -29,7 +27,7 @@ def main():
     path = directory/"riftbound-simulator-0.3.0.zip"
     files = sorted({file for pattern in PATTERNS for file in ROOT.glob(pattern) if file.is_file()
                     and not (file.parent.name == "high"
-                             and file.stem in OMIT_HIGH_CODES)})
+                             and file.stem not in KEEP_HIGH_CODES)})
     with ZipFile(path, "w", ZIP_DEFLATED) as archive:
         for file in files:
             archive.write(file, Path("riftbound-simulator")/file.relative_to(ROOT))

@@ -8,7 +8,7 @@
 - 当前分支：`simulator`。
 - 当前规则实现版本仍为 `origins-subset/0.3.0`。
 - 第一弹目录有 298 张基础编号：142 unit、84 spell、30 gear、24 battlefield、12 legend、6 rune。
-- 目前显式执行 107 张；其余 191 张在构筑时拒绝，不会静默当作白板。
+- 目前显式执行 158 张；其余 140 张在构筑时拒绝，不会静默当作白板。
 
 ## 本轮已完成
 
@@ -107,9 +107,26 @@ Charm/Ride the Wind 使用显式目的地选择并按移动规则横置或准备
 对该战场单位的每次伤害增加 1。Navori 的可选目标目前取首个未 Buff 友军，待统一选择
 窗口接入后改为玩家确认。
 
+本轮机制簇继续加入 Blind Monk、Unforgiven、Radiant Dawn、Bounty Hunter 和 The Boss
+（OGN-257/259/261/267/269）；传奇动作覆盖 Buff、跨基地移动和临时 Ganking，Radiant
+Dawn 在 Stun 后自动 Buff 首个友军，The Boss 当前只实现征服后准备传奇的部分。
+同时加入 Bandle Tree、Fortified Position、Hallowed Tomb、Monastery of Hirana、
+Obelisk of Power、Reaver's Row、Reckoner's Arena、Sigil of the Storm、Targon's Peak、
+The Candlelit Sanctum、The Dreaming Tree 和 The Grand Plaza
+（OGN-278/279/281/282/284/285/286/287/289/291/292/293）。复杂可选效果目前采用
+首个合法目标或自动执行，并已在测试与交接记录中标明；Recruit DE/NX/Sprite 衍生物
+（OGN-271/272/274）也已纳入卡图与构筑禁止校验。
+
+同一批次补入低复杂度单位与法术：OGN-016/037/074/078/079/084/086/103/118/119、
+OGN-125/139/151/164/165/218/225/240/243/246/161/174/185/195/239，以及
+OGN-048/123/128/138/146/209/252/260/262/266/270。范围覆盖 Legion/Assault、
+Shield/Tank、Vision、Deathknell、Recruit 生成、目标 Stun、简单伤害、抽牌、准备和移动。
+OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及部分多目标选择仍采用
+简化路径，具体限制已留在对应测试与代码注释中。
+
 ## 尚未完成
 
-- 第一弹 298 张尚未全部执行。当前支持集已扩展到 107 张，完整扩展需要按机制层逐步增加处理器和回归测试。
+- 第一弹 298 张尚未全部执行。当前支持集已扩展到 158 张，完整扩展需要按机制层逐步增加处理器和回归测试。
 - 装备牌区、Hidden/reveal、反制、控制权变化、复杂替代效果和通用分割伤害还没有完成；Deathknell、Tank、Shield 当前只覆盖已注册卡牌的基础窗口。
 - 当前事件日志是派生调试记录，不是完整裁判级事件溯源；若未来支持复杂替代效果，需要把事件、替代窗口和触发窗口进一步拆成显式对象。
 - 目前没有独立官方裁判或第二套引擎做差分验证。

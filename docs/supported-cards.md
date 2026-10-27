@@ -1,12 +1,13 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 39 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 56 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
 | OGN-001 | Blazing Scorcher | unit | [Accelerate] (You may pay :rb_energy_1::rb_rune_fury: as an additional cost to have me enter ready.) |
 | OGN-003 | Chemtech Enforcer | unit | [Assault 2]; when played, discard 1. |
 | OGN-004 | Cleave | spell | [Action] (Play on your turn or in showdowns.) Give a unit [Assault 3] this turn. (+3 :rb_might: while it's an attacker.) |
+| OGN-005 | Disintegrate | spell | Deal 3 to a unit at a battlefield; draw 1 if it is killed. |
 | OGN-007 | Fury Rune | rune |  |
 | OGN-009 | Hextech Ray | spell | [Action] (Play on your turn or in showdowns.) Deal 3 to a unit at a battlefield. |
 | OGN-010 | Legion Rearguard | unit | [Accelerate] (You may pay :rb_energy_1::rb_rune_fury: as an additional cost to have me enter ready.) |
@@ -16,10 +17,26 @@
 | OGN-015 | Captain Farron | unit | Other friendly units here have [Assault]. (+1 :rb_might: while they're attackers.) |
 | OGN-024 | Void Seeker | spell | [Action] (Play on your turn or in showdowns.) Deal 4 to a unit at a battlefield. Draw 1. |
 | OGN-027 | Darius, Trifarian | unit | When you play your second card in a turn, give me +2 :rb_might: this turn and ready me. |
+| OGN-028 | Draven, Showboat | unit | My Might is increased by your points. |
+| OGN-029 | Falling Star | spell | Deal 3 to a unit twice. |
 | OGN-030 | Jinx, Demolitionist | unit | [Accelerate]; [Assault 2]; when played, discard 2. |
 | OGN-039 | Kai'Sa, Survivor | unit | [Accelerate]; when I conquer, draw 1. |
 | OGN-042 | Calm Rune | rune |  |
 | OGN-088 | Mega-Mech | unit |  |
+| OGN-085 | Falling Comet | spell | Deal 6 to a unit at a battlefield. |
+| OGN-093 | Smoke Screen | spell | Give a unit -4 :rb_might: this turn, minimum 1. |
+| OGN-095 | Stupefy | spell | Give a unit -1 :rb_might: this turn, minimum 1; draw 1. |
+| OGN-049 | Playful Phantom | unit |  |
+| OGN-052 | Stalwart Poro | unit | [Shield] (+1 :rb_might: while defending.) |
+| OGN-055 | Wielder of Water | unit | +2 :rb_might: while attacking or defending alone. |
+| OGN-065 | Wizened Elder | unit | +1 additional :rb_might: while buffed. |
+| OGN-066 | Ahri, Alluring | unit | When I hold, score 1 point. |
+| OGN-105 | Singularity | spell | Deal 6 to each of up to two units. |
+| OGN-114 | Progress Day | spell | Draw 4. |
+| OGN-131 | Dune Drake | unit | +2 :rb_might: while attacking if a ready enemy is here. |
+| OGN-142 | Mountain Drake | unit |  |
+| OGN-201 | Invert Timelines | spell | Each player discards their hand, then draws 4. |
+| OGN-229 | Vengeance | spell | Kill a unit. |
 | OGN-166 | Chaos Rune | rune |  |
 | OGN-089 | Mind Rune | rune |  |
 | OGN-126 | Body Rune | rune |  |

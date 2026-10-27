@@ -353,6 +353,41 @@ class OriginsTests(unittest.TestCase):
         self.assertEqual(target["temporary"], -1)
         self.assertEqual(len(state["players"][0]["hand"]), before)
 
+    def test_static_units_and_hold_trigger_cluster(self):
+        state = self.scenario()
+        shield = self.hand(state, "OGN-219")
+        state["cards"][shield]["code"] = "OGN-052"
+        state["fields"][0]["code"] = "OGN-276"
+        defender = self.rules._new_unit(state, "OGN-052", 0, 0, card=shield, exhausted=False)
+        state["battle"] = {"field": 0, "attacker": 1, "combat": True}
+        self.assertEqual(self.rules.might(state, defender), 3)
+
+        ahri = self.take_card(state, "OGN-219")
+        state["cards"][ahri]["code"] = "OGN-066"
+        self.rules._new_unit(state, "OGN-066", 0, 1, card=ahri, exhausted=False)
+        state["fields"][1]["controller"] = 0
+        self.rules._score(state, 0, 1, "hold", random.Random(4))
+        self.assertEqual(state["points"][0], 2)
+
+    def test_progress_day_draws_four_without_a_target(self):
+        state = self.scenario()
+        spell = self.hand(state, "OGN-024")
+        state["cards"][spell]["code"] = "OGN-114"
+        state["players"][0]["power"] = ["mind"]
+        before = len(state["players"][0]["hand"])
+        self.act(state, "play_spell", card=spell, targets=[])
+        self.drain(state)
+        self.assertEqual(len(state["players"][0]["hand"]), before + 3)
+
+    def test_vengeance_kills_a_unit(self):
+        state = self.scenario()
+        enemy = self.unit(state, player=1)
+        spell = self.hand(state, "OGN-024")
+        state["cards"][spell]["code"] = "OGN-229"
+        self.act(state, "play_spell", card=spell, targets=[enemy["id"]])
+        self.drain(state)
+        self.assertNotIn(enemy, state["units"])
+
     def test_magma_wurm_also_readies_played_recruit_tokens(self):
         state = self.scenario()
         self.unit(state, "OGN-011", location="base:0")

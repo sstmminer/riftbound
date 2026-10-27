@@ -67,11 +67,16 @@ Return 在结算链中选择弃牌区单位，目标选择不会提前泄漏给�
 本轮补入传奇 Herald of the Arcane（OGN-265）：在主阶段支付 1 点能量并横置传奇，
 在控制者基地生成 1 Might Recruit 单位衍生物。该主动能力复用现有传奇资源动作与
 Recruit token 原语，并加入能量、横置和生成位置回归测试。
+同时补入 Nine-Tailed Fox（OGN-255）的攻击替代效果：敌方攻击者进入由该传奇控制的
+战场时获得本回合 -1 Might，最低仍为 1；该修正复用本回合临时力量层并加入战斗窗口测试。
+Relentless Storm（OGN-249）也加入了可选的 `legend_channel` 动作：本回合打出
+Mighty 单位后可横置传奇，从符文牌库顶端横置引导一枚符文；机会不会跨回合保留。
 
 本轮补入 5 张可执行战场：Back-Alley Bar（OGN-277）在单位离开该战场时给予本回合
 1 Might；Grove of the God-Willow（OGN-280）持有时抽 1；Startipped Peak（OGN-288）
 持有时引导 1 枚横置符文；Vilemaw's Lair（OGN-295）禁止单位从该战场移动回基地；
-Zaun Warrens（OGN-298）征服时弃 1 再抽 1。后三类触发接入统一的 hold/conquer
+The Arena's Greatest（OGN-290）在每名玩家首次开始阶段给予 1 点；Zaun Warrens
+（OGN-298）征服时弃 1 再抽 1。后三类触发接入统一的 hold/conquer
 计分入口；移动限制在合法移动生成阶段生效。Zaun Warrens 当前在无选择窗口的场景中按
 手牌顺序弃牌，后续若接入通用弃牌选择窗口应替换为显式玩家选择。
 

@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 96 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 107 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -101,6 +101,17 @@
 | OGN-290 | The Arena's Greatest | battlefield | At the start of each player's first Beginning Phase, that player gains 1 point. |
 | OGN-295 | Vilemaw's Lair | battlefield | Units can't move from here to base. |
 | OGN-298 | Zaun Warrens | battlefield | When you conquer here, discard 1, then draw 1. |
+| OGN-035 | Vayne, Hunter | unit | [Assault 3] (+3 :rb_might: while I'm an attacker.) If an opponent controls a battlefield, I enter ready. When I conquer, you may pay :rb_energy_1: to return me to my owner's hand. |
+| OGN-043 | Charm | spell | Move an enemy unit. |
+| OGN-130 | Crackshot Corsair | unit | When I attack, deal 1 to an enemy unit here. |
+| OGN-134 | Mobilize | spell | Channel 1 rune exhausted. If you can't, draw 1. |
+| OGN-173 | Ride the Wind | spell | [Action] (Play on your turn or in showdowns.) Move a friendly unit and ready it. |
+| OGN-216 | Soaring Scout | unit | [Deathknell] — Channel 1 rune exhausted. (When I die, get the effect.) |
+| OGN-238 | Leona, Determined | unit | [Shield] (+1 :rb_might: while I'm a defender.) When I attack, stun an enemy unit here. (It doesn't deal combat damage this turn.) |
+| OGN-241 | Shen, Kinkou | unit | [Reaction] (Play any time, even before spells and abilities resolve, including to a battlefield you control.) [Shield 2] (+2 :rb_might: while I'm a defender.) [Tank] (I must be assigned combat damage first.) |
+| OGN-275 | Altar to Unity | battlefield | When you hold here, play a 1 :rb_might: Recruit unit token in your base. |
+| OGN-283 | Navori Fighting Pit | battlefield | When you hold here, buff a unit here. (If it doesn't have a buff, it gets a +1 :rb_might: buff.) |
+| OGN-296 | Void Gate | battlefield | Spells and abilities deal 1 Bonus Damage to units here. (Each instance of damage the spell deals to a unit here is increased by 1.) |
 支持的规则仅就这套封闭卡池验证。Recruit 是衍生物，不可放入构筑主牌库。隐蔽、装备、死亡触发、卡牌反制、控制权改变等机制尚未开放；它们对应卡牌会被拒绝，不会当作白板处理。
 
 扩展卡牌：OGN-039 Kai'Sa, Survivor 支持 Accelerate（额外支付 1 energy 与 fury power 后准备进入），并在征服时每张触发抽 1。可用符文目录现覆盖六个基础 domain（Fury、Calm、Mind、Body、Chaos、Order）；符文资源验证和回收会保留这些 domain。

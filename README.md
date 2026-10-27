@@ -8,7 +8,7 @@ Python 3.12+，支持双人自动对战、自博弈样本和确定性回放。**
 - **小型下载包**：[riftbound-simulator-0.3.0.zip](https://github.com/sstmminer/riftbound/raw/refs/heads/simulator/downloads/riftbound-simulator-0.3.0.zip)
 - **图形界面**：运行 `python -m riftbound gui`，支持卡图、符文区、点击、右键菜单、拖拽、动态战场和洞察弹窗；`--variant vision` 可直接演示 Vision。
 - **下载、安装和测试攻略**：[docs/quickstart-zh.md](docs/quickstart-zh.md)
-- **96 张可执行卡牌**：[docs/supported-cards.md](docs/supported-cards.md)
+- **107 张可执行卡牌**：[docs/supported-cards.md](docs/supported-cards.md)
 - **规则覆盖与限制**：[docs/rules-coverage.md](docs/rules-coverage.md)
 - **扩展开发日志与交接记录**：[docs/development-log.md](docs/development-log.md)
 

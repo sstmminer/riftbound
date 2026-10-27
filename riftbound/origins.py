@@ -144,8 +144,13 @@ class OriginsRules:
             value += 1
         if role == "defender" and unit["code"] == "OGN-054":
             value += 1
+        if role == "defender" and unit["code"] == "OGN-238":
+            value += 1
+        if role == "defender" and unit["code"] == "OGN-241":
+            value += 2
         if role == "attacker":
             value += int(unit["code"] in {"OGN-210", "OGN-215"}) + unit["assault"]
+            value += 3 if unit["code"] == "OGN-035" else 0
             value += 2 if unit["code"] in {"OGN-003", "OGN-030"} else 0
             if unit["code"] == "OGN-131" and any(not other["exhausted"]
                                                     for other in self._units(state, 1-unit["owner"], location)):
@@ -173,6 +178,14 @@ class OriginsRules:
         row["runes"].append(rune)
         return True
 
+    def _deal_damage(self, state, unit, amount):
+        """Apply spell/ability damage, including Void Gate's bonus damage."""
+        if unit is None:
+            return
+        if self._is_field(state, unit["location"]) and state["fields"][unit["location"]]["code"] == "OGN-296":
+            amount += 1
+        unit["damage"] += amount
+
     def _deflect(self, state, unit):
         return int(unit["code"] == "OGN-013" or
                    (unit["code"] == "OGN-232" and self.might(state, unit) >= 5))
@@ -183,7 +196,7 @@ class OriginsRules:
                 or (self._is_field(state, location) and state["fields"][location]["code"] == "OGN-297"))
 
     def _tank(self, unit):
-        return unit["code"] in {"OGN-054", "OGN-087", "OGN-137"}
+        return unit["code"] in {"OGN-054", "OGN-087", "OGN-137", "OGN-241"}
 
     def _cleanup(self, state, rng=None):
         for player in (0, 1):
@@ -191,6 +204,7 @@ class OriginsRules:
                 state["winner"] = player
                 return
         deathknell = []
+        deathknell_channel = []
         while True:
             dead = [u for u in state["units"] if u["damage"] > 0 and u["damage"] >= self.might(state, u)]
             if not dead:
@@ -201,10 +215,14 @@ class OriginsRules:
                     state["players"][unit["owner"]]["trash"].append(unit["card"])
                 if unit["code"] == "OGN-096":
                     deathknell.append(unit["owner"])
+                if unit["code"] == "OGN-216":
+                    deathknell_channel.append(unit["owner"])
         if deathknell:
             draw_rng = rng if rng is not None else random.Random(0)
             for player in deathknell:
                 self._draw(state, player, 1, draw_rng)
+        for player in deathknell_channel:
+            self._channel_rune(state, player, exhausted=True)
         if state["phase"] == "main":
             for field, row in enumerate(state["fields"]):
                 if row["controller"] is not None and not self._units(state, row["controller"], field):
@@ -233,8 +251,15 @@ class OriginsRules:
         # resources and units.
         if result in {"point", "draw"} and method == "hold":
             code = state["fields"][field]["code"]
-            if code == "OGN-280":  # Grove of the God-Willow
+            if code == "OGN-275":
+                self._new_unit(state, TOKEN, player, f"base:{player}")
+            elif code == "OGN-280":  # Grove of the God-Willow
                 self._draw(state, player, 1, rng)
+            elif code == "OGN-283":
+                for unit in self._units(state, player, field):
+                    if not unit["buff"]:
+                        self._apply_buff(state, unit)
+                        break
             elif code == "OGN-288":  # Startipped Peak
                 row = state["players"][player]
                 if row["rune_deck"]:
@@ -345,8 +370,12 @@ class OriginsRules:
             if code not in SPELL_CODES or (state["phase"] == "chain" and code not in REACTIONS):
                 continue
             data = self.cards[code]
-            if code in {"OGN-047", "OGN-083", "OGN-114", "OGN-127", "OGN-129", "OGN-133", "OGN-170", "OGN-201", "OGN-233"}:
+            if code in {"OGN-047", "OGN-083", "OGN-114", "OGN-127", "OGN-129", "OGN-133", "OGN-134", "OGN-170", "OGN-201", "OGN-233"}:
                 targets = [[]]
+            elif code == "OGN-043":
+                targets = [[u["id"]] for u in self._units(state, 1-player)]
+            elif code == "OGN-173":
+                targets = [[u["id"]] for u in self._units(state, player)]
             elif code in {"OGN-053", "OGN-069", "OGN-104"}:
                 targets = [[u["id"]] for u in self._units(state, player)]
             elif code in {"OGN-169", "OGN-172", "OGN-213"}:
@@ -378,21 +407,28 @@ class OriginsRules:
             if code == "OGN-207":
                 buffs += [u["id"] for u in self._units(state, player) if u["buff"]]
             for selected in targets:
+                destinations = [None]
+                if code in {"OGN-043", "OGN-173"}:
+                    unit = self._unit(state, selected[0])
+                    destinations = [f"base:{unit['owner']}", *range(len(state["fields"]))]
+                    destinations = [destination for destination in destinations
+                                    if destination != unit["location"]]
                 deflect = sum(self._deflect(state, self._unit(state, uid)) for uid in selected
                               if self._unit(state, uid)["owner"] != player)
-                for spend in buffs:
-                    energy = 0 if spend is not None else data["energy"]
-                    if code == "OGN-014" and spend is None:
-                        highest = max((self.might(state, u) for u in self._units(state, player)), default=0)
-                        energy = max(0, energy - highest)
-                    if code == "OGN-047" and spend is None:
-                        if state["victory"] - state["points"][1-player] <= 3:
-                            energy = max(0, energy - 2)
-                    power = 0 if spend is not None else data["power_cost"]
-                    for payment in self._payments(state, player, energy, data["domains"], power, deflect,
-                                                  spell=True):
-                        result.append(Action.make("play_spell", card=card, targets=selected,
-                                                  spend_buff=spend, payment=payment))
+                for destination in destinations:
+                    for spend in buffs:
+                        energy = 0 if spend is not None else data["energy"]
+                        if code == "OGN-014" and spend is None:
+                            highest = max((self.might(state, u) for u in self._units(state, player)), default=0)
+                            energy = max(0, energy - highest)
+                        if code == "OGN-047" and spend is None:
+                            if state["victory"] - state["points"][1-player] <= 3:
+                                energy = max(0, energy - 2)
+                        power = 0 if spend is not None else data["power_cost"]
+                        for payment in self._payments(state, player, energy, data["domains"], power, deflect,
+                                                      spell=True):
+                            result.append(Action.make("play_spell", card=card, targets=selected,
+                                                      destination=destination, spend_buff=spend, payment=payment))
         return result
 
     def _unit_actions(self, state):
@@ -660,7 +696,20 @@ class OriginsRules:
             if unit is None or (code in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085", "OGN-105"}
                                 and not self._is_field(state, unit["location"])):
                 continue
-            if code == "OGN-053":
+            if code in {"OGN-043", "OGN-173"}:
+                destination = item.get("destination")
+                valid_destination = (destination == f"base:{unit['owner']}" or
+                                     self._is_field(state, destination))
+                valid_owner = ((code == "OGN-043" and unit["owner"] != owner) or
+                               (code == "OGN-173" and unit["owner"] == owner))
+                if valid_destination and valid_owner and destination != unit["location"]:
+                    origin = unit["location"]
+                    unit["location"] = destination
+                    unit["exhausted"] = code == "OGN-043"
+                    if (self._is_field(state, origin)
+                            and state["fields"][origin]["code"] == "OGN-277"):
+                        unit["temporary"] += 1
+            elif code == "OGN-053":
                 state["players"][owner]["buff_bonus"] = 1
                 self._apply_buff(state, unit)
             elif code == "OGN-069":
@@ -673,12 +722,12 @@ class OriginsRules:
             elif code == "OGN-004":
                 unit["assault"] += 3
             elif code == "OGN-014":
-                unit["damage"] += 5
+                self._deal_damage(state, unit, 5)
             elif code in {"OGN-005", "OGN-009", "OGN-024", "OGN-029", "OGN-085"}:
-                unit["damage"] += {"OGN-005": 3, "OGN-009": 3, "OGN-024": 4,
-                                    "OGN-029": 3, "OGN-085": 6}[code]
+                self._deal_damage(state, unit, {"OGN-005": 3, "OGN-009": 3, "OGN-024": 4,
+                                                "OGN-029": 3, "OGN-085": 6}[code])
             elif code == "OGN-105":
-                unit["damage"] += 6
+                self._deal_damage(state, unit, 6)
             elif code == "OGN-229":
                 unit["damage"] = max(unit["damage"], self.might(state, unit))
             elif code == "OGN-093":
@@ -717,6 +766,9 @@ class OriginsRules:
         if code == "OGN-047":
             self._draw(state, owner, 1, rng)
             self._channel_rune(state, owner)
+        elif code == "OGN-134":
+            if not self._channel_rune(state, owner, exhausted=True):
+                self._draw(state, owner, 1, rng)
         elif code == "OGN-233":
             for unit in self._units(state, owner):
                 unit["temporary"] += 5
@@ -724,11 +776,11 @@ class OriginsRules:
             field = state["battle"]["field"]
             for unit in self._units(state, location=field):
                 if unit["owner"] != owner:
-                    unit["damage"] += 2
+                    self._deal_damage(state, unit, 2)
         elif code == "OGN-133":
             for unit in self._units(state):
                 if self._is_field(state, unit["location"]):
-                    unit["damage"] += 1
+                    self._deal_damage(state, unit, 1)
         target_ids = set(item["targets"])
         self._cleanup(state, rng)
         killed = any(uid not in {u["id"] for u in state["units"]} for uid in target_ids)
@@ -834,6 +886,8 @@ class OriginsRules:
                 ready = (args["accelerate"] or any(u["code"] == "OGN-011" for u in self._units(state, player))
                          or row.get("ready_play", False))
                 ready = ready or code == "OGN-159"
+                if code == "OGN-035":
+                    ready = ready or any(field["controller"] == 1-player for field in state["fields"])
                 unit = self._new_unit(state, code, player, args["location"], card=card, exhausted=not ready)
                 row["played"] += 1
                 if (row["legend"] == "OGN-249" and not row["legend_exhausted"]
@@ -886,7 +940,8 @@ class OriginsRules:
                 row["played"] += 1
                 effect = "return_unit" if code == "OGN-170" else "spell"
                 self._enter_chain(state, [{"effect": effect, "owner": player, "card": card,
-                                           "code": code, "targets": args["targets"]}])
+                                           "code": code, "targets": args["targets"],
+                                           "destination": args.get("destination")}])
                 self._cleanup(state, rng)
                 self._triggers(state, self._second_card_triggers(state, player))
         elif kind == "order_triggers":
@@ -983,7 +1038,12 @@ class OriginsRules:
         defenders = self._units(state, 1-battle["attacker"], field)
         if any(unit["code"] == "OGN-148" for unit in attackers):
             for unit in defenders:
-                unit["damage"] += 3
+                self._deal_damage(state, unit, 3)
+        for _ in range(sum(unit["code"] == "OGN-130" for unit in attackers)):
+            if defenders:
+                self._deal_damage(state, defenders[0], 1)
+        if any(unit["code"] == "OGN-238" for unit in attackers) and defenders:
+            defenders[0]["stunned"] = True
         if any(unit["code"] == "OGN-159" for unit in attackers):
             for unit in defenders:
                 if unit["damage"] > 0:

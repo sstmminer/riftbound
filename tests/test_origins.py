@@ -190,6 +190,82 @@ class OriginsTests(unittest.TestCase):
         self.assertNotIn(sentry, state["units"])
         self.assertEqual(len(state["players"][0]["hand"]), before + 1)
 
+    def test_charm_moves_enemy_and_ride_the_wind_moves_ready(self):
+        state = self.scenario()
+        enemy = self.unit(state, "OGN-219", player=1, location=0)
+        charm = self.hand(state, "OGN-024")
+        state["cards"][charm]["code"] = "OGN-043"
+        state["players"][0]["power"] = ["calm"]
+        self.act(state, "play_spell", card=charm, targets=[enemy["id"]], destination="base:1")
+        self.drain(state)
+        self.assertEqual(enemy["location"], "base:1")
+        self.assertTrue(enemy["exhausted"])
+
+        friendly = self.unit(state, "OGN-219", location="base:0")
+        ride = self.hand(state, "OGN-206")
+        state["cards"][ride]["code"] = "OGN-173"
+        state["players"][0]["power"] = ["chaos"]
+        self.act(state, "play_spell", card=ride, targets=[friendly["id"]], destination=0)
+        self.drain(state)
+        self.assertEqual(friendly["location"], 0)
+        self.assertFalse(friendly["exhausted"])
+
+    def test_mobilize_channels_exhausted_rune_or_draws(self):
+        state = self.scenario()
+        spell = self.hand(state, "OGN-024")
+        state["cards"][spell]["code"] = "OGN-134"
+        before_deck = len(state["players"][0]["rune_deck"])
+        state["players"][0]["power"] = []
+        self.act(state, "play_spell", card=spell, targets=[])
+        self.drain(state)
+        self.assertEqual(len(state["players"][0]["rune_deck"]), before_deck - 1)
+        self.assertTrue(state["players"][0]["runes"][-1]["exhausted"])
+
+    def test_vayne_enters_ready_and_has_assault_three(self):
+        state = self.scenario()
+        state["fields"][0]["controller"] = 1
+        card = self.hand(state, "OGN-219")
+        state["cards"][card]["code"] = "OGN-035"
+        self.act(state, "play_unit", card=card, location="base:0")
+        self.drain(state)
+        unit = next(u for u in state["units"] if u["card"] == card)
+        self.assertFalse(unit["exhausted"])
+        unit["location"] = 0
+        state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+        self.assertEqual(self.rules.might(state, unit), 6)
+
+    def test_soaring_scout_deathknell_channels_exhausted_rune(self):
+        state = self.scenario()
+        scout = self.unit(state, "OGN-219", location=0)
+        scout["code"] = "OGN-216"
+        before_deck = len(state["players"][0]["rune_deck"])
+        scout["damage"] = self.rules.might(state, scout)
+        self.rules._cleanup(state, random.Random(7))
+        self.assertEqual(len(state["players"][0]["rune_deck"]), before_deck - 1)
+        self.assertTrue(state["players"][0]["runes"][-1]["exhausted"])
+
+    def test_attack_triggers_for_crackshot_and_leona(self):
+        for code in ("OGN-130", "OGN-238"):
+            with self.subTest(code=code):
+                state = self.scenario()
+                attacker = self.unit(state, "OGN-219", location=0)
+                attacker["code"] = code
+                defender = self.unit(state, "OGN-219", player=1, location=0)
+                state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+                self.rules._close_showdown(state, random.Random(7))
+                if code == "OGN-130":
+                    self.assertEqual(defender["damage"], 1)
+                else:
+                    self.assertTrue(defender["stunned"])
+
+    def test_shen_has_shield_two_and_tank(self):
+        state = self.scenario()
+        shen = self.unit(state, "OGN-219", player=1, location=0)
+        shen["code"] = "OGN-241"
+        state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+        self.assertEqual(self.rules.might(state, shen), 6)
+        self.assertTrue(self.rules._tank(shen))
+
     def test_rune_prison_stuns_target_and_clears_at_turn_end(self):
         state = self.scenario()
         spell = self.hand(state, "OGN-009")

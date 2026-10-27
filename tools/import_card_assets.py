@@ -15,6 +15,7 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import tempfile
 
@@ -64,6 +65,17 @@ def _convert(source: Path, destination: Path, *arguments: str) -> None:
         shutil.copyfile(source, destination)
 
 
+def _is_portrait_png(path: Path) -> bool:
+    """Read PNG dimensions without adding a Pillow runtime dependency."""
+
+    with path.open("rb") as stream:
+        header = stream.read(24)
+    if header[:8] != b"\x89PNG\r\n\x1a\n" or len(header) < 24:
+        return False
+    width, height = struct.unpack(">II", header[16:24])
+    return height > width
+
+
 def import_assets(codes: list[str], *, archive_root: Path | None = None,
                   ref: str = "origin/archive-download",
                   data_dir: Path = ROOT / "riftbound/data") -> list[str]:
@@ -97,12 +109,8 @@ def import_assets(codes: list[str], *, archive_root: Path | None = None,
             shutil.copyfile(source, high_path)
             # All unit/legend/rune portrait assets need the rotated exhausted
             # state.  Landscape battlefields are intentionally left alone.
-            if source.stat().st_size and source.suffix.lower() == ".png":
-                from PIL import Image
-
-                with Image.open(source) as image:
-                    if image.height > image.width:
-                        _convert(portrait, images / f"{code}-horizontal.png", "-rotate", "90")
+            if source.stat().st_size and source.suffix.lower() == ".png" and _is_portrait_png(source):
+                _convert(portrait, images / f"{code}-horizontal.png", "-rotate", "90")
             manifest_cards[code] = f"images/OGN/{code}.png"
             imported.append(code)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

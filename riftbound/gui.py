@@ -40,6 +40,7 @@ class OriginsGUI(tk.Tk):
         self.seed = seed
         self.opponent = GreedyPolicy() if opponent == "greedy" else None
         self.drag_card = None
+        self._mulligan_press_uid = None
         self.selected_units = set()
         self.selected_mulligan = set()
         self.labels = {}
@@ -348,15 +349,24 @@ class OriginsGUI(tk.Tk):
             # first opening render cannot lose the release event while the
             # hand fan is being rebuilt.
             self.mulligan_click(uid)
+            self._mulligan_press_uid = uid
             self.drag_card = None
             return "break"
         self.drag_card = (uid, zone, event.x_root, event.y_root)
 
     def end_drag(self, event, uid, zone):
         if not self.drag_card or self.drag_card[0] != uid:
+            if (zone == "hand" and self.env.current_player == 0
+                    and self.env.observe(0)["phase"] == "mulligan"
+                    and self._mulligan_press_uid != uid):
+                # Fallback for the first Tk event delivered to the card's
+                # release binding before the press binding has been installed.
+                self.mulligan_click(uid)
+            self._mulligan_press_uid = None
             return
         started = self.drag_card
         self.drag_card = None
+        self._mulligan_press_uid = None
         if abs(event.x_root - started[2]) < 6 and abs(event.y_root - started[3]) < 6:
             if zone == "hand" and self.env.current_player == 0 and self.env.observe(0)["phase"] == "mulligan":
                 self.mulligan_click(uid)
@@ -705,6 +715,8 @@ class OriginsGUI(tk.Tk):
 
     def render_opponent(self, obs):
         body = self._clear("opponent")
+        body.grid_rowconfigure(0, weight=1)
+        body.grid_rowconfigure(1, weight=0, minsize=120)
         body.grid_columnconfigure(1, weight=2, minsize=320)
         body.grid_columnconfigure(2, weight=1, minsize=260)
         body.grid_columnconfigure(3, weight=0, minsize=250)
@@ -712,19 +724,19 @@ class OriginsGUI(tk.Tk):
         identity = tk.Frame(body, bg="#1b2a3e")
         identity.grid(row=0, column=0, sticky="nsw")
         self._identity(identity, obs, 1, compact=True)
-        hand = self._subzone(body, f"对手手牌 · {obs['players'][1]['hand_count']} 张", width=500, height=170)
+        hand = self._subzone(body, f"对手手牌 · {obs['players'][1]['hand_count']} 张", width=500)
         hand.grid(row=0, column=1, sticky="nsew", padx=4)
         self._fan(hand, range(min(10, obs["players"][1]["hand_count"])),
                   lambda parent, _item: self._image_card(parent, BACK_CODE, factor=4,
                                                          compact_label="", pack=False, show_label=False),
                   per_row=10, row_height=135)
-        rune_zone = self._subzone(body, "对手符文区", width=280, height=200)
+        rune_zone = self._subzone(body, "对手符文区", width=280)
         rune_zone.grid(row=0, column=2, sticky="nse", padx=4)
         self._fan(rune_zone, obs["players"][1]["runes"],
                   lambda parent, rune: self._rune_card(parent, rune, player=1,
                                                         pack=False, show_label=False),
                   per_row=10, row_height=130)
-        piles = self._subzone(body, "对手牌堆 / Opponent Piles", width=180, height=170)
+        piles = self._subzone(body, "对手牌堆 / Opponent Piles", width=250)
         piles.grid(row=0, column=3, sticky="nsew", padx=4)
         self._stack(piles, obs["players"][1]["trash"], owner=1,
                     title="P1 弃牌 / Trash", factor=5)
@@ -772,6 +784,7 @@ class OriginsGUI(tk.Tk):
         body.grid_columnconfigure(0, weight=1)
         fields = tk.Frame(body, bg="#1b2a3e")
         fields.grid(row=0, column=0, sticky="nsew")
+        fields.grid_rowconfigure(0, weight=1)
         for index in range(len(obs["fields"])):
             fields.grid_columnconfigure(index, weight=1)
         for index, field in enumerate(obs["fields"]):
@@ -817,14 +830,14 @@ class OriginsGUI(tk.Tk):
         identity.grid(row=1, column=0, sticky="nsw")
         self._identity(identity, obs, 0)
 
-        rune_zone = self._subzone(body, "符文区 / Runes · 左键横置 · 右键回收", width=280, height=200)
+        rune_zone = self._subzone(body, "符文区 / Runes · 左键横置 · 右键回收", width=280)
         rune_zone.grid(row=1, column=1, sticky="nsew", padx=4)
         self._fan(rune_zone, obs["players"][0]["runes"],
                   lambda parent, rune: self._rune_card(parent, rune, player=0,
                                                         pack=False, show_label=False),
                   per_row=10, row_height=130)
 
-        hand_zone = self._subzone(body, f"手牌 / Hand · {len(obs['hand'])} 张", width=500, height=170)
+        hand_zone = self._subzone(body, f"手牌 / Hand · {len(obs['hand'])} 张", width=500)
         hand_zone.grid(row=1, column=2, sticky="nsew", padx=4)
         self._fan(hand_zone, obs["hand"],
                   lambda parent, card: self._image_card(parent, card["code"], uid=card["id"],
@@ -846,7 +859,7 @@ class OriginsGUI(tk.Tk):
                              zone="base", factor=4,
                              compact_label=f"P{unit['owner']} · M{unit['might']}",
                              exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
-        piles = self._subzone(body, "牌堆 / Player Piles", width=250, height=170)
+        piles = self._subzone(body, "牌堆 / Player Piles", width=250)
         piles.grid(row=1, column=4, sticky="nsew", padx=4)
         self._stack(piles, obs["players"][0]["trash"], owner=0,
                     title="P0 弃牌 / Trash", factor=5)

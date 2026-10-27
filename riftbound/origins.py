@@ -121,6 +121,8 @@ class OriginsRules:
     def might(self, state, unit):
         value = self.cards[unit["code"]]["might"] + unit["buff"] + unit["temporary"]
         location = unit["location"]
+        if unit["code"] == "OGN-028":
+            value += state["points"][unit["owner"]]
         if self._is_field(state, location) and state["fields"][location]["code"] == "OGN-294":
             value += 1
         role = self._role(state, unit)
@@ -131,7 +133,7 @@ class OriginsRules:
                          for other in self._units(state, unit["owner"], location))
         if role == "defender" and unit["code"] == "OGN-232" and value >= 5:
             value += 1
-        return value
+        return max(1, value)
 
     def _deflect(self, state, unit):
         return int(unit["code"] == "OGN-013" or
@@ -249,11 +251,15 @@ class OriginsRules:
             if code not in SPELL_CODES or (state["phase"] == "chain" and code not in REACTIONS):
                 continue
             data = self.cards[code]
-            if code == "OGN-206":
+            if code == "OGN-029":
+                targets = [[a, b] for a in [u["id"] for u in state["units"]]
+                           for b in [u["id"] for u in state["units"]]]
+            elif code == "OGN-206":
                 targets = [list(pair) for pair in combinations([u["id"] for u in self._units(state, player)], 2)]
             else:
                 targets = [[u["id"]] for u in state["units"]
-                           if code not in {"OGN-009", "OGN-024"} or self._is_field(state, u["location"])]
+                           if code not in {"OGN-005", "OGN-009", "OGN-024", "OGN-085"}
+                           or self._is_field(state, u["location"])]
             buffs = [None]
             if code == "OGN-207":
                 buffs += [u["id"] for u in self._units(state, player) if u["buff"]]
@@ -436,17 +442,23 @@ class OriginsRules:
         code, owner = item["code"], item["owner"]
         for uid in item["targets"]:
             unit = self._unit(state, uid)
-            if unit is None or (code in {"OGN-009", "OGN-024"}
+            if unit is None or (code in {"OGN-005", "OGN-009", "OGN-024", "OGN-085"}
                                 and not self._is_field(state, unit["location"])):
                 continue
             if code in {"OGN-206", "OGN-207"}:
                 unit["temporary"] += 2 if code == "OGN-206" else 3
             elif code == "OGN-004":
                 unit["assault"] += 3
-            elif code in {"OGN-009", "OGN-024"}:
-                unit["damage"] += 3 if code == "OGN-009" else 4
+            elif code in {"OGN-005", "OGN-009", "OGN-024", "OGN-029", "OGN-085"}:
+                unit["damage"] += {"OGN-005": 3, "OGN-009": 3, "OGN-024": 4,
+                                    "OGN-029": 3, "OGN-085": 6}[code]
+            elif code == "OGN-093":
+                unit["temporary"] -= 4
+            elif code == "OGN-095":
+                unit["temporary"] -= 1
+        before = len(state["units"])
         self._cleanup(state)
-        if code == "OGN-024" and state["winner"] is None:
+        if code in {"OGN-005", "OGN-024", "OGN-095"} and state["winner"] is None:
             self._draw(state, owner, 1, rng)
         state["players"][owner]["trash"].append(item["card"])
         return True

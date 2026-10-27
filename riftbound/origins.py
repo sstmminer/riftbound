@@ -70,6 +70,8 @@ class OriginsRules:
         registry.register("ready_self", self._effect_ready_self)
         registry.register("draw_one", self._effect_draw_one)
         registry.register("channel_one", self._effect_channel_one)
+        registry.register("reaver_recall_target", self._effect_reaver_recall_target)
+        registry.register("fortified_shield", self._effect_fortified_shield)
         registry.register("return_unit", self._effect_return_unit)
         registry.register("spell", self._effect_spell)
         return registry
@@ -81,7 +83,9 @@ class OriginsRules:
                  "units": [], "fields": [], "points": [0, 0], "scored": [[], []],
                  "chain": [], "pending": [], "passes": 0, "battle": None,
                  "beginning_awarded": [False, False], "dreaming_tree_used": [], "selection": None,
-                 "decision": None, "legend_options": [], "winner": None, "next_object": 0}
+                 "decision": None, "optional": [], "optional_return": None,
+                 "optional_ordered": False, "pending_showdown": False,
+                 "legend_options": [], "winner": None, "next_object": 0}
         for player, deck in enumerate(self.decks):
             physical = []
             for index, code in enumerate(deck["main"]):
@@ -289,6 +293,64 @@ class OriginsRules:
         if result.immediate_winner is not None:
             state["winner"] = result.immediate_winner
 
+    def _queue_optional(self, state, player, effect, **payload):
+        state["next_object"] += 1
+        optional = state.setdefault("optional", [])
+        if not optional:
+            state["optional_return"] = {
+                "phase": state["phase"], "actor": state["actor"],
+                "passes": state.get("passes", 0),
+            }
+            state["optional_ordered"] = False
+            state["phase"], state["actor"], state["passes"] = "optional", player, 0
+        optional.append({
+            "id": f"o{state['next_object']}", "player": player, "effect": effect, **payload
+        })
+
+    def _resolve_optional(self, state, item, rng):
+        player = item["player"]
+        effect = item["effect"]
+        if effect == "channel_rune":
+            self._channel_rune(state, player, exhausted=True)
+        elif effect == "return_champion":
+            row = state["players"][player]
+            card = item.get("candidate")
+            if card in row["trash"] and not row["champion"]:
+                row["trash"].remove(card)
+                row["champion"].append(card)
+        elif effect == "spend_buff_draw":
+            target = self._unit(state, item.get("target"))
+            if target is not None and target["owner"] == player and target["buff"]:
+                target["buff"] = 0
+                self._draw(state, player, 1, rng)
+        elif effect == "ready_runes":
+            for rune in state["players"][player]["runes"][:2]:
+                rune["exhausted"] = False
+        elif effect == "recycle_top_two":
+            row = state["players"][player]
+            for _ in range(min(2, len(row["main"]))):
+                row["main"].append(row["main"].pop(0))
+        elif effect == "reaver_recall":
+            field = state.get("battle", {}).get("field")
+            targets = self._units(state, player, field) if self._is_field(state, field) else []
+            if targets:
+                state["decision"] = {
+                    "kind": "target", "player": player,
+                    "targets": [unit["id"] for unit in targets],
+                    "item": {"effect": "reaver_recall_target", "owner": player},
+                    "resume": "close_showdown",
+                }
+                state["phase"], state["actor"] = "decision", player
+                return False
+        elif effect == "reaver_recall_target":
+            target = self._unit(state, item.get("target"))
+            if target is not None and self._is_field(state, target["location"]):
+                target["location"] = f"base:{target['owner']}"
+        elif effect == "fortified_shield":
+            target = self._unit(state, item.get("target"))
+            if target is not None and target["location"] == state.get("battle", {}).get("field"):
+                target["combat_shield"] = 2
+
     def _recycle_one_rune(self, state, player):
         row = state["players"][player]
         if not row["runes"]:
@@ -326,35 +388,27 @@ class OriginsRules:
                 candidate = next((uid for uid in row["trash"]
                                   if state["cards"][uid]["code"] == chosen), None)
                 if candidate is not None:
-                    row["trash"].remove(candidate)
-                    row["champion"].append(candidate)
+                    self._queue_optional(state, player, "return_champion", candidate=candidate)
             elif code == "OGN-286":
                 for _ in range(sum(u["code"] == "OGN-039" for u in self._units(state, player, field))):
                     self._draw(state, player, 1, rng)
             elif code == "OGN-293" and len(self._units(state, player, field)) >= 7:
                 state["winner"] = player
-            elif code == "OGN-288":  # Startipped Peak
-                row = state["players"][player]
-                if row["rune_deck"]:
-                    rune = {**row["rune_deck"].pop(0), "exhausted": True}
-                    row["runes"].append(rune)
+            elif code == "OGN-288" and state["players"][player]["rune_deck"]:
+                self._queue_optional(state, player, "channel_rune")
         if result in {"point", "draw"} and method == "conquer":
             code = state["fields"][field]["code"]
             if code == "OGN-282":
                 row = state["players"][player]
                 target = next((u for u in self._units(state, player, field) if u["buff"]), None)
                 if target is not None:
-                    target["buff"] = 0
-                    self._draw(state, player, 1, rng)
+                    self._queue_optional(state, player, "spend_buff_draw", target=target["id"])
             elif code == "OGN-287":
                 self._recycle_one_rune(state, player)
             elif code == "OGN-289":
-                for rune in state["players"][player]["runes"][:2]:
-                    rune["exhausted"] = False
+                self._queue_optional(state, player, "ready_runes")
             elif code == "OGN-291":
-                row = state["players"][player]
-                for _ in range(min(2, len(row["main"]))):
-                    row["main"].append(row["main"].pop(0))
+                self._queue_optional(state, player, "recycle_top_two")
             elif code == "OGN-298":  # Zaun Warrens
                 row = state["players"][player]
                 if row["hand"]:
@@ -531,6 +585,7 @@ class OriginsRules:
             buffs = [None]
             if code in {"OGN-146", "OGN-207"}:
                 buffs += [u["id"] for u in self._units(state, player) if u["buff"]]
+            targeted_added = False
             for selected in targets:
                 destinations = [None]
                 if code in {"OGN-043", "OGN-173", "OGN-270"}:
@@ -559,6 +614,23 @@ class OriginsRules:
                                                       spell=True):
                             result.append(Action.make("play_spell", card=card, targets=selected,
                                                       destination=destination, spend_buff=spend, payment=payment))
+                            # Offer a UI-driven target window alongside the legacy
+                            # fully-expanded actions.  Existing agents remain
+                            # compatible while interactive clients can select and
+                            # confirm targets one at a time.
+                            if code in {"OGN-105", "OGN-206"} and not targeted_added:
+                                candidates = ([u["id"] for u in state["units"]
+                                               if self._is_field(state, u["location"])]
+                                              if code == "OGN-105" else
+                                              [u["id"] for u in self._units(state, player)])
+                                result.append(Action.make(
+                                    "play_spell_targeted", card=card,
+                                    target_candidates=candidates,
+                                    target_min=0 if code == "OGN-105" else 2,
+                                    target_max=2,
+                                    destination=destination, spend_buff=spend,
+                                    payment=payment))
+                                targeted_added = True
         return result
 
     def _unit_actions(self, state):
@@ -600,16 +672,74 @@ class OriginsRules:
                 and ((destination == base and self._is_field(state, u["location"]))
                      or (self._is_field(state, destination) and (u["location"] == base or self._ganking(state, u))))]
 
+    def _resolve_move(self, state, units, destination, initiator, rng, *, ready=False,
+                      from_effect=False):
+        """Resolve normal and effect moves through one rules path."""
+        moved = [self._unit(state, uid) if isinstance(uid, str) else uid for uid in units]
+        moved = [unit for unit in moved if unit is not None]
+        if not moved:
+            return False
+        origins = {unit["id"]: unit["location"] for unit in moved}
+        for unit in moved:
+            if unit["owner"] != initiator and not from_effect:
+                raise ValueError("cannot move an enemy unit with a normal move")
+            origin = origins[unit["id"]]
+            if (destination == f"base:{unit['owner']}" and self._is_field(state, origin)
+                    and state["fields"][origin]["code"] == "OGN-295"):
+                raise ValueError("Vilemaw's Lair prevents moving to base")
+            unit["location"], unit["exhausted"] = destination, not ready
+            if (self._is_field(state, origin)
+                    and state["fields"][origin]["code"] == "OGN-277"):
+                unit["temporary"] += 1
+        self._cleanup(state, rng)
+        if not self._is_field(state, destination):
+            return False
+        enemies = self._units(state, 1 - initiator, destination)
+        if state["fields"][destination]["controller"] == initiator and not enemies:
+            return False
+        state["battle"] = {"field": destination, "attacker": initiator,
+                            "combat": bool(enemies)}
+        state["focus"], state["passes"] = initiator, 0
+        if from_effect:
+            # A spell/ability resolving on the chain resumes into showdown;
+            # an ability activated directly during Main moves there now.
+            if state["phase"] == "chain":
+                state["pending_showdown"] = True
+            else:
+                state["phase"], state["actor"] = "showdown", initiator
+        else:
+            state["phase"], state["actor"] = "showdown", initiator
+        return True
+
     def legal_actions(self, state):
         if state["winner"] is not None:
             return ()
         phase, player = state["phase"], state["actor"]
+        if phase == "optional":
+            optional = state.get("optional", [])
+            if not optional or optional[0]["player"] != player:
+                return ()
+            if (len(optional) > 1 and not state.get("optional_ordered", False)
+                    and all(item["player"] == player for item in optional)):
+                return tuple(Action.make("order_optional", order=[item["id"] for item in ordering])
+                             for ordering in permutations(optional))
+            item = optional[0]
+            return (Action.make("optional_effect", optional=item["id"], accept=True),
+                    Action.make("optional_effect", optional=item["id"], accept=False))
         if phase == "decision":
-            if state["decision"]["kind"] == "predict":
+            decision = state["decision"]
+            if decision["kind"] == "predict":
                 return (Action.make("predict", recycle=False), Action.make("predict", recycle=True))
-            if state["decision"]["kind"] == "target":
+            if decision["kind"] == "target":
+                if decision.get("multi"):
+                    selected = set(decision.get("selected", []))
+                    actions = [Action.make("choose_target", target=uid)
+                               for uid in decision["targets"] if uid not in selected]
+                    if len(selected) >= decision.get("min", 1):
+                        actions.append(Action.make("confirm_targets"))
+                    return tuple(actions)
                 return tuple(Action.make("choose_target", target=uid)
-                             for uid in state["decision"]["targets"])
+                             for uid in decision["targets"])
             return tuple(Action.make("discard_card", card=uid) for uid in state["players"][player]["hand"])
         if phase == "mulligan":
             hand = state["players"][player]["hand"]
@@ -739,13 +869,26 @@ class OriginsRules:
             return False
         return True
 
-    def _open_target_choice(self, state, item, targets):
-        """Pause a chain item until its controller chooses one legal target."""
+    def _open_target_choice(self, state, item, targets, *, multi=False, minimum=1, maximum=None):
+        """Pause a chain item until its controller chooses legal target(s).
+
+        Single-target effects keep the original one-click behaviour.  Multi-target
+        effects expose a persistent selection window: each ``choose_target`` adds
+        one id and the controller must explicitly submit ``confirm_targets``.
+        This keeps target choice visible to the UI and prevents the engine from
+        silently taking the first legal combination.
+        """
         target_ids = [u["id"] if isinstance(u, dict) else u for u in targets]
-        if not target_ids:
+        if not target_ids and minimum:
             return True
-        state["decision"] = {"kind": "target", "player": item["owner"],
-                              "targets": target_ids, "item": item}
+        maximum = len(target_ids) if maximum is None else min(maximum, len(target_ids))
+        if multi and maximum < minimum:
+            return True
+        decision = {"kind": "target", "player": item["owner"],
+                    "targets": target_ids, "item": item}
+        if multi:
+            decision.update({"multi": True, "min": minimum, "max": maximum, "selected": []})
+        state["decision"] = decision
         state["phase"], state["actor"] = "decision", item["owner"]
         return False
 
@@ -851,6 +994,19 @@ class OriginsRules:
         self._channel_rune(state, item["owner"], exhausted=True)
         return True
 
+    def _effect_reaver_recall_target(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if target is not None and self._is_field(state, target["location"]):
+            self._resolve_move(state, [target], f"base:{target['owner']}", item["owner"], rng,
+                               from_effect=True)
+        return True
+
+    def _effect_fortified_shield(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if target is not None and target["location"] == state.get("battle", {}).get("field"):
+            target["combat_shield"] = 2
+        return True
+
     def _effect_return_unit(self, state, item, rng):
         owner = item["owner"]
         if item.get("target") is None:
@@ -884,19 +1040,15 @@ class OriginsRules:
                 valid_owner = ((code == "OGN-043" and unit["owner"] != owner) or
                                (code == "OGN-173" and unit["owner"] == owner))
                 if valid_destination and valid_owner and destination != unit["location"]:
-                    origin = unit["location"]
-                    unit["location"] = destination
-                    unit["exhausted"] = code == "OGN-043"
-                    if (self._is_field(state, origin)
-                            and state["fields"][origin]["code"] == "OGN-277"):
-                        unit["temporary"] += 1
+                    self._resolve_move(state, [unit], destination, owner, rng,
+                                       ready=code == "OGN-173", from_effect=True)
             elif code == "OGN-270":
                 destination = item.get("destination")
                 if (unit["owner"] == owner and unit["location"] == f"base:{owner}"
                         and self._is_field(state, destination)):
                     self._apply_buff(state, unit)
-                    unit["location"] = destination
-                    unit["exhausted"] = True
+                    self._resolve_move(state, [unit], destination, owner, rng,
+                                       ready=False, from_effect=True)
             elif code == "OGN-053":
                 state["players"][owner]["buff_bonus"] = 1
                 self._apply_buff(state, unit)
@@ -1045,7 +1197,7 @@ class OriginsRules:
         kind, args = action.kind, json.loads(action.arguments)
         player = state["actor"]
         row = state["players"][player]
-        if kind in {"predict", "discard_card", "choose_target"}:
+        if kind in {"predict", "discard_card", "choose_target", "confirm_targets"}:
             if kind == "predict":
                 if args["recycle"] and row["main"]:
                     row["main"].append(row["main"].pop(0))
@@ -1060,13 +1212,50 @@ class OriginsRules:
                 decision = state["decision"]
                 if args["target"] not in decision["targets"]:
                     raise ValueError("invalid target choice")
+                if decision.get("multi"):
+                    selected = decision.setdefault("selected", [])
+                    if args["target"] in selected:
+                        raise ValueError("target already selected")
+                    if len(selected) >= decision["max"]:
+                        raise ValueError("too many target choices")
+                    selected.append(args["target"])
+                    # The decision remains open until an explicit confirmation.
+                    state["passes"] = 0
+                    return
                 item = dict(decision["item"])
                 item["target"] = args["target"]
+                resume = decision.get("resume")
+                state["decision"] = None
+                self.effects.dispatch(item["effect"], state, item, rng)
+            elif kind == "confirm_targets":
+                decision = state["decision"]
+                if not decision.get("multi"):
+                    raise ValueError("no multi-target decision is active")
+                selected = list(decision.get("selected", []))
+                if len(selected) < decision.get("min", 1):
+                    raise ValueError("not enough targets selected")
+                item = dict(decision["item"])
+                item["targets"] = selected
+                if state.get("chain") and state["chain"][-1].get("card") == item.get("card"):
+                    state["chain"].pop()
                 state["decision"] = None
                 self.effects.dispatch(item["effect"], state, item, rng)
             if state["decision"] is None:
-                self._finish_resolution(state)
-                self._cleanup(state, rng)
+                resume = locals().get("resume")
+                if resume == "close_showdown":
+                    restored = state.pop("optional_return", None)
+                    if restored is not None:
+                        state["phase"] = restored["phase"]
+                        state["actor"] = restored["actor"]
+                        state["passes"] = restored.get("passes", 0)
+                    else:
+                        state["phase"], state["actor"] = "showdown", state.get("focus", player)
+                    self._cleanup(state, rng)
+                    if state.get("battle") is not None:
+                        self._close_showdown(state, rng)
+                else:
+                    self._finish_resolution(state)
+                    self._cleanup(state, rng)
         elif kind == "mulligan":
             row["hand"], row["main"] = mulligan(row["hand"], row["main"], tuple(args["slots"]), rng)
             state["mulligans"] += 1
@@ -1082,6 +1271,42 @@ class OriginsRules:
                 row["runes"].remove(rune)
                 row["power"].extend(self.cards[rune["code"]]["domains"])
                 row["rune_deck"].append({**rune, "exhausted": False})
+            state["passes"] = 0
+        elif kind == "optional_effect":
+            optional = state.get("optional", [])
+            item = next((entry for entry in optional if entry["id"] == args["optional"]), None)
+            if item is None or item["player"] != player or (optional and optional[0]["id"] != item["id"]):
+                raise ValueError("optional effect is unavailable")
+            optional.remove(item)
+            if args.get("accept"):
+                self._resolve_optional(state, item, rng)
+            state["passes"] = 0
+            if state.get("decision") is not None:
+                # The optional effect opened a target window. Its saved return
+                # context is restored by the target confirmation handler.
+                return
+            if optional:
+                state["actor"] = optional[0]["player"]
+            else:
+                restored = state.pop("optional_return", None)
+                state["optional_ordered"] = False
+                if restored is not None:
+                    state["phase"] = restored["phase"]
+                    state["actor"] = restored["actor"]
+                    state["passes"] = restored.get("passes", 0)
+                self._cleanup(state, rng)
+                if item.get("resume") == "close_showdown" and state.get("battle") is not None:
+                    self._close_showdown(state, rng)
+        elif kind == "order_optional":
+            optional = state.get("optional", [])
+            order = args.get("order", [])
+            ids = [item["id"] for item in optional]
+            if (not optional or any(item["player"] != player for item in optional)
+                    or set(order) != set(ids) or len(order) != len(ids)):
+                raise ValueError("optional trigger order is unavailable")
+            state["optional"] = [next(item for item in optional if item["id"] == uid)
+                                  for uid in order]
+            state["optional_ordered"] = True
             state["passes"] = 0
         elif kind == "legend_energy":
             row["legend_exhausted"] = True
@@ -1146,10 +1371,35 @@ class OriginsRules:
                 raise ValueError("invalid Unforgiven destination")
             row["energy"] -= 2
             row["legend_exhausted"] = True
-            origin = target["location"]
-            target["location"], target["exhausted"] = destination, True
-            if self._is_field(state, origin) and state["fields"][origin]["code"] == "OGN-277":
-                target["temporary"] += 1
+            self._resolve_move(state, [target], destination, player, rng, from_effect=True)
+            state["passes"] = 0
+        elif kind == "play_spell_targeted":
+            card = args["card"]
+            code = state["cards"][card]["code"]
+            if code not in {"OGN-105", "OGN-206"} or card not in row["hand"]:
+                raise ValueError("target-selection spell is unavailable")
+            data = self.cards[code]
+            payment = args.get("payment", [])
+            spend = args.get("spend_buff")
+            self._pay(row, 0 if spend is not None else data["energy"], payment)
+            if spend is not None:
+                spent = self._unit(state, spend)
+                if spent is None or spent["owner"] != player or not spent["buff"]:
+                    raise ValueError("invalid buff payment")
+                spent["buff"] = 0
+            row["hand"].remove(card)
+            row["played"] += 1
+            item = {"effect": "spell", "owner": player, "card": card,
+                    "code": code, "targets": [], "destination": args.get("destination")}
+            # Put the spell on the chain before opening the target window.  The
+            # confirmation handler pops and dispatches it exactly once.
+            self._enter_chain(state, [item])
+            state["decision"] = {"kind": "target", "player": player,
+                                  "targets": list(args.get("target_candidates", [])),
+                                  "multi": True, "min": int(args.get("target_min", 1)),
+                                  "max": int(args.get("target_max", 1)), "selected": [],
+                                  "item": item}
+            state["phase"], state["actor"] = "decision", player
             state["passes"] = 0
         elif kind in {"play_unit", "play_spell"}:
             card = args["card"]
@@ -1264,23 +1514,14 @@ class OriginsRules:
         elif kind == "commit_move":
             destination = state["selection"]["destination"]
             moved = [self._unit(state, uid) for uid in state["selection"]["units"]]
-            origins = {unit["id"]: unit["location"] for unit in moved}
             for unit in moved:
-                unit["location"], unit["exhausted"] = destination, True
-                if (self._is_field(state, origins[unit["id"]])
-                        and state["fields"][origins[unit["id"]]]["code"] == "OGN-277"):
-                    unit["temporary"] += 1
                 if unit["code"] == "OGN-185":
                     moved_row = state["players"][player]
                     if moved_row["hand"]:
                         moved_row["trash"].append(moved_row["hand"].pop(0))
                         self._draw(state, player, 1, rng)
             state["selection"], state["phase"] = None, "main"
-            self._cleanup(state, rng)
-            if self._is_field(state, destination) and state["fields"][destination]["controller"] != player:
-                state["battle"] = {"field": destination, "attacker": player,
-                                   "combat": bool(self._units(state, 1-player, destination))}
-                state["phase"], state["focus"], state["passes"] = "showdown", player, 0
+            self._resolve_move(state, moved, destination, player, rng)
             self._triggers(state, [{"effect": "drummer", "owner": player, "location": destination}
                                    for unit in moved if unit["code"] == "OGN-222" and self._is_field(state, destination)])
         elif kind == "pass":
@@ -1321,6 +1562,8 @@ class OriginsRules:
         if state["chain"]:
             state["phase"] = "chain"
             state["actor"] = state["chain"][-1]["owner"]
+        elif state.pop("pending_showdown", False):
+            state["phase"], state["actor"] = "showdown", state.get("focus", state["turn_player"])
         else:
             state["phase"] = state["chain_return"]
             if state["phase"] == "showdown":
@@ -1346,10 +1589,23 @@ class OriginsRules:
         # Attack triggers that have no player choice resolve before combat damage.
         attackers = self._units(state, battle["attacker"], field)
         defenders = self._units(state, 1-battle["attacker"], field)
-        if state["fields"][field]["code"] == "OGN-279" and defenders:
-            defenders[0]["combat_shield"] = 2
+        if state["fields"][field]["code"] == "OGN-279" and defenders and not battle.get("fortified_prompted"):
+            battle["fortified_prompted"] = True
+            owner = 1 - battle["attacker"]
+            state["decision"] = {
+                "kind": "target", "player": owner,
+                "targets": [unit["id"] for unit in defenders],
+                "item": {"effect": "fortified_shield", "owner": owner},
+                "resume": "close_showdown",
+            }
+            state["phase"], state["actor"] = "decision", owner
+            return
         if state["fields"][field]["code"] == "OGN-285" and defenders:
-            defenders[0]["location"] = f"base:{defenders[0]['owner']}"
+            if not battle.get("reaver_prompted"):
+                battle["reaver_prompted"] = True
+                self._queue_optional(state, defenders[0]["owner"], "reaver_recall",
+                                     resume="close_showdown")
+                return
             defenders = self._units(state, 1-battle["attacker"], field)
         if any(unit["code"] == "OGN-148" for unit in attackers):
             for unit in defenders:
@@ -1465,6 +1721,7 @@ class OriginsRules:
                 "players": public_players, "fields": copy.deepcopy(state["fields"]),
                 "units": [{**copy.deepcopy(u), "might": self.might(state, u)} for u in state["units"]],
                 "chain": copy.deepcopy(state["chain"]), "pending": copy.deepcopy(state["pending"]),
+                "optional": copy.deepcopy(state.get("optional", [])),
                 "battle": copy.deepcopy(state["battle"]),
                 "selection": copy.deepcopy(state["selection"]) if player == state["actor"] else None,
                 "decision": ({**copy.deepcopy(state["decision"]),
@@ -1476,6 +1733,12 @@ class OriginsRules:
     def validate(self, state):
         if state["actor"] not in (0, 1) or state["turn_player"] not in (0, 1):
             raise ValueError("invalid actor")
+        optional = state.get("optional", [])
+        if state.get("phase") == "optional":
+            if not optional or optional[0].get("player") != state["actor"]:
+                raise ValueError("invalid optional-effect priority")
+        elif optional:
+            raise ValueError("optional effects must pause the active phase")
         located = []
         for player, row in enumerate(state["players"]):
             for zone in ("main", "hand", "champion", "trash", "banishment"):
@@ -1492,8 +1755,18 @@ class OriginsRules:
                        if item["effect"] in {"spell", "return_unit"})
         if state["decision"] and state["decision"].get("kind") == "target":
             item = state["decision"].get("item", {})
-            if item.get("card") is not None:
+            # A multi-target spell remains on the chain while its target window
+            # is open; count its physical card only once.
+            chain_cards = {entry.get("card") for entry in state["chain"]}
+            if item.get("card") is not None and item["card"] not in chain_cards:
                 located.append(item["card"])
+        for item in state.get("optional", []):
+            if item.get("effect") == "return_champion" and item.get("candidate") is not None:
+                # The candidate remains in its owner's trash until the player
+                # accepts the optional return, so conservation still counts it
+                # through the normal trash zone.  This branch documents the
+                # deferred reference without duplicating the card.
+                continue
         if Counter(located) != Counter(state["cards"].keys()):
             raise ValueError("main-deck card conservation failed")
         if len({u["id"] for u in state["units"]}) != len(state["units"]):

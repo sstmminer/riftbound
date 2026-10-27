@@ -87,15 +87,15 @@ The Arena's Greatest（OGN-290）在每名玩家首次开始阶段给予 1 点�
 （OGN-298）征服时弃 1 再抽 1。后三类触发接入统一的 hold/conquer
 计分入口；移动限制在合法移动生成阶段生效。Zaun Warrens 当前在无选择窗口的场景中按
 手牌顺序弃牌，后续若接入通用弃牌选择窗口应替换为显式玩家选择。Startipped Peak
-的“may channel”当前在满足 Hold 触发时自动执行，待接入可选效果窗口后改为玩家确认。
+的“may channel”现已进入可选效果确认窗口。
 
 新增法术中带 Hidden 的牌（OGN-053、OGN-213、OGN-220）当前只执行其公开 Action
 侧；Hidden 的隐藏、揭示和反应时机仍记录为未完成机制，不会被假装成完整支持。
 
 后续法术批次加入 Charm（OGN-043）、Mobilize（OGN-134）和 Ride the Wind（OGN-173）。
 Charm/Ride the Wind 使用显式目的地选择并按移动规则横置或准备单位；Mobilize 在符文牌库
-有牌时引导一枚耗竭符文，牌库为空时抽一张。法术移动后的 Showdown 自动开启仍待统一
-接入移动结算窗口。
+有牌时引导一枚耗竭符文，牌库为空时抽一张。法术移动后的 Showdown 现已通过统一移动
+结算函数自动开启。
 
 本轮同步加入 Vayne、Crackshot Corsair、Soaring Scout、Leona 和 Shen
 （OGN-035/130/216/238/241），覆盖 Assault、攻击触发伤害、Deathknell 引导、Shield
@@ -113,9 +113,17 @@ Dawn 在 Stun 后自动 Buff 首个友军，The Boss 当前只实现征服后准
 同时加入 Bandle Tree、Fortified Position、Hallowed Tomb、Monastery of Hirana、
 Obelisk of Power、Reaver's Row、Reckoner's Arena、Sigil of the Storm、Targon's Peak、
 The Candlelit Sanctum、The Dreaming Tree 和 The Grand Plaza
-（OGN-278/279/281/282/284/285/286/287/289/291/292/293）。复杂可选效果目前采用
-首个合法目标或自动执行，并已在测试与交接记录中标明；Recruit DE/NX/Sprite 衍生物
+（OGN-278/279/281/282/284/285/286/287/289/291/292/293）。其中尚未迁移到统一选择
+窗口的复杂效果仍可能采用首个合法目标或自动路径，并已在测试与交接记录中标明；Recruit DE/NX/Sprite 衍生物
 （OGN-271/272/274）也已纳入卡图与构筑禁止校验。
+
+本轮把移动、可选效果和目标选择收拢为统一窗口。普通移动、Charm、Ride the Wind、
+Unforgiven 以及其他效果移动现在共用移动结算函数，移动到会产生冲突的战场后会自动
+进入 Showdown；Reaver's Row 和 Fortified Position 会在战斗前要求选择并确认目标。
+Startipped Peak、Bandle Tree、Hallowed Tomb、Obelisk of Power、The Grand Plaza 等
+可选效果会暂停正常行动，由对应玩家在底部栏确认或跳过；同一玩家同时得到多个可选
+效果时，先明确触发顺序再逐项处理。Singularity 与 Back to Back 增加了点选多目标、
+显式确认的交互路径，底部状态栏会持续显示目标窗口、可选队列和结算链。
 
 同一批次补入低复杂度单位与法术：OGN-016/037/074/078/079/084/086/103/118/119、
 OGN-125/139/151/164/165/218/225/240/243/246/161/174/185/195/239，以及
@@ -128,6 +136,8 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 
 - 第一弹 298 张尚未全部执行。当前支持集已扩展到 158 张，完整扩展需要按机制层逐步增加处理器和回归测试。
 - 装备牌区、Hidden/reveal、反制、控制权变化、复杂替代效果和通用分割伤害还没有完成；Deathknell、Tank、Shield 当前只覆盖已注册卡牌的基础窗口。
+- 目前只有 Singularity、Back to Back 走通用多目标确认路径；其他尚未迁移的多目标牌仍可能在施放动作中携带预生成的目标组合。
+- 装备牌模型和装备触发目标窗口仍未接入引擎，因此装备相关效果暂不声称已完成。
 - 当前事件日志是派生调试记录，不是完整裁判级事件溯源；若未来支持复杂替代效果，需要把事件、替代窗口和触发窗口进一步拆成显式对象。
 - 目前没有独立官方裁判或第二套引擎做差分验证。
 

@@ -885,5 +885,73 @@ class OriginsTests(unittest.TestCase):
         self.assertTrue(enemy["stunned"])
 
 
+class OriginsTargetSelectionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.rules = OriginsRules()
+
+    def scenario(self):
+        state = self.rules.initial_state(random.Random(31))
+        state.update(phase="main", actor=0, turn_player=0, turn=3)
+        for row in state["players"]:
+            row["energy"], row["power"] = 20, ["mind", "mind", "fury", "order"]
+        return state
+
+    def test_multi_target_spell_requires_explicit_confirmation(self):
+        state = self.scenario()
+        spell = state["players"][0]["hand"][0]
+        state["cards"][spell]["code"] = "OGN-105"
+        # Use existing known unit cards and put one unit under each controller.
+        units = []
+        for owner in (0, 1):
+            card = next(uid for uid in state["players"][owner]["main"]
+                        if state["cards"][uid]["code"] == "OGN-219")
+            state["players"][owner]["main"].remove(card)
+            units.append(self.rules._new_unit(state, "OGN-219", owner, 0,
+                                               card=card, exhausted=False))
+        targeted = next(action for action in self.rules.legal_actions(state)
+                        if action.kind == "play_spell_targeted")
+        self.rules.apply(state, targeted, random.Random(3))
+        self.assertTrue(state["decision"]["multi"])
+        self.assertIn("confirm_targets", {action.kind for action in self.rules.legal_actions(state)})
+        first = next(action for action in self.rules.legal_actions(state)
+                     if action.kind == "choose_target")
+        self.rules.apply(state, first, random.Random(3))
+        self.assertIsNotNone(state["decision"])
+        self.assertIn("confirm_targets", {action.kind for action in self.rules.legal_actions(state)})
+        confirm = next(action for action in self.rules.legal_actions(state)
+                       if action.kind == "confirm_targets")
+        self.rules.apply(state, confirm, random.Random(3))
+        self.assertIsNone(state["decision"])
+
+    def test_effect_move_to_battlefield_enters_showdown_after_chain(self):
+        state = self.scenario()
+        state["players"][0]["power"] = ["calm"] * 4
+        enemy = self.rules._new_unit(state, "OGN-219", 1, "base:1", card=None, exhausted=False)
+        spell = state["players"][0]["hand"][0]
+        state["cards"][spell]["code"] = "OGN-043"
+        action = next(action for action in self.rules.legal_actions(state)
+                      if action.kind == "play_spell" and '"destination":0' in action.arguments
+                      and enemy["id"] in json.loads(action.arguments)["targets"])
+        self.rules.apply(state, action, random.Random(3))
+        self.assertEqual(state["phase"], "chain")
+        for _ in range(2):
+            self.rules.apply(state, next(a for a in self.rules.legal_actions(state)
+                                         if a.kind == "pass"), random.Random(3))
+        self.assertEqual(state["phase"], "showdown")
+        self.assertEqual(state["battle"]["field"], 0)
+        self.assertEqual(enemy["location"], 0)
+
+    def test_simultaneous_optional_effects_expose_order_then_confirmation(self):
+        state = self.scenario()
+        self.rules._queue_optional(state, 0, "channel_rune")
+        self.rules._queue_optional(state, 0, "ready_runes")
+        ordering = [a for a in self.rules.legal_actions(state) if a.kind == "order_optional"]
+        self.assertEqual(len(ordering), 2)
+        self.rules.apply(state, ordering[-1], random.Random(3))
+        self.assertTrue(state["optional_ordered"])
+        self.assertTrue(all(a.kind == "optional_effect" for a in self.rules.legal_actions(state)))
+
+
 if __name__ == "__main__":
     unittest.main()

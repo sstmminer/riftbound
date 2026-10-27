@@ -43,6 +43,7 @@ class OriginsGUI(tk.Tk):
         self._mulligan_press_uid = None
         self.selected_units = set()
         self.selected_mulligan = set()
+        self.selected_decision_targets = set()
         self.labels = {}
         self._photo_cache = {}
         self._high_photo_cache = {}
@@ -177,6 +178,8 @@ class OriginsGUI(tk.Tk):
     def _image_card(self, parent, code, *, uid=None, zone=None, owner=None, factor=3,
                     private=False, compact_label=None, click=True, exhausted=False,
                     selected=False, pack=True, show_label=True):
+        if uid is not None and uid in self.selected_decision_targets:
+            selected = True
         wrapper = tk.Frame(parent, bg="#f4c542" if selected else "#24364d",
                            padx=4 if selected else 2, pady=4 if selected else 2)
         if pack:
@@ -198,14 +201,26 @@ class OriginsGUI(tk.Tk):
         button.bind("<Enter>", lambda _event, c=code: self._arm_preview(button, c))
         button.bind("<Leave>", lambda _event: self._cancel_preview())
         if uid is not None and click:
-            button.bind("<ButtonPress-1>", lambda event, u=uid: self.start_drag(event, u, zone))
-            button.bind("<ButtonRelease-1>", lambda event, u=uid: self.end_drag(event, u, zone))
-            button.bind("<Button-3>", lambda event, u=uid: self.card_menu(event, u))
-            if zone == "hand":
-                # The wrapper catches the opening hand click as well as the
-                # image button, which avoids losing the first mulligan click
-                # when the fan is rebuilt during initial rendering.
-                wrapper.bind("<Button-1>", lambda event, u=uid: self.start_drag(event, u, zone))
+            decision = self.env.observe(0).get("decision") if self.env.current_player == 0 else None
+            if decision and self.env.observe(0)["phase"] == "decision":
+                button.bind("<Button-1>", lambda _event, u=uid: self._decision_target_click(u))
+                wrapper.bind("<Button-1>", lambda _event, u=uid: self._decision_target_click(u))
+            elif (zone == "hand" and self.env.current_player == 0
+                  and self.env.observe(0)["phase"] == "mulligan"):
+                # Use the button command for the opening hand. Rebuilding the
+                # fan during a ButtonPress binding can destroy the widget
+                # before Tk delivers ButtonRelease, which made the first
+                # launch appear unresponsive until Restart.
+                button.configure(command=lambda u=uid: self.mulligan_click(u))
+            else:
+                button.bind("<ButtonPress-1>", lambda event, u=uid: self.start_drag(event, u, zone))
+                button.bind("<ButtonRelease-1>", lambda event, u=uid: self.end_drag(event, u, zone))
+                button.bind("<Button-3>", lambda event, u=uid: self.card_menu(event, u))
+                if zone == "hand":
+                    # The wrapper catches the opening hand click as well as the
+                    # image button, which avoids losing the first mulligan click
+                    # when the fan is rebuilt during initial rendering.
+                    wrapper.bind("<Button-1>", lambda event, u=uid: self.start_drag(event, u, zone))
         return wrapper
 
     def _stack(self, parent, cards, *, owner=None, title="", limit=4, factor=4, count=None):
@@ -314,6 +329,7 @@ class OriginsGUI(tk.Tk):
         self.env.reset(seed=self.seed)
         self.selected_units.clear()
         self.selected_mulligan.clear()
+        self.selected_decision_targets.clear()
         self._decision_signature = None
         self._winner_announced = False
         self._log_seq = 0
@@ -329,7 +345,7 @@ class OriginsGUI(tk.Tk):
     def show_scope(self):
         messagebox.showinfo(
             "当前范围",
-            "RUP5 2026-10-09\n双人 Duel；96 张显式实现的 Origins 卡牌。\n\n"
+            "RUP5 2026-10-09\n双人 Duel；158 张显式实现的 Origins 卡牌。\n\n"
             "战场数量由规则状态和卡牌效果决定，界面不会手动添加战场。\n"
             "未支持的牌和效果会在开局前拒绝，不会静默当作白板。",
         )
@@ -511,6 +527,8 @@ class OriginsGUI(tk.Tk):
         self.perform(action)
 
     def card_menu(self, event, uid):
+        if self._decision_target_click(uid):
+            return
         menu = tk.Menu(self, tearoff=False)
         actions = []
         for action in self.env.legal_actions():
@@ -524,6 +542,72 @@ class OriginsGUI(tk.Tk):
                 menu.add_command(label=self.action_text(action),
                                  command=lambda a=action: self.perform(a))
         menu.tk_popup(event.x_root, event.y_root)
+
+    def _decision_target_click(self, uid):
+        """Handle a card click while the rules engine exposes a choice window."""
+        obs = self.env.observe(0)
+        decision = obs.get("decision")
+        if self.env.current_player != 0 or obs["phase"] != "decision" or not decision:
+            return False
+        actions = self.env.legal_actions()
+        matching = [a for a in actions if json.loads(a.arguments).get("target") == uid
+                    or json.loads(a.arguments).get("card") == uid]
+        if not matching:
+            self.set_notice("这张牌不是当前效果的合法目标。")
+            return True
+        if decision.get("multi"):
+            if uid in self.selected_decision_targets:
+                self.selected_decision_targets.remove(uid)
+            else:
+                maximum = decision.get("max", decision.get("count", 1))
+                if len(self.selected_decision_targets) >= maximum:
+                    self.set_notice(f"最多选择 {maximum} 个目标。")
+                    return True
+                self.selected_decision_targets.add(uid)
+            self.render()
+            return True
+        self.selected_decision_targets.clear()
+        self.perform(matching[0])
+        return True
+
+    def commit_decision_targets(self):
+        """Commit a multi-target choice after the player explicitly confirms."""
+        obs = self.env.observe(0)
+        decision = obs.get("decision")
+        if not decision or not decision.get("multi"):
+            return
+        chosen = set(self.selected_decision_targets)
+        minimum = decision.get("min", decision.get("count", 1))
+        if len(chosen) < minimum:
+            self.set_notice(f"至少选择 {minimum} 个目标后才能确认。")
+            return
+        # The engine keeps the selected ids in the private decision state and
+        # exposes a dedicated confirmation action. Apply the clicked ids only
+        # when the player presses Confirm, so a click never resolves the effect.
+        try:
+            for uid in chosen:
+                choose = next(a for a in self.env.legal_actions()
+                              if a.kind == "choose_target"
+                              and json.loads(a.arguments).get("target") == uid)
+                self.env.step(choose)
+            confirm = next((a for a in self.env.legal_actions()
+                            if a.kind == "confirm_targets"), None)
+            if confirm is None:
+                raise InvalidAction("目标确认动作不可用")
+            self.env.step(confirm)
+            self.selected_decision_targets.clear()
+            self.log_add("玩家 0：确认多目标选择 " + "、".join(sorted(chosen)))
+            self.render()
+        except (InvalidAction, ValueError, StopIteration) as error:
+            self.set_notice(f"目标确认失败：{error}")
+            self.selected_decision_targets.clear()
+            self.render()
+        return
+
+    def cancel_decision_targets(self):
+        self.selected_decision_targets.clear()
+        self.set_notice("已取消当前目标选择。")
+        self.render()
 
     def _rune_name(self, uid):
         for row in self.env.observe(0)["players"]:
@@ -588,6 +672,11 @@ class OriginsGUI(tk.Tk):
             "end_turn": "结束回合 / End turn", "pass": "让过 / Pass", "commit_move": "确认移动 / Commit",
             "cancel_move": "取消移动 / Cancel", "select_unit": "选择单位 / Select unit",
             "assign_damage": "分配伤害 / Assign damage",
+            "optional_effect": "可选效果 / Optional effect",
+            "order_optional": "选择可选效果顺序 / Order optional effects",
+            "play_spell_targeted": "施放法术并选择目标 / Cast and choose targets",
+            "choose_target": "选择目标 / Choose target",
+            "confirm_targets": "确认目标 / Confirm targets",
             "predict": "洞察 / Vision：" + ("回收牌顶" if args.get("recycle") else "保留牌顶"),
             "discard_card": "弃置此牌 / Discard",
             "mulligan": "调度 / Mulligan：" + ("、".join(str(i + 1) for i in args.get("slots", [])) or "不换牌"),
@@ -599,8 +688,15 @@ class OriginsGUI(tk.Tk):
             text += " → " + str(args.get("location"))
         if action.kind == "play_spell":
             text += " → " + ",".join(args.get("targets", []))
+        if action.kind == "play_spell_targeted":
+            text += f"（选择 {args.get('target_min', 0)}–{args.get('target_max', 0)} 个目标）"
         if action.kind == "order_triggers":
             text = "触发顺序：" + " → ".join(str(i + 1) for i in args.get("order", []))
+        if action.kind == "order_optional":
+            text = "可选效果顺序：" + " → ".join(args.get("order", []))
+        if action.kind == "optional_effect":
+            text = ("确认触发 / Confirm optional" if args.get("accept")
+                    else "跳过 / Skip optional")
         return text
 
     def choose_action(self, actions, title):
@@ -678,7 +774,7 @@ class OriginsGUI(tk.Tk):
             "mulligan": "调度阶段", "main": "主要阶段",
             "chain": "结算链", "trigger_order": "触发顺序",
             "showdown": "对决结算", "damage": "战斗伤害分配",
-            "move_select": "移动选择", "decision": "效果选择",
+            "move_select": "移动选择", "decision": "效果选择", "optional": "可选效果确认",
         }
         parts = [f"回合 {obs['turn']} · 回合玩家 P{obs['turn_player']} · 当前行动 P{obs['to_act']} · {phases.get(obs['phase'], obs['phase'])}"]
         chain = obs.get("chain") or []
@@ -696,6 +792,11 @@ class OriginsGUI(tk.Tk):
         decision = obs.get("decision")
         if decision:
             parts.append(f"等待 P{decision['player']} 完成 {decision['kind']} 选择")
+        optional = obs.get("optional") or []
+        if optional:
+            parts.append("可选效果队列：" + " → ".join(
+                f"P{item.get('player')} {item.get('effect', 'effect')}" for item in optional
+            ))
         return "\n".join(parts)
 
     def render(self):
@@ -704,6 +805,8 @@ class OriginsGUI(tk.Tk):
             self.selected_units.clear()
         if obs["phase"] != "mulligan" or obs["to_act"] != 0:
             self.selected_mulligan.clear()
+        if obs["phase"] != "decision" or obs["to_act"] != 0:
+            self.selected_decision_targets.clear()
         turn_text = "玩家 0 行动" if obs["to_act"] == 0 else "对手行动"
         self.status.configure(text=f"回合 {obs['turn']} · {turn_text} · 比分 {obs['points'][0]}–{obs['points'][1]} / {obs['victory']}")
         self.state_bar.configure(text=self._state_summary(obs))
@@ -717,7 +820,6 @@ class OriginsGUI(tk.Tk):
             signature = json.dumps(obs["decision"], sort_keys=True)
             if signature != self._decision_signature:
                 self._decision_signature = signature
-                self.after_idle(self.show_decision_dialog)
         else:
             self._decision_signature = None
         if obs["winner"] is not None and not self._winner_announced:
@@ -897,6 +999,15 @@ class OriginsGUI(tk.Tk):
             tk.Label(self.actions, text="对局已结束", bg="#101b2b", fg="#f2d38b").pack(side="left")
             return
         legal = self.env.legal_actions()
+        obs = self.env.observe(0)
+        optional = obs.get("optional") or []
+        if optional and self.env.current_player == 0:
+            self._render_optional_bar(optional[0], legal)
+            return
+        decision = obs.get("decision")
+        if decision and self.env.current_player == 0:
+            self._render_decision_bar(decision, legal)
+            return
         if self.env.current_player != 0:
             tk.Label(self.actions, text="对手正在自动决策…", bg="#101b2b", fg="#c7d7eb").pack(side="left")
             if self._opponent_job is None:
@@ -910,13 +1021,82 @@ class OriginsGUI(tk.Tk):
             if action.kind in {"end_turn", "pass", "legend_energy", "legend_spell_power",
                                "legend_recruit", "legend_channel", "unit_buff", "legend_buff",
                                "legend_move", "legend_ganking",
-                               "commit_move", "cancel_move", "order_triggers"}:
+                               "commit_move", "cancel_move", "order_triggers",
+                               "play_spell_targeted"}:
                 ttk.Button(self.actions, text=self.action_text(action),
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
         prompt = "左键选择/多选单位，再拖到基地/战场移动；右键查看其他操作"
         if self.env.observe(0)["phase"] == "damage":
             prompt = "点击或右键对手单位分配伤害"
         tk.Label(self.actions, text=prompt, bg="#101b2b", fg="#9fb4ce").pack(side="right")
+
+    def _render_decision_bar(self, decision, legal):
+        """Render target/choice instructions in the persistent bottom bar."""
+        kind = decision.get("kind", "choice")
+        if kind == "target":
+            prompt = "选择目标：点击场上或基地中的合法卡牌"
+        elif kind == "discard":
+            prompt = "选择要弃置的牌：点击手牌中的目标"
+        elif kind == "predict":
+            prompt = "洞察：选择保留或回收牌库顶牌"
+        else:
+            prompt = f"等待选择：{kind}"
+        tk.Label(self.actions, text=prompt, bg="#101b2b", fg="#f3d58b").pack(side="left", padx=4)
+        if kind == "predict":
+            for action in legal:
+                ttk.Button(self.actions, text=self.action_text(action),
+                           command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
+            return
+        if decision.get("multi"):
+            count = len(self.selected_decision_targets)
+            maximum = decision.get("max", decision.get("count", 1))
+            tk.Label(self.actions, text=f"已选 {count}/{maximum}",
+                     bg="#101b2b", fg="#dbe8f7").pack(side="left", padx=4)
+            ttk.Button(self.actions, text="确认目标 / Confirm",
+                       command=self.commit_decision_targets).pack(side="left", padx=2)
+            ttk.Button(self.actions, text="取消 / Cancel",
+                       command=self.cancel_decision_targets).pack(side="left", padx=2)
+        else:
+            # Keep a text fallback for targets whose card is not visible in the
+            # current private view; normal interaction remains card clicking.
+            for action in legal:
+                ttk.Button(self.actions, text=self.action_text(action),
+                           command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
+
+    def _render_optional_bar(self, optional, legal):
+        """Keep optional trigger confirmation in the persistent bottom bar.
+
+        Optional triggers are queued by the rules engine.  Showing both choices
+        here avoids an extra modal dialog and makes the order visible when more
+        than one optional effect is waiting.
+        """
+        effect_names = {
+            "channel_rune": "横置一枚符文",
+            "return_champion": "将指定英雄移回英雄区",
+            "spend_buff_draw": "移除增益并抽一张牌",
+            "ready_runes": "重置至多两枚符文",
+            "recycle_top_two": "将牌库顶两张牌循环至底部",
+            "reaver_recall": "选择一个友军移回基地",
+            "recall_defender": "将目标单位移回基地",
+        }
+        name = effect_names.get(optional.get("effect"), optional.get("effect", "可选效果"))
+        tk.Label(self.actions, text=f"可选效果（P{optional.get('player')}）：{name}",
+                 bg="#101b2b", fg="#f3d58b").pack(side="left", padx=4)
+        options = [a for a in legal if a.kind == "optional_effect"
+                   and json.loads(a.arguments).get("optional") == optional.get("id")]
+        order_options = [a for a in legal if a.kind == "order_optional"]
+        if order_options:
+            tk.Label(self.actions, text="请先确认同时触发的顺序：",
+                     bg="#101b2b", fg="#dbe8f7").pack(side="left", padx=4)
+            for action in order_options:
+                ttk.Button(self.actions, text=self.action_text(action),
+                           command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
+            return
+        for action in options:
+            ttk.Button(self.actions, text=self.action_text(action),
+                       command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
+        tk.Label(self.actions, text="可选效果按队列顺序逐项确认；同时触发时可依次选择。",
+                 bg="#101b2b", fg="#9fb4ce").pack(side="right", padx=4)
 
     def opponent_step(self):
         self._opponent_job = None

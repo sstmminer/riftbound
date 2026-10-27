@@ -27,6 +27,10 @@ class BattlefieldBatchTests(unittest.TestCase):
         rune = row["rune_deck"].pop(0)
         row["rune_deck"] = [rune]
         self.rules._score(self.state, 0, 0, "hold", random.Random(3))
+        self.assertEqual(len(self.state["optional"]), 1)
+        action = next(action for action in self.rules.legal_actions(self.state)
+                      if action.kind == "optional_effect" and '"accept":true' in action.arguments)
+        self.rules.apply(self.state, action, random.Random(3))
         self.assertEqual(row["runes"][-1]["id"], rune["id"])
         self.assertTrue(row["runes"][-1]["exhausted"])
 

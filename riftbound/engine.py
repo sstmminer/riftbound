@@ -178,6 +178,8 @@ class Environment:
                 "fields": copy.deepcopy(observation.get("fields")),
                 "chain": [chain_item(item) for item in observation.get("chain", [])],
                 "pending": [chain_item(item) for item in observation.get("pending", [])],
+                "optional": [{key: item[key] for key in ("id", "player", "effect") if key in item}
+                             for item in observation.get("optional", [])],
                 "battle": copy.deepcopy(observation.get("battle")),
                 "decision": ({key: decision[key] for key in ("kind", "player", "remaining")
                               if key in decision} if decision else None)}

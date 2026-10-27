@@ -6,7 +6,7 @@ Python 3.12+，支持双人自动对战、自博弈样本和确定性回放。**
 
 - **代码分支**：[simulator](https://github.com/sstmminer/riftbound/tree/simulator)
 - **小型下载包**：[riftbound-simulator-0.3.0.zip](https://github.com/sstmminer/riftbound/raw/refs/heads/simulator/downloads/riftbound-simulator-0.3.0.zip)
-- **图形界面**：运行 `python -m riftbound gui`，支持卡图、符文区、点击、右键菜单、拖拽、动态战场和洞察弹窗；`--variant vision` 可直接演示 Vision。
+- **图形界面**：运行 `python -m riftbound gui`，支持卡图、符文区、点击、右键菜单、拖拽、动态战场、底部结算/目标/可选效果窗口和高清悬浮预览；`--variant vision` 可直接演示 Vision。
 - **下载、安装和测试攻略**：[docs/quickstart-zh.md](docs/quickstart-zh.md)
 - **158 张可执行卡牌**：[docs/supported-cards.md](docs/supported-cards.md)
 - **规则覆盖与限制**：[docs/rules-coverage.md](docs/rules-coverage.md)
@@ -32,6 +32,7 @@ Windows 命令见下载测试攻略。输出目录必须不存在或为空；重
 - 调度、先后手、回合开始/结束、重置、引导、抽牌与 Burn Out。
 - 显式符文支付、传奇资源能力、单位出牌、Accelerate、Legion、Buff、Assault、Shield、Deflect、Ganking 及支持列表内卡牌效果。
 - 响应链后进先出、触发顺序选择、合法时机、失效目标、Showdown、分组移动、伤害分配、同时伤害、死亡/治疗/撤回、控制权、征服/据守和最后一分。
+- 统一移动结算：普通与效果移动共用校验，移动到冲突战场自动衔接 Showdown；多目标法术支持逐张点选并显式确认，可选效果支持确认/跳过与同时触发顺序。
 - 卡牌与符文守恒、不变量校验；非法动作不改变状态；固定种子、状态克隆及逐步回放哈希。
 - 随机和贪心基准策略；可选导出按玩家视角标记的 JSONL 决策记录。
 

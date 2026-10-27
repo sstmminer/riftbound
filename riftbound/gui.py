@@ -254,12 +254,24 @@ class OriginsGUI(tk.Tk):
                     wrapper.bind("<Button-1>", lambda event, u=uid: self.start_drag(event, u, zone))
         return wrapper
 
-    def _stack(self, parent, cards, *, owner=None, title="", limit=4, factor=4, count=None):
+    def _stack(self, parent, cards, *, owner=None, title="", limit=4, factor=4,
+               count=None, collapse=False):
         frame = self._subzone(parent, title)
         frame.pack(side="left", fill="y", padx=3)
         cards = list(cards)
         if not cards:
             self._image_card(frame, BACK_CODE, factor=factor, compact_label="空")
+        elif collapse:
+            # Keep the pile compact on the table.  The exposed top card and
+            # its wrapper both receive the click binding because the image
+            # button consumes mouse events before they bubble to the frame.
+            wrapper = self._image_card(
+                frame, cards[-1]["code"], owner=owner, factor=factor,
+                compact_label=self._card_name(cards[-1]["code"]), click=False)
+            callback = lambda _event, p=owner: self._show_trash_popup(p)
+            wrapper.bind("<Button-1>", callback)
+            for child in wrapper.winfo_children():
+                child.bind("<Button-1>", callback, add="+")
         else:
             for card in cards[-limit:]:
                 self._image_card(frame, card["code"], owner=owner, factor=factor,
@@ -267,6 +279,39 @@ class OriginsGUI(tk.Tk):
         shown_count = len(cards) if count is None else count
         tk.Label(frame, text=f"{shown_count} 张", bg="#24364d", fg="#d6e3f5").pack()
         return frame
+
+    def _show_trash_popup(self, owner):
+        """Show the complete public discard pile in a scrollable window."""
+        obs = self.env.observe(0)
+        cards = list(obs["players"][owner]["trash"])
+        popup = tk.Toplevel(self)
+        popup.title(f"P{owner} 弃牌堆 / Trash · {len(cards)} 张")
+        popup.geometry("980x700")
+        popup.transient(self)
+        header = tk.Label(popup, text=f"P{owner} 弃牌堆（顶部在最前）· 共 {len(cards)} 张",
+                          anchor="w", padx=8, pady=5)
+        header.pack(fill="x")
+        body = ttk.Frame(popup)
+        body.pack(fill="both", expand=True)
+        canvas = tk.Canvas(body, bg="#101b2b", highlightthickness=0)
+        scrollbar = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg="#101b2b")
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
+        if not cards:
+            tk.Label(inner, text="弃牌堆为空", bg="#101b2b", fg="#dbe8f7").grid(
+                row=0, column=0, padx=20, pady=20)
+        else:
+            for index, card in enumerate(reversed(cards)):
+                wrapper = self._image_card(
+                    inner, card["code"], factor=3,
+                    compact_label=("顶部 · " if index == 0 else "") + self._card_name(card["code"]),
+                    click=False, pack=False)
+                wrapper.grid(row=index // 7, column=index % 7, padx=6, pady=6, sticky="n")
+        canvas.bind("<MouseWheel>", lambda event: canvas.yview_scroll(int(-event.delta / 120), "units"))
 
     def _flow(self, parent, items, render_item, *, per_row=6):
         """Pack image cards in rows so a full rune zone/hand stays visible."""
@@ -938,7 +983,7 @@ class OriginsGUI(tk.Tk):
     def render_opponent(self, obs):
         body = self._clear("opponent")
         body.grid_rowconfigure(0, weight=1)
-        body.grid_rowconfigure(1, weight=0, minsize=120)
+        body.grid_rowconfigure(1, weight=0, minsize=165)
         # Match the player's left-to-right arrangement: identity, runes,
         # hand, piles, status.  Keeping the rune pool beside the hand also
         # gives it the same usable height and width as the player's pool.
@@ -964,11 +1009,11 @@ class OriginsGUI(tk.Tk):
         piles = self._subzone(body, "对手牌堆 / Opponent Piles", width=250)
         piles.grid(row=0, column=3, sticky="nsew", padx=4)
         self._stack(piles, obs["players"][1]["trash"], owner=1,
-                    title="P1 弃牌 / Trash", factor=5)
+                    title="P1 弃牌 / Trash", factor=5, collapse=True)
         self._stack(piles, [], title="牌库 / Deck", factor=5,
                     count=obs["players"][1]["main_count"])
         self._status_box(body, obs, 1, column=4)
-        base_zone = self._subzone(body, "对手基地 / Opponent Base", height=120)
+        base_zone = self._subzone(body, "对手基地 / Opponent Base", height=165)
         base_zone.grid(row=1, column=0, columnspan=5, sticky="ew", padx=4, pady=(3, 0))
         base = tk.Frame(base_zone, bg="#263a54")
         base.pack(fill="both", expand=True)
@@ -1054,8 +1099,8 @@ class OriginsGUI(tk.Tk):
                                  exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
     def render_player(self, obs):
         body = self._clear("player")
-        body.grid_rowconfigure(0, weight=0, minsize=120)
-        body.grid_rowconfigure(1, weight=1, minsize=170)
+        body.grid_rowconfigure(0, weight=0, minsize=165)
+        body.grid_rowconfigure(1, weight=1, minsize=135)
         body.grid_columnconfigure(1, weight=1, minsize=300)
         body.grid_columnconfigure(2, weight=2, minsize=500)
         body.grid_columnconfigure(3, weight=0, minsize=150)
@@ -1089,7 +1134,7 @@ class OriginsGUI(tk.Tk):
         self._status_box(body, obs, 0, column=3, row=1)
         # The player's base is above the hand row, matching the physical table
         # orientation and keeping it outside the battlefield panel.
-        bases = self._subzone(body, "我方基地 / Player Base", height=120)
+        bases = self._subzone(body, "我方基地 / Player Base", height=165)
         bases.grid(row=0, column=0, columnspan=5, sticky="nsew", padx=3, pady=(2, 0))
         # The outer player-base zone already provides the label and border;
         # use it directly so there is no redundant nested "P0 基地" panel.
@@ -1103,7 +1148,7 @@ class OriginsGUI(tk.Tk):
         piles = self._subzone(body, "牌堆 / Player Piles", width=250)
         piles.grid(row=1, column=4, sticky="nsew", padx=4)
         self._stack(piles, obs["players"][0]["trash"], owner=0,
-                    title="P0 弃牌 / Trash", factor=5)
+                    title="P0 弃牌 / Trash", factor=5, collapse=True)
         self._stack(piles, [], title="牌库 / Deck", factor=5,
                     count=obs["players"][0]["main_count"])
 

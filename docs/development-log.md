@@ -86,7 +86,11 @@ Gust、Rebuke、Hidden Blade 和 Facebreaker（OGN-053/069/083/104/169/172/213/2
 The Arena's Greatest（OGN-290）在每名玩家首次开始阶段给予 1 点；Zaun Warrens
 （OGN-298）征服时弃 1 再抽 1。后三类触发接入统一的 hold/conquer
 计分入口；移动限制在合法移动生成阶段生效。Zaun Warrens 当前在无选择窗口的场景中按
-手牌顺序弃牌，后续若接入通用弃牌选择窗口应替换为显式玩家选择。
+手牌顺序弃牌，后续若接入通用弃牌选择窗口应替换为显式玩家选择。Startipped Peak
+的“may channel”当前在满足 Hold 触发时自动执行，待接入可选效果窗口后改为玩家确认。
+
+新增法术中带 Hidden 的牌（OGN-053、OGN-213、OGN-220）当前只执行其公开 Action
+侧；Hidden 的隐藏、揭示和反应时机仍记录为未完成机制，不会被假装成完整支持。
 
 ## 尚未完成
 

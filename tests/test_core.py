@@ -243,6 +243,9 @@ class GearZoneTests(unittest.TestCase):
         zone, pool = GearZone(), Pool()
         gear = zone.play(card, controller=0, resource_domain="fury")
         self.assertFalse(gear.exhausted)
+        self.assertEqual(gear.location, "base:0")
+        with self.assertRaisesRegex(ValueError, "controller's base"):
+            zone.play(Card("other", "Other Gear", "gear"), controller=0, location="battlefield:0")
         zone.activate_resource("seal", controller=0, pool=pool)
         self.assertEqual(pool.power, ["fury"])
         with self.assertRaisesRegex(ValueError, "already exhausted"):

@@ -53,7 +53,9 @@ GUI 底部日志现在有序号，并显示回合玩家、当前行动玩家、�
 结算链。OGN-234 Harnessed Dragon、OGN-051 Solari Shieldbearer 和 OGN-082
 Whiteflame Protector 使用该窗口。单位新增本回合 Stun 状态；Stun 单位不产生战斗
 伤害，回合结束清除。装备区目前只有 `core.py` 的通用 GearZone 原语和单元测试，尚未
-接入 Origins 对局的完整装备牌区。
+接入 Origins 对局的完整装备牌区。GearZone 已按 RUP5 148.1.a.1、149.1、149.2 和
+359.2.d 修正：非特殊效果下只能进入控制者的 Base，并且进入时 Ready/竖置。
+GUI 也把对手 Base 放回对手手牌与身份区一侧；我方 Base 保留在我方区域下方。
 
 随后加入 Rune Prison、Discipline、Cannon Barrage、Flurry of Blades 和 Primal
 Strength，复用目标选择、Stun、反应时机和战场范围伤害窗口。

@@ -184,11 +184,12 @@ class Gear:
     """A face-up gear permanent in a player's equipment zone."""
     id: str
     controller: int
+    location: str
     exhausted: bool = False  # Gear enters ready/vertical unless its text says otherwise.
     resource_domain: str | None = None
 
     def __post_init__(self) -> None:
-        if not self.id or self.controller not in (0, 1):
+        if not self.id or self.controller not in (0, 1) or self.location != f"base:{self.controller}":
             raise ValueError("invalid gear")
         if self.resource_domain is not None and self.resource_domain not in DOMAINS:
             raise ValueError("unknown gear resource domain")
@@ -200,14 +201,18 @@ class GearZone:
     cards: list[Gear] = field(default_factory=list)
     trash: list[str] = field(default_factory=list)
 
-    def play(self, card: Card, *, controller: int, resource_domain: str | None = None) -> Gear:
+    def play(self, card: Card, *, controller: int, location: str | None = None,
+             resource_domain: str | None = None) -> Gear:
         if card.kind != "gear":
             raise ValueError("only gear cards can enter the equipment zone")
         if controller not in (0, 1):
             raise ValueError("invalid gear controller")
+        base = f"base:{controller}"
+        if location is not None and location != base:
+            raise ValueError("gear can only be played to its controller's base")
         if any(g.id == card.id for g in self.cards):
             raise ValueError("gear ID is already in the equipment zone")
-        gear = Gear(card.id, controller, False, resource_domain)
+        gear = Gear(card.id, controller, base, False, resource_domain)
         self.cards.append(gear)
         return gear
 

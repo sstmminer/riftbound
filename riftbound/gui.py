@@ -27,8 +27,8 @@ class OriginsGUI(tk.Tk):
     def __init__(self, *, seed=42, opponent="greedy", variant="starter", extra_fields=()):
         super().__init__()
         self.title("Riftbound Origins · 自动对战与结算")
-        self.geometry("1400x900")
-        self.minsize(1100, 760)
+        self.geometry("1600x1080")
+        self.minsize(1200, 900)
         self.configure(bg="#0e1725")
         self.variant = variant
         # extra_fields is an engine/testing hook. There is intentionally no
@@ -75,13 +75,13 @@ class OriginsGUI(tk.Tk):
         self.board.grid_propagate(False)
         self.board.grid_columnconfigure(0, weight=1)
         self.board.grid_columnconfigure(1, weight=0, minsize=170)
-        self.board.grid_rowconfigure(0, weight=0, minsize=150)
+        self.board.grid_rowconfigure(0, weight=0, minsize=260)
         self.board.grid_rowconfigure(1, weight=1, minsize=300)
-        self.board.grid_rowconfigure(2, weight=0, minsize=300)
-        self._panel("opponent", "对手区域 / Opponent", 0, height=150)
-        self._panel("battlefields", "战场区 / Battlefields", 1, height=380)
-        self._panel("player", "我方区域 / Player", 2, height=300)
-        self._panel("banishment", "放逐区 / Banishment", 0, column=1, rowspan=3, height=730)
+        self.board.grid_rowconfigure(2, weight=0, minsize=380)
+        self._panel("opponent", "对手区域 / Opponent", 0, height=260)
+        self._panel("battlefields", "战场区 / Battlefields", 1, height=420)
+        self._panel("player", "我方区域 / Player", 2, height=380)
+        self._panel("banishment", "放逐区 / Banishment", 0, column=1, rowspan=3, height=1060)
 
         bottom = tk.Frame(self, bg="#101b2b", padx=8, pady=5)
         bottom.pack(fill="x")
@@ -653,36 +653,45 @@ class OriginsGUI(tk.Tk):
         identity = tk.Frame(body, bg="#1b2a3e")
         identity.grid(row=0, column=0, sticky="nsw")
         self._identity(identity, obs, 1, compact=True)
-        hand = self._subzone(body, f"对手手牌 · {obs['players'][1]['hand_count']} 张", width=500, height=125)
+        hand = self._subzone(body, f"对手手牌 · {obs['players'][1]['hand_count']} 张", width=500, height=155)
         hand.grid(row=0, column=1, sticky="nsew", padx=4)
         self._fan(hand, range(min(10, obs["players"][1]["hand_count"])),
-                  lambda parent, _item: self._image_card(parent, BACK_CODE, factor=5,
+                  lambda parent, _item: self._image_card(parent, BACK_CODE, factor=4,
                                                          compact_label="", pack=False, show_label=False),
-                  per_row=10, row_height=108)
-        rune_zone = self._subzone(body, "对手符文区", width=280, height=125)
+                  per_row=10, row_height=135)
+        rune_zone = self._subzone(body, "对手符文区", width=280, height=155)
         rune_zone.grid(row=0, column=2, sticky="nse", padx=4)
         self._fan(rune_zone, obs["players"][1]["runes"],
                   lambda parent, rune: self._rune_card(parent, rune, player=1,
                                                         pack=False, show_label=False),
-                  per_row=12, row_height=105)
+                  per_row=10, row_height=130)
         discard = tk.Frame(body, bg="#1b2a3e")
         discard.grid(row=0, column=3, sticky="nse", padx=4)
         self._stack(discard, obs["players"][1]["trash"], owner=1,
                     title="P1 弃牌区 / Trash", factor=5)
         self._status_box(body, obs, 1, column=4)
+        base_zone = self._subzone(body, "对手基地 / Opponent Base", height=120)
+        base_zone.grid(row=1, column=0, columnspan=5, sticky="ew", padx=4, pady=(3, 0))
+        base = tk.Frame(base_zone, bg="#263a54")
+        base.pack(fill="both", expand=True)
+        for unit in [u for u in obs["units"] if u["location"] == "base:1"]:
+            self._image_card(base, unit["code"], uid=unit["id"], owner=unit["owner"],
+                             zone="base", factor=4,
+                             compact_label=f"P{unit['owner']} · M{unit['might']}",
+                             exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
 
     def _identity(self, parent, obs, player, *, compact=False):
         row = obs["players"][player]
         legend = self._subzone(parent, "传奇区 / Legend")
         legend.pack(side="left", fill="y", padx=2)
-        self._image_card(legend, row["legend"], factor=5 if compact else 4,
+        self._image_card(legend, row["legend"], factor=4 if compact else 3,
                          compact_label=("横置" if row["legend_exhausted"] else "就绪"),
                          click=False, exhausted=row["legend_exhausted"])
         champion = self._subzone(parent, "英雄区 / Champion")
         champion.pack(side="left", fill="y", padx=2)
         for card in row["champion"]:
             self._image_card(champion, card["code"], uid=card["id"] if player == 0 else None,
-                             owner=player, zone="champion", factor=5 if compact else 4)
+                             owner=player, zone="champion", factor=4 if compact else 3)
 
     def _status_box(self, parent, obs, player, *, column=None):
         frame = self._subzone(parent, f"P{player} 状态", width=110)
@@ -733,17 +742,16 @@ class OriginsGUI(tk.Tk):
                                  zone="field", factor=5,
                                  compact_label=f"P{unit['owner']} · M{unit['might']} · {damage_label}",
                                  exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
-        bases = self._subzone(body, "基地区 / Bases")
+        bases = self._subzone(body, "我方基地 / Player Base")
         bases.grid(row=1, column=0, sticky="ew", padx=2, pady=(2, 0))
-        for player in (0, 1):
-            base = tk.LabelFrame(bases, text=f"P{player} 基地", bg="#263a54", fg="#e9f1fc", padx=4)
-            base.pack(side="left", fill="both", expand=True, padx=3)
-            base._base_player = player
-            for unit in [u for u in obs["units"] if u["location"] == f"base:{player}"]:
-                self._image_card(base, unit["code"], uid=unit["id"], owner=unit["owner"],
-                                 zone="base", factor=5,
-                                 compact_label=f"P{unit['owner']} · M{unit['might']}",
-                                 exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
+        base = tk.LabelFrame(bases, text="P0 基地", bg="#263a54", fg="#e9f1fc", padx=4)
+        base.pack(side="left", fill="both", expand=True, padx=3)
+        base._base_player = 0
+        for unit in [u for u in obs["units"] if u["location"] == "base:0"]:
+            self._image_card(base, unit["code"], uid=unit["id"], owner=unit["owner"],
+                             zone="base", factor=4,
+                             compact_label=f"P{unit['owner']} · M{unit['might']}",
+                             exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
 
     def render_player(self, obs):
         body = self._clear("player")
@@ -755,14 +763,14 @@ class OriginsGUI(tk.Tk):
         identity.grid(row=0, column=0, sticky="nsw")
         self._identity(identity, obs, 0)
 
-        rune_zone = self._subzone(body, "符文区 / Runes · 左键横置 · 右键回收", width=300, height=230)
+        rune_zone = self._subzone(body, "符文区 / Runes · 左键横置 · 右键回收", width=300, height=270)
         rune_zone.grid(row=0, column=1, sticky="nsew", padx=4)
         self._fan(rune_zone, obs["players"][0]["runes"],
                   lambda parent, rune: self._rune_card(parent, rune, player=0,
                                                         pack=False, show_label=False),
-                  per_row=6, row_height=105)
+                  per_row=6, row_height=135)
 
-        hand_zone = self._subzone(body, f"手牌 / Hand · {len(obs['hand'])} 张", width=500, height=165)
+        hand_zone = self._subzone(body, f"手牌 / Hand · {len(obs['hand'])} 张", width=500, height=210)
         hand_zone.grid(row=0, column=2, sticky="nsew", padx=4)
         self._fan(hand_zone, obs["hand"],
                   lambda parent, card: self._image_card(parent, card["code"], uid=card["id"],

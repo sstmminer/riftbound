@@ -1,7 +1,7 @@
 """Explicit implementations, never inferred by parsing card text at runtime."""
 
 UNIT_CODES = frozenset(f"OGN-{n:03d}" for n in
-                      (1, 3, 10, 11, 12, 13, 15, 27, 28, 30, 39, 49, 52, 55, 65, 66, 88, 131, 142, 171, 175, 176, 210, 215, 217, 219, 222, 223, 232))
+                      (1, 3, 10, 11, 12, 13, 15, 27, 28, 30, 39, 49, 52, 55, 65, 66, 88, 131, 142, 148, 159, 171, 175, 176, 210, 211, 215, 217, 219, 222, 223, 232))
 SPELL_CODES = frozenset(f"OGN-{n:03d}" for n in (4, 5, 9, 24, 29, 85, 93, 95, 105, 114, 201, 206, 207, 229))
 REACTIONS = frozenset({"OGN-093", "OGN-095", "OGN-206", "OGN-207"})
 ACCELERATE = frozenset({"OGN-001", "OGN-010", "OGN-030", "OGN-039"})

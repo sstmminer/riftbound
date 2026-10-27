@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 56 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 59 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -35,6 +35,9 @@
 | OGN-114 | Progress Day | spell | Draw 4. |
 | OGN-131 | Dune Drake | unit | +2 :rb_might: while attacking if a ready enemy is here. |
 | OGN-142 | Mountain Drake | unit |  |
+| OGN-148 | Anivia, Primal | unit | When I attack, deal 3 to all enemy units here. |
+| OGN-159 | Warwick, Hunter | unit | Enters ready; when I attack, kill all damaged enemy units here. |
+| OGN-211 | Faithful Manufactor | unit | When you play me, play a Recruit token here. |
 | OGN-201 | Invert Timelines | spell | Each player discards their hand, then draws 4. |
 | OGN-229 | Vengeance | spell | Kill a unit. |
 | OGN-166 | Chaos Rune | rune |  |

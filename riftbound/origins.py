@@ -549,6 +549,7 @@ class OriginsRules:
                 zone = row["hand"] if card in row["hand"] else row["champion"]
                 zone.remove(card)
                 ready = args["accelerate"] or any(u["code"] == "OGN-011" for u in self._units(state, player))
+                ready = ready or code == "OGN-159"
                 unit = self._new_unit(state, code, player, args["location"], card=card, exhausted=not ready)
                 row["played"] += 1
                 triggers = self._second_card_triggers(state, player)
@@ -556,6 +557,8 @@ class OriginsRules:
                     triggers.append({"effect": "buff_self", "source": unit["id"], "owner": player})
                 if code == "OGN-003":
                     triggers.append({"effect": "discard_one", "source": unit["id"], "owner": player})
+                if code == "OGN-211":
+                    triggers.append({"effect": "drummer", "owner": player, "location": args["location"]})
                 if code == "OGN-223":
                     triggers.append({"effect": "peak", "source": unit["id"], "owner": player})
                 if code in {"OGN-030", "OGN-171"}:
@@ -653,6 +656,20 @@ class OriginsRules:
         battle = state["battle"]
         field = battle["field"]
         if not battle["combat"] or not self._units(state, 0, field) or not self._units(state, 1, field):
+            self._settle_battle(state, rng)
+            return
+        # Attack triggers that have no player choice resolve before combat damage.
+        attackers = self._units(state, battle["attacker"], field)
+        defenders = self._units(state, 1-battle["attacker"], field)
+        if any(unit["code"] == "OGN-148" for unit in attackers):
+            for unit in defenders:
+                unit["damage"] += 3
+        if any(unit["code"] == "OGN-159" for unit in attackers):
+            for unit in defenders:
+                if unit["damage"] > 0:
+                    unit["damage"] = max(unit["damage"], self.might(state, unit))
+        self._cleanup(state)
+        if not self._units(state, 0, field) or not self._units(state, 1, field):
             self._settle_battle(state, rng)
             return
         battle["damage"] = {"remaining": [sum(max(0, self.might(state, u)) for u in self._units(state, p, field))

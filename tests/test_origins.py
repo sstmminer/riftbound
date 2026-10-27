@@ -388,6 +388,39 @@ class OriginsTests(unittest.TestCase):
         self.drain(state)
         self.assertNotIn(enemy, state["units"])
 
+    def test_faithful_manufactor_enters_a_recruit_chain(self):
+        state = self.scenario()
+        card = self.hand(state, "OGN-219")
+        state["cards"][card]["code"] = "OGN-211"
+        self.act(state, "play_unit", card=card, location="base:0")
+        self.drain(state)
+        self.assertTrue(any(unit["card"] is None and unit["code"] == "OGN-273"
+                            for unit in state["units"]))
+
+    def test_anivia_attack_trigger_deals_area_damage(self):
+        state = self.scenario()
+        card = self.take_card(state, "OGN-219")
+        state["cards"][card]["code"] = "OGN-148"
+        self.rules._new_unit(state, "OGN-148", 0, 0, card=card, exhausted=False)
+        defender = self.unit(state, "OGN-142" if any(state["cards"][uid]["code"] == "OGN-142"
+                                                       for uid in state["players"][1]["main"]) else "OGN-219",
+                              player=1, location=0)
+        state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+        self.rules._close_showdown(state, random.Random(8))
+        self.assertEqual(defender["damage"], 3)
+
+    def test_warwick_enters_ready_and_kills_damaged_defenders_on_attack(self):
+        state = self.scenario()
+        card = self.take_card(state, "OGN-219")
+        state["cards"][card]["code"] = "OGN-159"
+        warwick = self.rules._new_unit(state, "OGN-159", 0, 0, card=card, exhausted=False)
+        defender = self.unit(state, player=1, location=0)
+        defender["damage"] = 1
+        state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+        self.rules._close_showdown(state, random.Random(8))
+        self.assertNotIn(defender, state["units"])
+        self.assertTrue(warwick["exhausted"] is False)
+
     def test_magma_wurm_also_readies_played_recruit_tokens(self):
         state = self.scenario()
         self.unit(state, "OGN-011", location="base:0")

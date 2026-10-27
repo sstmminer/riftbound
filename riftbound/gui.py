@@ -308,7 +308,7 @@ class OriginsGUI(tk.Tk):
     def show_scope(self):
         messagebox.showinfo(
             "当前范围",
-            "RUP5 2026-10-09\n双人 Duel；56 张显式实现的 Origins 卡牌。\n\n"
+            "RUP5 2026-10-09\n双人 Duel；59 张显式实现的 Origins 卡牌。\n\n"
             "战场数量由规则状态和卡牌效果决定，界面不会手动添加战场。\n"
             "未支持的牌和效果会在开局前拒绝，不会静默当作白板。",
         )

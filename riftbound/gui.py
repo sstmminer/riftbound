@@ -792,20 +792,10 @@ class OriginsGUI(tk.Tk):
                                  zone="field", factor=5,
                                  compact_label=f"P{unit['owner']} · M{unit['might']} · {damage_label}",
                                  exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
-        bases = self._subzone(body, "我方基地 / Player Base", height=210)
-        bases.grid(row=1, column=0, sticky="ew", padx=2, pady=(2, 0))
-        base = tk.LabelFrame(bases, text="P0 基地", bg="#263a54", fg="#e9f1fc", padx=4)
-        base.pack(side="left", fill="both", expand=True, padx=3)
-        base._base_player = 0
-        for unit in [u for u in obs["units"] if u["location"] == "base:0"]:
-            self._image_card(base, unit["code"], uid=unit["id"], owner=unit["owner"],
-                             zone="base", factor=4,
-                             compact_label=f"P{unit['owner']} · M{unit['might']}",
-                             exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
-
     def render_player(self, obs):
         body = self._clear("player")
-        body.grid_rowconfigure(0, weight=1)
+        body.grid_rowconfigure(0, weight=0, minsize=170)
+        body.grid_rowconfigure(1, weight=1, minsize=170)
         body.grid_columnconfigure(1, weight=1, minsize=300)
         body.grid_columnconfigure(2, weight=2, minsize=500)
         body.grid_columnconfigure(3, weight=0, minsize=100)
@@ -837,6 +827,17 @@ class OriginsGUI(tk.Tk):
                     title="P0 弃牌 / Trash", factor=5)
         self._stack(piles, [], title="牌库 / Deck", factor=5,
                     count=obs["players"][0]["main_count"])
+
+        bases = self._subzone(body, "我方基地 / Player Base", height=170)
+        bases.grid(row=1, column=0, columnspan=5, sticky="nsew", padx=3, pady=(3, 0))
+        base = tk.LabelFrame(bases, text="P0 基地", bg="#263a54", fg="#e9f1fc", padx=4)
+        base.pack(side="left", fill="both", expand=True, padx=3)
+        base._base_player = 0
+        for unit in [u for u in obs["units"] if u["location"] == "base:0"]:
+            self._image_card(base, unit["code"], uid=unit["id"], owner=unit["owner"],
+                             zone="base", factor=4,
+                             compact_label=f"P{unit['owner']} · M{unit['might']}",
+                             exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
 
     def render_banishment(self, obs):
         body = self._clear("banishment")

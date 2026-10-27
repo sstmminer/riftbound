@@ -311,6 +311,23 @@ class OriginsTests(unittest.TestCase):
                 else:
                     self.assertTrue(defender["stunned"])
 
+    def test_ahri_attack_trigger_targets_before_chain_and_logs_state(self):
+        state = self.scenario()
+        ahri = self.rules._new_unit(state, "OGN-119", 0, 0, card=None, exhausted=False)
+        first = self.unit(state, "OGN-219", player=1, location=0)
+        second = self.unit(state, "OGN-219", player=1, location=0)
+        state.update(phase="showdown", actor=0, focus=0, passes=0,
+                     battle={"field": 0, "attacker": 0, "combat": True})
+        self.rules._close_showdown(state, random.Random(7))
+        self.assertEqual(state["phase"], "decision")
+        self.assertEqual(state["decision"]["kind"], "target")
+        self.assertCountEqual(state["decision"]["targets"], [first["id"], second["id"]])
+        self.act(state, "choose_target", target=first["id"])
+        self.assertEqual(state["phase"], "chain")
+        self.drain(state)
+        self.assertEqual(first["temporary"], -2)
+        self.assertEqual(second["temporary"], 0)
+
     def test_shen_has_shield_two_and_tank(self):
         state = self.scenario()
         shen = self.unit(state, "OGN-219", player=1, location=0)

@@ -759,11 +759,70 @@ class OriginsGUI(tk.Tk):
                        command=lambda a=action, d=dialog: (d.destroy(), self.perform(a))).pack(
                            fill="x", padx=12, pady=3)
 
+    def _log_transition(self, before, after):
+        """Write meaningful rules-state changes alongside the clicked action."""
+        if before["phase"] != after["phase"]:
+            self.log_add(f"阶段：{before['phase']} → {after['phase']}")
+        def chain_signature(items):
+            return [json.dumps({key: item.get(key) for key in
+                                ("effect", "code", "source", "owner", "target", "targets")},
+                               ensure_ascii=False, sort_keys=True)
+                    for item in items]
+        old_chain, new_chain = chain_signature(before.get("chain", [])), chain_signature(after.get("chain", []))
+        if old_chain != new_chain:
+            if after.get("chain"):
+                self.log_add("结算链：" + " → ".join(self._chain_item_text(item)
+                                                   for item in reversed(after["chain"])))
+            else:
+                self.log_add("结算链已清空。")
+        old_pending, new_pending = chain_signature(before.get("pending", [])), chain_signature(after.get("pending", []))
+        if old_pending != new_pending and after.get("pending"):
+            self.log_add("待排序触发：" + " → ".join(self._chain_item_text(item)
+                                                  for item in after["pending"]))
+        if before.get("decision") != after.get("decision") and after.get("decision"):
+            decision = after["decision"]
+            targets = decision.get("targets", [])
+            self.log_add(f"等待 P{decision.get('player')} 选择 {decision.get('kind')}"
+                         + (f"（{len(targets)} 个合法目标）" if targets else ""))
+        for index, (old_row, new_row) in enumerate(zip(before.get("players", []), after.get("players", []))):
+            if (old_row.get("energy"), old_row.get("power")) != (new_row.get("energy"), new_row.get("power")):
+                self.log_add(f"P{index} 资源：法力 {old_row.get('energy')}→{new_row.get('energy')}；"
+                             f"符能 {len(old_row.get('power', []))}→{len(new_row.get('power', []))}")
+        old_units = {unit["id"]: unit for unit in before.get("units", [])}
+        new_units = {unit["id"]: unit for unit in after.get("units", [])}
+        for uid, unit in new_units.items():
+            old = old_units.get(uid)
+            if old is None:
+                self.log_add(f"单位进入：P{unit['owner']} {self._card_name(unit['code'])}（{unit['location']}）")
+                continue
+            keys = ("location", "might", "damage", "temporary", "buff", "assault",
+                    "combat_shield", "stunned", "exhausted")
+            if any(old.get(key) != unit.get(key) for key in keys):
+                flags = []
+                if old.get("temporary") != unit.get("temporary"):
+                    flags.append(f"临时战力 {old.get('temporary', 0)}→{unit.get('temporary', 0)}")
+                if old.get("damage") != unit.get("damage"):
+                    flags.append(f"伤害 {old.get('damage', 0)}→{unit.get('damage', 0)}")
+                if old.get("buff") != unit.get("buff"):
+                    flags.append(f"增益 {old.get('buff', 0)}→{unit.get('buff', 0)}")
+                if old.get("stunned") != unit.get("stunned"):
+                    flags.append("眩晕" if unit.get("stunned") else "解除眩晕")
+                if old.get("location") != unit.get("location"):
+                    flags.append(f"位置 {old.get('location')}→{unit.get('location')}")
+                if old.get("exhausted") != unit.get("exhausted"):
+                    flags.append("横置" if unit.get("exhausted") else "就绪")
+                self.log_add(f"单位状态：{self._card_name(unit['code'])}（{'; '.join(flags)}）")
+        for uid, old in old_units.items():
+            if uid not in new_units:
+                self.log_add(f"单位离场：P{old['owner']} {self._card_name(old['code'])}")
+
     def perform(self, action):
         try:
             before = self.env.current_player
+            before_obs = self.env.observe(0)
             self.env.step(action)
             self.log_add(f"玩家 {before}：{self.action_text(action)}")
+            self._log_transition(before_obs, self.env.observe(0))
             self.render()
         except (InvalidAction, ValueError) as error:
             messagebox.showerror("操作无效", str(error))
@@ -782,6 +841,7 @@ class OriginsGUI(tk.Tk):
             "peak": "Peak Guardian 触发", "drummer": "Drummer 触发",
             "kill_target": "击杀目标", "stun_target": "Stun 目标",
             "buff_eight": "+8 增益",
+            "ahri_debuff": "Ahri：目标 -2 战力",
         }
         return f"P{item.get('owner')} {names.get(effect, effect)}"
 
@@ -1173,8 +1233,10 @@ class OriginsGUI(tk.Tk):
             return
         action = self.opponent.choose(self.env.observe(1), legal) if self.opponent else legal[0]
         try:
+            before_obs = self.env.observe(0)
             self.env.step(action)
             self.log_add(f"对手：{self.action_text(action)}")
+            self._log_transition(before_obs, self.env.observe(0))
             self.render()
         except Exception as error:
             self.log_add(f"对手操作错误：{error}")

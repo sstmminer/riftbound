@@ -130,6 +130,10 @@ Startipped Peak、Bandle Tree、Hallowed Tomb、Obelisk of Power、The Grand Pla
 play a spell”按 RUP5 383.3/383.4 作为独立触发链项处理。符文区新增连续资源操作回撤，
 任何其他动作或跳过时点都会关闭回撤窗口。
 
+Ahri, Inquisitive（OGN-119）的 Attack/Defend Trigger 现按 RUP5 466.2.c–d、383.4.e/f
+在获得攻击者或防守者身份后进入目标选择窗口，再作为独立链项结算；底部日志会记录
+触发加入链、目标选择、战力/伤害/眩晕/位置变化和资源变化。
+
 为便于验收，新增 `complex` 合法 Fury/Mind 试验套牌，集中包含 Legion、Buff、Vision、
 Deathknell、Assault、Reaction、Singularity 和 Reaver's Row 等已完成机制，可通过 GUI
 变体或 CLI 导出。单位卡下方现在显示横置/就绪、当前战力、临时战力增减、伤害、待分配

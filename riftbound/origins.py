@@ -55,6 +55,7 @@ class OriginsRules:
         registry.register("darius", self._effect_darius)
         registry.register("buff_self", self._effect_buff_self)
         registry.register("ravenbloom", self._effect_ravenbloom)
+        registry.register("ahri_debuff", self._effect_ahri_debuff)
         registry.register("peak", self._effect_peak)
         registry.register("drummer", self._effect_drummer)
         registry.register("vision", self._effect_vision)
@@ -851,6 +852,14 @@ class OriginsRules:
             source["temporary"] += 1
         return True
 
+    def _effect_ahri_debuff(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        field = state.get("battle", {}).get("field")
+        if (target is not None and self._is_field(state, field)
+                and target["location"] == field and target["owner"] != item["owner"]):
+            target["temporary"] -= 2
+        return True
+
     def _effect_peak(self, state, item, rng):
         source = self._unit(state, item.get("source"))
         if source:
@@ -1295,6 +1304,10 @@ class OriginsRules:
                     item["targets"] = [args["target"]]
                 resume = decision.get("resume")
                 state["decision"] = None
+                if resume == "combat_trigger":
+                    state.setdefault("combat_trigger_selected", []).append(item)
+                    self._open_combat_trigger_target(state)
+                    return
                 if decision.get("play_targeted"):
                     for entry in reversed(state["chain"]):
                         if entry.get("card") == item.get("card"):
@@ -1699,6 +1712,25 @@ class OriginsRules:
             else:
                 state["actor"] = state["turn_player"]
 
+    def _open_combat_trigger_target(self, state):
+        """Finalize designation triggers one at a time before adding them to chain."""
+        queue = state.setdefault("combat_trigger_queue", [])
+        while queue:
+            item = queue.pop(0)
+            field = state["battle"]["field"]
+            targets = [unit["id"] for unit in self._units(state, 1 - item["owner"], field)]
+            if not targets:
+                continue
+            state["decision"] = {
+                "kind": "target", "player": item["owner"], "targets": targets,
+                "item": item, "resume": "combat_trigger",
+            }
+            state["phase"], state["actor"] = "decision", item["owner"]
+            return
+        selected = state.pop("combat_trigger_selected", [])
+        state["phase"], state["actor"], state["passes"] = "showdown", state["focus"], 0
+        self._triggers(state, selected)
+
     def _close_showdown(self, state, rng):
         battle = state["battle"]
         field = battle["field"]
@@ -1715,6 +1747,22 @@ class OriginsRules:
         # Attack triggers that have no player choice resolve before combat damage.
         attackers = self._units(state, battle["attacker"], field)
         defenders = self._units(state, 1-battle["attacker"], field)
+        if not battle.get("designation_triggers_added"):
+            ahri_triggers = [
+                {"effect": "ahri_debuff", "source": unit["id"],
+                 "owner": unit["owner"], "role": "attacker"}
+                for unit in attackers if unit["code"] == "OGN-119"
+            ] + [
+                {"effect": "ahri_debuff", "source": unit["id"],
+                 "owner": unit["owner"], "role": "defender"}
+                for unit in defenders if unit["code"] == "OGN-119"
+            ]
+            battle["designation_triggers_added"] = True
+            if ahri_triggers:
+                state["combat_trigger_queue"] = ahri_triggers
+                state["combat_trigger_selected"] = []
+                self._open_combat_trigger_target(state)
+                return
         if state["fields"][field]["code"] == "OGN-279" and defenders and not battle.get("fortified_prompted"):
             battle["fortified_prompted"] = True
             owner = 1 - battle["attacker"]
@@ -1741,12 +1789,6 @@ class OriginsRules:
                 self._deal_damage(state, defenders[0], 1)
         if any(unit["code"] == "OGN-238" for unit in attackers) and defenders:
             defenders[0]["stunned"] = True
-        for _ in range(sum(unit["code"] == "OGN-119" for unit in attackers)):
-            if defenders:
-                defenders[0]["temporary"] -= 2
-        for _ in range(sum(unit["code"] == "OGN-119" for unit in defenders)):
-            if attackers:
-                attackers[0]["temporary"] -= 2
         if any(unit["code"] == "OGN-159" for unit in attackers):
             for unit in defenders:
                 if unit["damage"] > 0:

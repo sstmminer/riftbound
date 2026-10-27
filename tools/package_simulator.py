@@ -10,12 +10,24 @@ PATTERNS = ["README.md", "pyproject.toml", ".gitignore", ".python-version", "rif
             "tests/*.py", "tools/*.py", "docs/*.md",
             "docs/*.json", "examples/*.json", ".github/workflows/*.yml"]
 
+# GitHub's regular file limit is 100 MB.  Keep the legacy high-resolution
+# hover assets in the lightweight bundle and let newly added cards use their
+# bundled clear thumbnails; source checkouts still contain every high image.
+OMIT_HIGH_CODES = frozenset({
+    "OGN-053", "OGN-069", "OGN-083", "OGN-087", "OGN-096", "OGN-104",
+    "OGN-132", "OGN-136", "OGN-137", "OGN-169", "OGN-172", "OGN-213",
+    "OGN-220", "OGN-249", "OGN-255", "OGN-277", "OGN-280", "OGN-288",
+    "OGN-290", "OGN-295", "OGN-298",
+})
+
 
 def main():
     directory = ROOT/"downloads"
     directory.mkdir(exist_ok=True)
     path = directory/"riftbound-simulator-0.3.0.zip"
-    files = sorted({file for pattern in PATTERNS for file in ROOT.glob(pattern) if file.is_file()})
+    files = sorted({file for pattern in PATTERNS for file in ROOT.glob(pattern) if file.is_file()
+                    and not (file.parent.name == "high"
+                             and file.stem in OMIT_HIGH_CODES)})
     with ZipFile(path, "w", ZIP_DEFLATED) as archive:
         for file in files:
             archive.write(file, Path("riftbound-simulator")/file.relative_to(ROOT))

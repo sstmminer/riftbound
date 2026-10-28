@@ -622,7 +622,7 @@ class OriginsRules:
                 continue
             data = self.cards[code]
             targeted_only = code == "OGN-104"
-            if code in {"OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-170", "OGN-201", "OGN-233"}:
+            if code in {"OGN-022", "OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-170", "OGN-179", "OGN-201", "OGN-233"}:
                 targets = [[]]
             elif code == "OGN-102":
                 targets = [[u["id"]] for u in self._units(state, player)]
@@ -1535,6 +1535,16 @@ class OriginsRules:
             self._draw(state, owner, 2 if item["targets"] else 1, rng)
         elif code == "OGN-144":
             self._draw(state, owner, 2, rng)
+        elif code == "OGN-022":
+            for player in (0, 1):
+                for gear in list(state["players"][player]["gear"]):
+                    state["players"][player]["gear"].remove(gear)
+                    state["players"][player]["trash"].append(gear["card"])
+        elif code == "OGN-179":
+            for player in (0, 1):
+                gears = state["players"][player]["gear"]
+                if gears:
+                    state["players"][player]["trash"].append(gears.pop(0)["card"])
         elif code == "OGN-145":
             state["prevent_spell_ability_damage"] = True
         elif code == "OGN-153":

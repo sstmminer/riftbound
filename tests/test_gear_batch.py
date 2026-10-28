@@ -59,6 +59,19 @@ class GearBatchTests(unittest.TestCase):
         self.assertTrue(any(u["code"] == "OGN-273" and u["owner"] == 0
                             for u in self.state["units"]))
 
+    def test_thermo_beam_kills_all_gear(self):
+        gear = self.play("OGN-040")
+        self.state["players"][0]["power"].append("fury")
+        spell = self.card("OGN-022")
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and spell in a.arguments)
+        self.rules.apply(self.state, action, random.Random(4))
+        while self.state["phase"] == "chain":
+            self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                              if a.kind == "pass"), random.Random(4))
+        self.assertFalse(self.state["players"][0]["gear"])
+        self.assertIn(gear, self.state["players"][0]["trash"])
+
 
 if __name__ == "__main__":
     unittest.main()

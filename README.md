@@ -9,7 +9,7 @@ Python 3.12+，支持双人自动对战、自博弈样本和确定性回放。**
 - **图形界面**：运行 `python -m riftbound gui`，支持卡图、符文区、点击、右键菜单、拖拽、动态战场、底部结算/目标/可选效果窗口和高清悬浮预览；`--variant vision` 可直接演示 Vision。
 - **复杂机制试验卡组**：运行 `python -m riftbound gui --variant complex`，使用专门覆盖当前已实现复杂效果的合法 Fury/Mind 测试套牌。
 - **下载、安装和测试攻略**：[docs/quickstart-zh.md](docs/quickstart-zh.md)
-- **210 张可执行卡牌**：[docs/supported-cards.md](docs/supported-cards.md)
+- **212 张可执行卡牌**：[docs/supported-cards.md](docs/supported-cards.md)
 - **规则覆盖与限制**：[docs/rules-coverage.md](docs/rules-coverage.md)
 - **扩展开发日志与交接记录**：[docs/development-log.md](docs/development-log.md)
 

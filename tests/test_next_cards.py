@@ -193,6 +193,34 @@ class NextCardBatchTests(unittest.TestCase):
                              random.Random(1))
         self.assertEqual(karma["buff"], 1)
 
+    def _resolve_karma_target(self, karma):
+        self.assertEqual(self.state["phase"], "decision")
+        self.rules.apply(self.state,
+                         next(a for a in self.rules.legal_actions(self.state)
+                              if a.kind == "choose_target" and karma["id"] in a.arguments),
+                         random.Random(1))
+        for _ in range(2):
+            self.rules.apply(self.state,
+                             next(a for a in self.rules.legal_actions(self.state) if a.kind == "pass"),
+                             random.Random(1))
+
+    def test_karma_triggers_from_burn_out_recycle(self):
+        karma = self.rules._new_unit(self.state, "OGN-235", 0, 0, exhausted=False)
+        recycled = self.state["players"][0]["main"].pop()
+        self.state["players"][0]["main"] = []
+        self.state["players"][0]["trash"].append(recycled)
+        self.rules._draw(self.state, 0, 1, random.Random(1))
+        self._resolve_karma_target(karma)
+        self.assertEqual(karma["buff"], 1)
+
+    def test_karma_triggers_from_vision_recycle(self):
+        karma = self.rules._new_unit(self.state, "OGN-235", 0, 0, exhausted=False)
+        self.state["phase"], self.state["actor"] = "decision", 0
+        self.state["decision"] = {"kind": "predict", "player": 0, "remaining": 1}
+        self.rules.apply(self.state, Action.make("predict", recycle=True), random.Random(1))
+        self._resolve_karma_target(karma)
+        self.assertEqual(karma["buff"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

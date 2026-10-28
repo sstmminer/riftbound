@@ -43,7 +43,8 @@ class SpellExpansionNewTests(unittest.TestCase):
                          random.Random(9))
         self.drain()
         self.assertIn(chosen, row["hand"])
-        self.assertTrue(all(uid in row["trash"] for uid in top if uid != chosen))
+        self.assertTrue(all(uid in row["main"] for uid in top if uid != chosen))
+        self.assertTrue(all(uid not in row["trash"] for uid in top))
 
     def test_possession_takes_control_and_recalls_without_showdown(self):
         card = self.spare("OGN-203")

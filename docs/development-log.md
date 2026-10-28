@@ -169,7 +169,7 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 
 - 本轮继续接入 7 张低依赖牌：Mushroom Pouch 在开始阶段检查己方 facedown 并抽牌；Swift Scout 支持支付能量隐藏 Hidden，并把己方 Teemo 从英雄区或战场回手；Noxian Guillotine 设置本回合下次受伤击杀标记，Legion 时立即击杀；Kinkou Monk 在入场时打开最多两个友军的显式多目标确认窗口。Jinx 的弃牌触发已接入显式弃牌决策、Invert Timelines 和 Zaun Warrens 路径；Karthus 会把其控制者的 Deathknell 触发次数加倍。配套补入官方卡图和回归测试，支持集扩展到 250 张。
 
-- 统一可选/事件窗口：Wildclaw Shaman 先进入触发链并确认是否发动，接受后只显示带 Buff 的己方单位，点击目标消耗一个 Buff，再令 Shaman 获得 Buff 并 Ready；Albus Ferros 先确认，再多选带 Buff 的友军，每个目标消耗一个 Buff 并引导一枚耗竭符文。Jinx 的每个弃牌事件只生成一次强制链触发，Karma 的显式卡牌回收会在链上要求选择友军并给予 Buff。当前 Karma 的牌库 Burn Out 自动回收和 Karma Vision 的顶牌回收仍未接入同一事件源。
+- 统一可选/事件窗口：Wildclaw Shaman 先进入触发链并确认是否发动，接受后只显示带 Buff 的己方单位，点击目标消耗一个 Buff，再令 Shaman 获得 Buff 并 Ready；Albus Ferros 先确认，再多选带 Buff 的友军，每个目标消耗一个 Buff 并引导一枚耗竭符文。Jinx 的每个弃牌事件只生成一次强制链触发。新增统一 `recycle_cards_to_main` 事件源后，Karma 会响应牌库耗尽时的 Burn Out 回收、Vision 顶牌回收、Stacked Deck、Vi、Garbage Grabber、Ekko 和战场顶部牌回收，并在链上要求选择友军给予 Buff；仍未注册的复杂回收牌会继续保持构筑拒绝。
 
 ## 尚未完成
 

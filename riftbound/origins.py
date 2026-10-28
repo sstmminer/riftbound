@@ -367,8 +367,8 @@ class OriginsRules:
         for player, card in deathknell_recycle:
             trash = state["players"][player]["trash"]
             if card in trash:
-                trash.remove(card)
-                state["players"][player]["main"].append(card)
+                self._recycle_cards_to_main(state, player, [card],
+                                            source="trash", rng=rng or random.Random(0))
             for rune in state["players"][player]["runes"]:
                 rune["exhausted"] = False
         for player in viktor_tokens:
@@ -396,13 +396,31 @@ class OriginsRules:
 
     def _draw(self, state, player, count, rng):
         row = state["players"][player]
+        had_trash = bool(row["trash"])
         result = draw_cards(tuple(row["main"]), tuple(row["trash"]), count, player=player,
                             points=tuple(state["points"]), rng=rng, victory=state["victory"])
         row["main"], row["trash"] = list(result.main), list(result.trash)
         row["hand"].extend(result.drawn)
         state["points"] = list(result.points)
+        if result.burnouts and had_trash:
+            self._trigger_recycle_event(state, player)
         if result.immediate_winner is not None:
             state["winner"] = result.immediate_winner
+
+    def _recycle_cards_to_main(self, state, player, cards, *, source, rng):
+        """Move cards to the bottom of Main Deck and emit one recycle event."""
+        row = state["players"][player]
+        zone = row[source]
+        selected = [uid for uid in cards if uid in zone]
+        if not selected:
+            return 0
+        for uid in selected:
+            zone.remove(uid)
+        if len(selected) > 1:
+            rng.shuffle(selected)
+        row["main"].extend(selected)
+        self._trigger_recycle_event(state, player)
+        return len(selected)
 
     def _trigger_jinx_discard(self, state, player):
         """Put one mandatory Jinx trigger per discard event on the chain."""
@@ -469,8 +487,8 @@ class OriginsRules:
                 rune["exhausted"] = False
         elif effect == "recycle_top_two":
             row = state["players"][player]
-            for _ in range(min(2, len(row["main"]))):
-                row["main"].append(row["main"].pop(0))
+            self._recycle_cards_to_main(state, player, list(row["main"][:2]),
+                                        source="main", rng=rng)
         elif effect == "albus_channel":
             source = self._unit(state, item.get("source"))
             candidates = [unit["id"] for unit in self._units(state, player)
@@ -2023,10 +2041,9 @@ class OriginsRules:
             if chosen is not None:
                 row["main"].remove(chosen)
                 row["hand"].append(chosen)
-                for uid in options:
-                    if uid != chosen and uid in row["main"]:
-                        row["main"].remove(uid)
-                        row["trash"].append(uid)
+                self._recycle_cards_to_main(
+                    state, owner, [uid for uid in options if uid != chosen],
+                    source="main", rng=rng)
         elif code == "OGN-221":
             # Until end of the current turn, any later damage marks its unit
             # lethal; ordinary cleanup then performs the kill and triggers.
@@ -2093,7 +2110,8 @@ class OriginsRules:
         if kind in {"predict", "discard_card", "choose_target", "confirm_targets", "cancel_play"}:
             if kind == "predict":
                 if args["recycle"] and row["main"]:
-                    row["main"].append(row["main"].pop(0))
+                    self._recycle_cards_to_main(state, player, [row["main"][0]],
+                                                source="main", rng=rng)
                 state["decision"] = None
             elif kind == "discard_card":
                 row["hand"].remove(args["card"])
@@ -2406,7 +2424,8 @@ class OriginsRules:
             if row["energy"] < 1 or len(row["trash"]) < 3:
                 raise ValueError("Garbage Grabber cost is unavailable")
             row["energy"] -= 1
-            del row["trash"][:3]
+            self._recycle_cards_to_main(state, player, list(row["trash"][:3]),
+                                        source="trash", rng=rng)
             self._draw(state, player, 1, rng)
             state["passes"] = 0
         elif kind == "optional_effect":
@@ -2473,10 +2492,10 @@ class OriginsRules:
                 raise ValueError("Vi ability is unavailable")
             if not row["trash"]:
                 raise ValueError("Vi requires a card in trash")
-            row["main"].append(row["trash"].pop(0))
+            self._recycle_cards_to_main(state, player, [row["trash"][0]],
+                                        source="trash", rng=rng)
             unit["exhausted"] = True
             unit["temporary"] += 1
-            self._trigger_recycle_event(state, player)
             state["passes"] = 0
         elif kind == "legend_recruit":
             if row["legend"] != "OGN-265" or row["legend_exhausted"] or row["energy"] < 1:

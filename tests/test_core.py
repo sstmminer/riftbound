@@ -232,7 +232,7 @@ class CatalogTests(unittest.TestCase):
 
     def test_catalog_does_not_imply_play_support(self):
         with self.assertRaises(RulesUnavailable):
-            require_supported(("OGN-002",))
+            require_supported(("OGN-006",))
         with self.assertRaises(ValueError):
             require_supported(("invented",))
 

@@ -82,6 +82,105 @@ class ExpansionBatchCTests(unittest.TestCase):
         self.assertGreaterEqual(sum(unit["code"] == "OGN-274" and unit["temporary_unit"]
                                     for unit in self.state["units"]), 2)
 
+    def test_malzahar_kills_friendly_unit_for_two_spell_power(self):
+        malz = self.rules._new_unit(self.state, "OGN-113", 0, "base:0", exhausted=False)
+        victim = self.rules._new_unit(self.state, "OGN-003", 0, "base:0", exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "unit_malzahar" and malz["id"] in a.arguments and victim["id"] in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.assertNotIn(victim, self.state["units"])
+        self.assertEqual(self.state["players"][0]["power"][-2:], ["spell_any", "spell_any"])
+
+    def test_blitzcrank_play_trigger_moves_enemy_to_its_battlefield(self):
+        card = self.spare("OGN-067")
+        enemy = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        self.state["fields"][0]["controller"] = 0
+        self.state["players"][0]["power"] = ["calm"] * 4
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_unit" and card in a.arguments and '"location":0' in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.assertEqual(self.state["phase"], "decision")
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and enemy["id"] in a.arguments), random.Random(9))
+        self.drain()
+        self.assertEqual(enemy["location"], 0)
+
+    def test_scrapyard_champion_legion_discards_two_then_draws(self):
+        card = self.spare("OGN-020")
+        self.state["players"][0]["played"] = 1
+        self.state["players"][0]["power"] = ["fury"] * 4
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_unit" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.assertEqual(self.state["phase"], "decision")
+        for _ in range(2):
+            self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                              if a.kind == "discard_card"), random.Random(9))
+        self.assertEqual(self.state["phase"], "main")
+        self.assertGreaterEqual(len(self.state["players"][0]["trash"]), 2)
+
+
+    def test_shared_additional_cost_units_consume_their_costs(self):
+        discard_card = self.spare("OGN-219")
+        card = self.spare("OGN-002")
+        self.state["players"][0]["power"] = ["fury"] * 4
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_unit" and card in a.arguments
+                      and '"additional_discard":true' in a.arguments
+                      and discard_card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.assertIn(discard_card, self.state["players"][0]["trash"])
+
+    def test_kraken_hunter_spends_buff_and_ledros_kills_units(self):
+        buffed = self.rules._new_unit(self.state, "OGN-003", 0, "base:0", exhausted=False)
+        buffed["buff"] = 1
+        kraken = self.spare("OGN-150")
+        self.state["players"][0]["power"] = ["body"] * 4
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_unit" and kraken in a.arguments
+                      and buffed["id"] in a.arguments and '"spend_buffs"' in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.assertEqual(buffed["buff"], 0)
+        victim = self.rules._new_unit(self.state, "OGN-003", 0, "base:0", exhausted=False)
+        ledros = self.spare("OGN-231")
+        self.state["players"][0]["power"] = ["order"] * 4
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_unit" and ledros in a.arguments and victim["id"] in a.arguments
+                      and '"kill_units"' in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.assertNotIn(victim, self.state["units"])
+
+    def test_adapatron_conquer_can_kill_gear_for_buff(self):
+        source = self.rules._new_unit(self.state, "OGN-056", 0, 0, exhausted=False)
+        gear_card = self.state["players"][0]["main"].pop()
+        self.state["cards"][gear_card]["code"] = "OGN-227"
+        self.state["players"][0]["gear"].append({"id": gear_card, "card": gear_card, "code": "OGN-227",
+                                                     "owner": 0, "location": "base:0", "exhausted": False})
+        self.state["fields"][0]["controller"] = 0
+        self.rules._score(self.state, 0, 0, "conquer", random.Random(9))
+        accept = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "optional_effect" and '"accept":true' in a.arguments)
+        self.rules.apply(self.state, accept, random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and gear_card in a.arguments), random.Random(9))
+        self.assertEqual(source["buff"], 1)
+        self.assertIn(gear_card, self.state["players"][0]["trash"])
+
+
+    def test_symbol_of_the_solari_recalls_all_units_on_combat_tie(self):
+        attacker = self.rules._new_unit(self.state, "OGN-003", 0, 0, exhausted=False)
+        defender = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        gear_card = self.state["players"][0]["main"].pop()
+        self.state["cards"][gear_card]["code"] = "OGN-227"
+        self.state["players"][0]["gear"].append({"id": gear_card, "card": gear_card, "code": "OGN-227",
+                                                     "owner": 0, "location": "base:0", "exhausted": False})
+        self.state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+        self.rules._settle_battle(self.state, random.Random(9))
+        self.assertEqual(attacker["location"], "base:0")
+        self.assertEqual(defender["location"], "base:1")
+        self.assertTrue(attacker["exhausted"] and defender["exhausted"])
+
+
     def test_qiyana_conquer_requires_optional_choice(self):
         qiyana = self.rules._new_unit(self.state, "OGN-155", 0, 0, exhausted=False)
         self.state["fields"][0]["controller"] = 0

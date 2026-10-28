@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 260 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 271 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -240,6 +240,17 @@
 扩展卡牌：OGN-039 Kai'Sa, Survivor 支持 Accelerate（额外支付 1 energy 与 fury power 后准备进入），并在征服时每张触发抽 1。可用符文目录现覆盖六个基础 domain（Fury、Calm、Mind、Body、Chaos、Order）；符文资源验证和回收会保留这些 domain。
 
 | OGN-264 | Guerilla Warfare, Teemo | spell | Return up to two cards with [Hidden] from your trash to your hand; you can hide cards ignoring costs this turn. |
+| OGN-034 | Tryndamere, Barbarian | unit | When I conquer after an attack, 5 or more excess damage lets me score 1 point. |
+| OGN-002 | Brazen Buccaneer | unit | May discard 1 as an additional cost to reduce Energy cost by 2. |
+| OGN-020 | Scrapyard Champion | unit | [Legion] Discard 2, then draw 2. |
+| OGN-056 | Adaptatron | unit | When I conquer, you may kill a Gear to buff me. |
+| OGN-067 | Blitzcrank, Impassive | unit | [Tank]; when played to a battlefield, move an enemy unit here; when I hold, return me to hand. |
+| OGN-113 | Malzahar, Fanatic | unit | Kill a friendly unit or Gear, exhaust me, and add two rainbow power. |
+| OGN-150 | Kraken Hunter | unit | [Accelerate] and [Assault]; may spend buffs to reduce cost. |
+| OGN-231 | Commander Ledros | unit | [Deflect], [Ganking]; may kill friendly units to reduce Order cost. |
+| OGN-227 | Symbol of the Solari | gear | Combat tie replacement is registered for the attacker. |
+| OGN-248 | Icathian Rain, Kai'Sa | spell | Choose six damage targets, two damage each. |
+| OGN-268 | Bullet Time, Miss Fortune | spell | Pay any amount of rainbow power to damage all enemies at a battlefield. |
 | OGN-008 | Get Excited! | spell | Discard 1; deal its Energy cost as damage to a battlefield unit. |
 | OGN-057 | Block | spell | [Hidden] Give a unit Shield 3 and Tank this turn. |
 | OGN-068 | Caitlyn, Patrolling | unit | Must be assigned combat damage last; exhaust to deal my Might as damage to a battlefield unit. |

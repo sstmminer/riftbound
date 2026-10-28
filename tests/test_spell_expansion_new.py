@@ -70,6 +70,35 @@ class SpellExpansionNewTests(unittest.TestCase):
         self.rules._cleanup(self.state, random.Random(9))
         self.assertNotIn(target, self.state["units"])
 
+    def test_icathian_rain_allows_six_repeated_targets(self):
+        card = self.spare("OGN-248")
+        self.state["players"][0]["power"] = ["fury", "mind", "body"] * 2
+        target = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell_targeted" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        for _ in range(6):
+            self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                              if a.kind == "choose_target" and target["id"] in a.arguments), random.Random(9))
+        self.assertTrue(any(a.kind == "confirm_targets" for a in self.rules.legal_actions(self.state)))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "confirm_targets"), random.Random(9))
+        self.drain()
+        self.assertEqual(target["damage"], 12)
+
+    def test_bullet_time_pays_two_rainbow_power_and_hits_all_enemy_units(self):
+        card = self.spare("OGN-268")
+        self.state["players"][0]["power"] = ["fury", "mind", "body"]
+        first = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        second = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments and '"x":2' in a.arguments
+                      and '"destination":0' in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.drain()
+        self.assertEqual((first["damage"], second["damage"]), (2, 2))
+
+
     def test_guerilla_warfare_returns_hidden_cards_and_grants_free_hide(self):
         card = self.spare("OGN-264")
         hidden = self.state["players"][0]["main"].pop()

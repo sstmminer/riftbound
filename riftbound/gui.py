@@ -757,6 +757,17 @@ class OriginsGUI(tk.Tk):
             "begin_move": "移动到目标 / Move", "exhaust_rune": "横置符文 / Exhaust rune",
             "recycle_rune": "回收符文 / Recycle rune", "legend_energy": "传奇能力 / Legend energy",
             "undo_rune": "回撤上一步符文操作 / Undo rune action",
+            "hide_card": "Hidden：放置到战场 / Hide",
+            "play_hidden": "打出 Hidden / Play Hidden",
+            "play_hidden_targeted": "打出 Hidden 并选择目标 / Play Hidden",
+            "play_gear": "放置装备 / Play gear",
+            "gear_resource": "装备资源能力 / Gear resource",
+            "gear_target": "装备目标能力 / Gear target",
+            "gear_ready_next": "装备能力 / Ready next unit",
+            "gear_tome": "装备能力 / Bonus spell damage",
+            "gear_kill": "装备能力 / Kill gear",
+            "gear_grab": "装备能力 / Recycle and draw",
+            "unit_recycle_buff": "单位能力 / Recycle for Might",
             "legend_spell_power": "传奇能力 / Spell rainbow power",
             "legend_recruit": "传奇能力 / Recruit token",
             "legend_channel": "传奇能力 / Channel exhausted rune",
@@ -1104,6 +1115,13 @@ class OriginsGUI(tk.Tk):
                                  zone="field", factor=5,
                                  compact_label=self._unit_status_label(unit, pending=pending),
                                  exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
+            for owner, hidden_row in enumerate(obs["players"]):
+                hidden_cards = [h for h in hidden_row.get("hidden", []) if h["field"] == index]
+                target_row = player_row if owner == 0 else opponent_row
+                for hidden in hidden_cards:
+                    self._image_card(target_row, hidden["code"], uid=hidden["id"], owner=owner,
+                                     zone="hidden", factor=5, compact_label="Hidden · 背面",
+                                     click=True)
     def render_player(self, obs):
         body = self._clear("player")
         body.grid_rowconfigure(0, weight=0, minsize=165)

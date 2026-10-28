@@ -16,7 +16,7 @@ from .catalog import load_origins, require_supported
 from .core import DOMAINS, Card, Deck, Scoreboard, Unit, channel_count, draw_cards, mulligan, validate_deck
 from .engine import Action, canonical
 from .effects import EffectRegistry
-from .support import ACCELERATE, FIELD_CODES, GEAR_CODES, LEGENDS, REACTIONS, RUNES, SPELL_CODES, TOKEN, UNIT_CODES, starter_deck
+from .support import ACCELERATE, FIELD_CODES, GEAR_CODES, HIDDEN_CODES, LEGENDS, REACTIONS, RUNES, SPELL_CODES, TOKEN, UNIT_CODES, starter_deck
 
 
 def card_model(row):
@@ -120,7 +120,7 @@ class OriginsRules:
                      for i, code in enumerate(deck["runes"])]
             rng.shuffle(runes)
             state["players"].append({"main": physical[4:], "hand": physical[:4], "champion": [chosen],
-                                     "gear": [], "trash": [], "banishment": [], "rune_deck": runes, "runes": [], "energy": 0,
+                                     "gear": [], "hidden": [], "trash": [], "banishment": [], "rune_deck": runes, "runes": [], "energy": 0,
                                      "power": [], "buff_bonus": 0, "legend": deck["legend"], "legend_exhausted": False,
                                      "turns": 0, "played": 0, "ready_play": False,
                                      "discarded_this_turn": False, "spell_bonus_damage": 0})
@@ -351,6 +351,14 @@ class OriginsRules:
             for field, row in enumerate(state["fields"]):
                 if row["controller"] is not None and not self._units(state, row["controller"], field):
                     row["controller"] = None
+            for player, row in enumerate(state["players"]):
+                kept = []
+                for hidden in row.get("hidden", []):
+                    if state["fields"][hidden["field"]]["controller"] == player:
+                        kept.append(hidden)
+                    else:
+                        row["trash"].append(hidden["card"])
+                row["hidden"] = kept
 
     def _draw(self, state, player, count, rng):
         row = state["players"][player]
@@ -536,6 +544,47 @@ class OriginsRules:
         for obj in state["players"]:
             obj["energy"], obj["power"] = 0, []
         self._cleanup(state, rng)
+
+    def _hidden_actions(self, state):
+        player = state["actor"]
+        row = state["players"][player]
+        result = []
+        if state["phase"] == "main" and state["turn_player"] == player:
+            open_fields = [field for field, obj in enumerate(state["fields"])
+                           if obj["controller"] == player
+                           and not any(h["field"] == field for owner in state["players"]
+                                       for h in owner.get("hidden", []))]
+            for card in row["hand"] + row["champion"]:
+                code = state["cards"][card]["code"]
+                if code not in HIDDEN_CODES:
+                    continue
+                for field in open_fields:
+                    for payment in self._payments(state, player, 0, DOMAINS, 0, 1):
+                        result.append(Action.make("hide_card", card=card, field=field, payment=payment))
+        for hidden in row.get("hidden", []):
+            if hidden["turn"] >= state["turn"]:
+                continue
+            field = hidden["field"]
+            code = hidden["code"]
+            if code in {"OGN-053", "OGN-168", "OGN-213", "OGN-097"}:
+                if code == "OGN-053":
+                    candidates = [u["id"] for u in self._units(state, player, field)]
+                elif code == "OGN-097":
+                    candidates = [u["id"] for u in self._units(state, location=field)]
+                else:
+                    candidates = [u["id"] for u in self._units(state, location=field)]
+                if candidates:
+                    result.append(Action.make("play_hidden_targeted", card=hidden["id"], field=field,
+                                              target_candidates=candidates, target_min=1, target_max=1))
+            elif code == "OGN-220":
+                pairs = [[friendly["id"], enemy["id"]]
+                         for friendly in self._units(state, player, field)
+                         for enemy in self._units(state, 1 - player, field)]
+                for pair in pairs:
+                    result.append(Action.make("play_hidden", card=hidden["id"], field=field, targets=pair))
+            else:
+                result.append(Action.make("play_hidden", card=hidden["id"], field=field, targets=[]))
+        return result
 
     def _gear_actions(self, state):
         """Play supported gear to the controller's Base and expose simple abilities."""
@@ -920,7 +969,7 @@ class OriginsRules:
             tanks = [u for u in unassigned if self._tank(u)]
             choices = tanks or unassigned or targets
             return tuple(Action.make("assign_damage", target=u["id"]) for u in choices)
-        result = self._resource_actions(state) + self._gear_actions(state) + self._spell_actions(state)
+        result = self._resource_actions(state) + self._gear_actions(state) + self._hidden_actions(state) + self._spell_actions(state)
         if phase in {"chain", "showdown"}:
             result.append(Action.make("pass"))
         elif phase == "main":
@@ -995,7 +1044,9 @@ class OriginsRules:
             return [u["id"] for u in state["units"]
                     if u["owner"] != owner and self._is_field(state, u["location"])]
         if effect == "fae_debuff":
-            return [u["id"] for u in state["units"]]
+            field = item.get("hidden_field")
+            return [u["id"] for u in state["units"]
+                    if field is None or u["location"] == field]
         if effect == "return_field_unit":
             return [u["id"] for u in state["units"]
                     if u["id"] != source and self._is_field(state, u["location"])]
@@ -1744,6 +1795,27 @@ class OriginsRules:
                     state["phase"], state["actor"] = "main", player
                     state["passes"] = 0
                     return
+                if decision.get("play_hidden_targeted"):
+                    info = decision["hidden"]
+                    hidden = next((h for h in state["players"][player]["hidden"]
+                                   if h["id"] == info["card"]), None)
+                    if hidden is None or args["target"] not in decision["targets"]:
+                        raise ValueError("hidden card is no longer available")
+                    state["players"][player]["hidden"].remove(hidden)
+                    state["players"][player]["hand"].append(hidden["card"])
+                    state["decision"] = None
+                    code = hidden["code"]
+                    kind = "play_unit" if self.cards[code]["type"] == "unit" else "play_spell"
+                    if kind == "play_unit":
+                        nested = Action.make(kind, card=hidden["card"], location=hidden["field"],
+                                             accelerate=False, payment=[], enter_target=None,
+                                             ignore_cost=True, hidden_field=hidden["field"])
+                    else:
+                        nested = Action.make(kind, card=hidden["card"], targets=[args["target"]],
+                                             destination=None, spend_buff=None, payment=[], ignore_cost=True,
+                                             hidden_field=hidden["field"])
+                    self.apply(state, nested, rng)
+                    return
                 item = dict(decision["item"])
                 item["target"] = args["target"]
                 if item.get("effect") == "spell":
@@ -1847,6 +1919,56 @@ class OriginsRules:
                 if unit["code"] == "OGN-091":
                     unit["exhausted"] = False
             state["passes"] = 0
+        elif kind == "hide_card":
+            card = args["card"]
+            code = state["cards"][card]["code"]
+            field = args["field"]
+            if code not in HIDDEN_CODES or field not in range(len(state["fields"])):
+                raise ValueError("invalid Hidden card or battlefield")
+            if state["fields"][field]["controller"] != player or any(
+                    h["field"] == field for owner in state["players"] for h in owner.get("hidden", [])):
+                raise ValueError("Hidden card requires an empty battlefield you control")
+            self._pay(row, 0, args["payment"])
+            if card in row["hand"]:
+                row["hand"].remove(card)
+            elif card in row["champion"]:
+                row["champion"].remove(card)
+            else:
+                raise ValueError("Hidden card is not in hand or Champion Zone")
+            row["hidden"].append({"id": card, "card": card, "code": code, "owner": player,
+                                  "field": field, "turn": state["turn"]})
+            state["passes"] = 0
+        elif kind == "play_hidden":
+            hidden = next((h for h in row["hidden"] if h["id"] == args["card"]), None)
+            if hidden is None or hidden["turn"] >= state["turn"]:
+                raise ValueError("Hidden card is not ready")
+            row["hidden"].remove(hidden)
+            row["hand"].append(hidden["card"])
+            code = hidden["code"]
+            kind2 = "play_unit" if self.cards[code]["type"] == "unit" else "play_spell"
+            if kind2 == "play_unit":
+                nested = Action.make(kind2, card=hidden["card"], location=hidden["field"],
+                                     accelerate=False, payment=[], enter_target=None,
+                                     ignore_cost=True, hidden_field=hidden["field"])
+            else:
+                nested = Action.make(kind2, card=hidden["card"], targets=args.get("targets", []),
+                                     destination=None, spend_buff=None, payment=[], ignore_cost=True,
+                                     hidden_field=hidden["field"])
+            self.apply(state, nested, rng)
+        elif kind == "play_hidden_targeted":
+            hidden = next((h for h in row["hidden"] if h["id"] == args["card"]), None)
+            if hidden is None or hidden["turn"] >= state["turn"]:
+                raise ValueError("Hidden card is not ready")
+            state["decision"] = {"kind": "target", "player": player,
+                                  "targets": list(args["target_candidates"]),
+                                  "multi": args.get("target_max", 1) > 1,
+                                  "min": args.get("target_min", 1),
+                                  "max": args.get("target_max", 1), "selected": [],
+                                  "item": {"effect": "hidden_play", "owner": player},
+                                  "play_hidden_targeted": True,
+                                  "hidden": {"card": hidden["id"], "field": hidden["field"],
+                                             "code": hidden["code"]}}
+            state["phase"], state["actor"] = "decision", player
         elif kind == "gear_resource":
             gear = next((g for g in row["gear"] if g["id"] == args["gear"]), None)
             if gear is None or gear["exhausted"]:
@@ -2070,8 +2192,9 @@ class OriginsRules:
             data = self.cards[code]
             was_legion = row["played"] > 0
             if kind == "play_unit":
-                energy = data["energy"] - (2 if code == "OGN-012" and was_legion else 0) + int(args["accelerate"])
-                self._pay(row, energy, args["payment"])
+                ignore_cost = bool(args.get("ignore_cost"))
+                energy = 0 if ignore_cost else data["energy"] - (2 if code == "OGN-012" and was_legion else 0) + int(args["accelerate"])
+                self._pay(row, energy, [] if ignore_cost else args["payment"])
                 zone = row["hand"] if card in row["hand"] else row["champion"]
                 zone.remove(card)
                 ready = (args["accelerate"] or any(u["code"] == "OGN-011" for u in self._units(state, player))
@@ -2082,6 +2205,8 @@ class OriginsRules:
                 if code == "OGN-079":
                     ready = ready or state["victory"] - state["points"][1-player] <= 3
                 unit = self._new_unit(state, code, player, args["location"], card=card, exhausted=not ready)
+                if args.get("hidden_field") is not None:
+                    unit["hidden_field"] = args["hidden_field"]
                 row["played"] += 1
                 if (row["legend"] == "OGN-249" and not row["legend_exhausted"]
                         and self.might(state, unit) >= 5):
@@ -2106,7 +2231,10 @@ class OriginsRules:
                 if code == "OGN-149":
                     triggers.append({"effect": "snapvine_fight", "source": unit["id"], "owner": player})
                 if code == "OGN-097":
-                    triggers.append({"effect": "fae_debuff", "source": unit["id"], "owner": player})
+                    trigger = {"effect": "fae_debuff", "source": unit["id"], "owner": player}
+                    if unit.get("hidden_field") is not None:
+                        trigger["hidden_field"] = unit["hidden_field"]
+                    triggers.append(trigger)
                 if code == "OGN-100":
                     triggers.append({"effect": "vision", "source": unit["id"], "owner": player})
                 if code == "OGN-106":
@@ -2176,7 +2304,9 @@ class OriginsRules:
                 self._triggers(state, triggers)
             else:
                 spend = args["spend_buff"]
-                self._pay(row, 0 if spend is not None else data["energy"], args["payment"])
+                ignore_cost = bool(args.get("ignore_cost"))
+                self._pay(row, 0 if spend is not None or ignore_cost else data["energy"],
+                          [] if ignore_cost else args["payment"])
                 if spend is not None:
                     self._unit(state, spend)["buff"] = 0
                 row["hand"].remove(card)
@@ -2504,6 +2634,9 @@ class OriginsRules:
                                    "energy": row["energy"], "power": row["power"].copy(),
                                    "power_count": len(row["power"]),
                                    "gear": copy.deepcopy(row["gear"]),
+                                   "hidden": [{"id": h["id"], "field": h["field"],
+                                               "code": h["code"] if player == index else "__back__"}
+                                              for h in row.get("hidden", [])],
                                    "legend": row["legend"], "legend_exhausted": row["legend_exhausted"],
                                    "champion": [card(uid) for uid in row["champion"]],
                                    "banishment": [card(uid) for uid in row["banishment"]],
@@ -2547,6 +2680,11 @@ class OriginsRules:
                         or gear.get("exhausted") not in (True, False)):
                     raise ValueError("invalid gear state")
                 located.append(gear["card"])
+            for hidden in row.get("hidden", []):
+                if (hidden.get("owner", player) != player or hidden.get("field") not in range(len(state["fields"]))
+                        or hidden.get("card") not in state["cards"]):
+                    raise ValueError("invalid Hidden card state")
+                located.append(hidden["card"])
             runes = row["runes"] + row["rune_deck"]
             if len(runes) != 12 or len({r["id"] for r in runes}) != 12:
                 raise ValueError("rune conservation failed")

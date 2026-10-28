@@ -165,6 +165,7 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 - 将 Fortified Position（OGN-279）纳入正式支持集；其防御触发与战斗护盾路径已有回归覆盖。
 - 新增 Raging Soul、Vi、Sona、Pit Crew、Herald of Scales，覆盖弃牌状态、回收资源、回合结束符文、Gear 触发和 Dragon 费用静态修正。
 - 新增 Shakedown、The Harrowing、Salvage 的基础目标/弃牌区/抽牌路径；Shakedown 的“对手选择抽牌或承受伤害”仍需独立选择窗口。
+- 按 RUP5 107.3、422、811 接入 Hidden 基础流程：己方控制且未占用的战场可支付 1 点万能符能放置 facedown；下回合起可从该区以 0 费打出。观察接口对控制方提供正面卡图，对手只提供牌背；GUI 支持手牌/英雄区右键放置、战场右键打出和控制方悬浮查看。Hidden 目标限制已覆盖 Stand United、Fight or Flight、Hidden Blade、Blastcone Fae 的战场范围。
 
 ## 尚未完成
 

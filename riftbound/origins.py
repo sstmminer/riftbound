@@ -479,7 +479,9 @@ class OriginsRules:
                 return True
             state["decision"] = {
                 "kind": "target", "player": player, "targets": candidates,
-                "multi": True, "min": 0, "max": len(candidates), "selected": [],
+                "multi": True, "min": 0,
+                "max": sum(unit["buff"] for unit in self._units(state, player)),
+                "selected": [], "allow_repeat": True,
                 "item": {"effect": "albus_channel", "owner": player,
                           "source": source["id"]},
             }
@@ -1136,7 +1138,8 @@ class OriginsRules:
                 if decision.get("multi"):
                     selected = set(decision.get("selected", []))
                     actions = [Action.make("choose_target", target=uid)
-                               for uid in decision["targets"] if uid not in selected]
+                               for uid in decision["targets"]
+                               if decision.get("allow_repeat") or uid not in selected]
                     complete = len(selected) >= decision.get("min", 1)
                     if decision.get("target_pairs"):
                         complete = self._target_pair_matches(decision, list(selected))
@@ -2146,7 +2149,7 @@ class OriginsRules:
                     return
                 if decision.get("multi"):
                     selected = decision.setdefault("selected", [])
-                    if args["target"] in selected:
+                    if args["target"] in selected and not decision.get("allow_repeat"):
                         raise ValueError("target already selected")
                     if len(selected) >= decision["max"]:
                         raise ValueError("too many target choices")

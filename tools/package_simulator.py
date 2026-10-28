@@ -13,12 +13,7 @@ PATTERNS = ["README.md", "pyproject.toml", ".gitignore", ".python-version", "rif
 # GitHub's regular file limit is 100 MB.  The source tree contains every
 # high-resolution hover asset; the lightweight bundle keeps a curated set and
 # falls back to the clear thumbnail for the remaining cards.
-KEEP_HIGH_CODES = frozenset({
-    "OGN-001", "OGN-003", "OGN-027", "OGN-030", "OGN-039", "OGN-065",
-    "OGN-066", "OGN-088", "OGN-131", "OGN-142", "OGN-148", "OGN-159",
-    "OGN-171", "OGN-210", "OGN-215", "OGN-217", "OGN-219", "OGN-232",
-    "OGN-234", "OGN-247", "OGN-251", "OGN-253", "OGN-265",
-})
+KEEP_HIGH_CODES = frozenset()
 
 
 def main():

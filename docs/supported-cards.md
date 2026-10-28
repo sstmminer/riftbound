@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 271 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 277 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -240,6 +240,12 @@
 扩展卡牌：OGN-039 Kai'Sa, Survivor 支持 Accelerate（额外支付 1 energy 与 fury power 后准备进入），并在征服时每张触发抽 1。可用符文目录现覆盖六个基础 domain（Fury、Calm、Mind、Body、Chaos、Order）；符文资源验证和回收会保留这些 domain。
 
 | OGN-264 | Guerilla Warfare, Teemo | spell | Return up to two cards with [Hidden] from your trash to your hand; you can hide cards ignoring costs this turn. |
+| OGN-071 | Party Favors | spell | Each other player chooses Cards or Runes; resolve the matching draw/channel choice. |
+| OGN-157 | Udyr, Wildman | unit | Spend a buff to choose one unused skill this turn. |
+| OGN-187 | Whirlwind | spell | The next player may return a unit to its owner's hand. |
+| OGN-196 | Soulgorger | unit | May replay a unit from your trash ignoring Energy cost. |
+| OGN-226 | Spectral Matron | unit | May replay an eligible low-cost unit from your trash ignoring Energy cost. |
+| OGN-237 | King's Edict | spell | The opponent chooses a unit you don't control; kill it. |
 | OGN-034 | Tryndamere, Barbarian | unit | When I conquer after an attack, 5 or more excess damage lets me score 1 point. |
 | OGN-002 | Brazen Buccaneer | unit | May discard 1 as an additional cost to reduce Energy cost by 2. |
 | OGN-020 | Scrapyard Champion | unit | [Legion] Discard 2, then draw 2. |

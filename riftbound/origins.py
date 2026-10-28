@@ -521,6 +521,31 @@ class OriginsRules:
             for owner in (0, 1):
                 cards = [uid for uid in selected if uid in state["players"][owner]["trash"]]
                 self._recycle_cards_to_main(state, owner, cards, source="trash", rng=rng)
+        elif effect == "replay_trash_unit":
+            resume = reveal.get("resume") or {"phase": "main", "actor": reveal["owner"], "passes": 0}
+            state["reveal"] = None
+            state["phase"], state["actor"], state["passes"] = resume["phase"], resume["actor"], resume.get("passes", 0)
+            if selected:
+                owner = reveal["owner"]
+                row = state["players"][owner]
+                card = selected[0]
+                if card in row["trash"]:
+                    row["trash"].remove(card)
+                    row["hand"].append(card)
+                    code = state["cards"][card]["code"]
+                    payments = self._payments(state, owner, 0, self.cards[code]["domains"],
+                                              self.cards[code]["power_cost"])
+                    if payments:
+                        self._pay(row, 0, payments[0])
+                        self.apply(state, Action.make("play_unit", card=card,
+                                                      location=f"base:{owner}", accelerate=False,
+                                                      payment=[], enter_target=None, ignore_cost=True),
+                                   rng)
+                    else:
+                        row["hand"].remove(card)
+                        row["trash"].append(card)
+            self._cleanup(state, rng)
+            return
         elif effect == "guerrilla_return_hidden":
             row = state["players"][reveal["owner"]]
             for uid in selected:
@@ -544,6 +569,19 @@ class OriginsRules:
     def _resolve_optional(self, state, item, rng):
         player = item["player"]
         effect = item["effect"]
+        if effect == "replay_trash_unit":
+            code = item.get("code")
+            candidates = [uid for uid in state["players"][player]["trash"]
+                          if self.cards[state["cards"][uid]["code"]]["type"] == "unit"
+                          and (code != "OGN-226" or (
+                              self.cards[state["cards"][uid]["code"]]["energy"] <= 3
+                              and self.cards[state["cards"][uid]["code"]]["power_cost"] <= 1))]
+            if not candidates:
+                return True
+            self._open_reveal(state, owner=player, cards=candidates, mode="select",
+                              chooser=player, minimum=0, maximum=1,
+                              effect="replay_trash_unit", choices=candidates, rng=rng)
+            return False
         if effect == "adaptatron_conquer":
             source = self._unit(state, item.get("source"))
             gears = [gear["id"] for gear in state["players"][player]["gear"]]
@@ -740,6 +778,7 @@ class OriginsRules:
             unit["exhausted"] = False
             unit["stunned"] = False
             unit["temporary_ganking"] = False
+            unit["udyr_choices"] = []
             unit["move_count"] = 0
         # Loose Cannon has a forced draw; this closed card pool has no
         # Fury/Chaos Reactions, so the forced beginning trigger can settle here.
@@ -955,6 +994,11 @@ class OriginsRules:
                               for target in self._units(state, player))
                 result.extend(Action.make("unit_malzahar", unit=unit["id"], target=gear["id"])
                               for gear in row["gear"])
+            if unit["code"] == "OGN-157" and not unit["exhausted"] and unit["buff"]:
+                options = [option for option in ("damage", "stun", "ready", "ganking")
+                           if option not in unit.get("udyr_choices", [])]
+                if options:
+                    result.append(Action.make("unit_udyr", unit=unit["id"], options=options))
         if row["legend"] == "OGN-253" and not row["legend_exhausted"] and row["played"]:
             result.append(Action.make("legend_energy"))
         if row["legend"] == "OGN-247" and not row["legend_exhausted"]:
@@ -1011,7 +1055,7 @@ class OriginsRules:
                 continue
             data = self.cards[code]
             targeted_only = code in {"OGN-104", "OGN-183", "OGN-248"}
-            if code in {"OGN-022", "OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-156", "OGN-170", "OGN-179", "OGN-183", "OGN-198", "OGN-248", "OGN-264", "OGN-268", "OGN-201", "OGN-221", "OGN-224", "OGN-233"}:
+            if code in {"OGN-022", "OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-071", "OGN-156", "OGN-170", "OGN-179", "OGN-183", "OGN-187", "OGN-237", "OGN-198", "OGN-248", "OGN-264", "OGN-268", "OGN-201", "OGN-221", "OGN-224", "OGN-233"}:
                 targets = [[]]
             elif code == "OGN-008":
                 targets = [[u["id"]] for u in state["units"] if self._is_field(state, u["location"])]
@@ -1528,6 +1572,7 @@ class OriginsRules:
                 "location": location, "exhausted": exhausted, "buff": 0,
                 "temporary": 0, "temporary_unit": False, "temporary_ganking": False,
                 "temporary_tank": False, "combat_shield": 0, "assault": 0,
+                "udyr_choices": [],
                 "damage": 0, "stunned": False, "move_count": 0,
                 "kill_on_damage": None}
         state["units"].append(unit)
@@ -2085,6 +2130,27 @@ class OriginsRules:
         returned = []
         killed_by_hidden_blade = None
         state.setdefault("dreaming_tree_used", [False] * len(state["fields"]))
+        if code == "OGN-071" and not item.get("choice_done"):
+            state["chain"].append(item)
+            state["decision"] = {"kind": "choice", "player": 1 - owner,
+                                  "options": ["cards", "runes"], "item": item,
+                                  "party_favors": True}
+            state["phase"], state["actor"], state["passes"] = "decision", 1 - owner, 0
+            return False
+        if code == "OGN-187" and not item.get("choice_done"):
+            state["chain"].append(item)
+            state["decision"] = {"kind": "choice", "player": 1 - owner,
+                                  "options": ["return", "skip"], "item": item,
+                                  "whirlwind_choice": True}
+            state["phase"], state["actor"], state["passes"] = "decision", 1 - owner, 0
+            return False
+        if code == "OGN-237" and not item.get("choice_done"):
+            state["chain"].append(item)
+            state["decision"] = {"kind": "target", "player": 1 - owner,
+                                  "targets": [u["id"] for u in state["units"] if u["owner"] != owner],
+                                  "item": item, "king_edict": True}
+            state["phase"], state["actor"], state["passes"] = "decision", 1 - owner, 0
+            return False
         if code == "OGN-008" and not item.get("discard_done"):
             state["chain"].append(item)
             state["decision"] = {"kind": "discard", "player": owner, "remaining": 1,
@@ -2096,7 +2162,16 @@ class OriginsRules:
             if unit is None or (code in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085", "OGN-105"}
                                 and not self._is_field(state, unit["location"])):
                 continue
-            if code == "OGN-254":
+            if code == "OGN-237":
+                unit["damage"] = max(unit["damage"], self.might(state, unit))
+            elif code == "OGN-187":
+                if unit["card"] is not None:
+                    state["units"].remove(unit)
+                    state["players"][unit["owner"]]["hand"].append(unit["card"])
+                else:
+                    unit["location"] = f"base:{unit['owner']}"
+                    unit["exhausted"] = True
+            elif code == "OGN-254":
                 if item.get("legion"):
                     unit["damage"] = max(unit["damage"], self.might(state, unit))
                 else:
@@ -2325,7 +2400,15 @@ class OriginsRules:
                               effect="guerrilla_return_hidden", item=item,
                               choices=list(choices), rng=rng)
             return False
-        if code == "OGN-268":
+        if code == "OGN-071":
+            option = item.get("choice")
+            if option == "cards":
+                self._draw(state, owner, 1, rng)
+                self._draw(state, 1 - owner, 1, rng)
+            elif option == "runes":
+                self._channel_rune(state, owner, exhausted=True)
+                self._channel_rune(state, 1 - owner, exhausted=True)
+        elif code == "OGN-268":
             destination = item.get("destination")
             for enemy in list(self._units(state, 1 - owner, destination)):
                 self._deal_damage(state, enemy, int(item.get("x", 0)))
@@ -2432,6 +2515,46 @@ class OriginsRules:
                 if not decision or decision.get("kind") != "choice" or args.get("option") not in decision.get("options", []):
                     raise ValueError("invalid choice option")
                 option = args["option"]
+                if decision.get("udyr_choice"):
+                    item = decision["item"]
+                    option = args["option"]
+                    source = self._unit(state, item["source"])
+                    if source is None:
+                        raise ValueError("Udyr source is unavailable")
+                    if option in {"damage", "stun"}:
+                        state["decision"] = {"kind": "target", "player": player,
+                                              "targets": [u["id"] for u in state["units"]
+                                                          if self._is_field(state, u["location"])],
+                                              "item": item, "udyr_option": option}
+                        item["option"] = option
+                        return
+                    if option == "ready":
+                        source["exhausted"] = False
+                    elif option == "ganking":
+                        source["temporary_ganking"] = True
+                    source.setdefault("udyr_choices", []).append(option)
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "main", player, 0
+                    self._cleanup(state, rng)
+                    return
+                if decision.get("party_favors"):
+                    item = decision["item"]
+                    item["choice"] = option
+                    item["choice_done"] = True
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                    return
+                if decision.get("whirlwind_choice"):
+                    item = decision["item"]
+                    if option == "skip":
+                        item["choice_done"] = True
+                        state["decision"] = None
+                        state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                    else:
+                        state["decision"] = {"kind": "target", "player": player,
+                                              "targets": [u["id"] for u in state["units"]],
+                                              "item": item, "whirlwind_target": True}
+                    return
                 if option == "draw":
                     self._draw(state, player, 1, rng)
                 elif option == "channel":
@@ -2520,6 +2643,36 @@ class OriginsRules:
                 decision = state["decision"]
                 if args["target"] not in decision["targets"]:
                     raise ValueError("invalid target choice")
+                if decision.get("udyr_option"):
+                    item = decision["item"]
+                    target = self._unit(state, args["target"])
+                    if target is None or not self._is_field(state, target["location"]):
+                        raise ValueError("Udyr target is unavailable")
+                    if item.get("option") == "damage":
+                        self._deal_damage(state, target, 2)
+                    else:
+                        target["stunned"] = True
+                    source = self._unit(state, item["source"])
+                    if source is not None:
+                        source.setdefault("udyr_choices", []).append(item["option"])
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "main", player, 0
+                    self._cleanup(state, rng)
+                    return
+                if decision.get("king_edict"):
+                    item = decision["item"]
+                    item["targets"] = [args["target"]]
+                    item["choice_done"] = True
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                    return
+                if decision.get("whirlwind_target"):
+                    item = decision["item"]
+                    item["targets"] = [args["target"]]
+                    item["choice_done"] = True
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                    return
                 if decision.get("get_excited_target"):
                     item = decision["item"]
                     item["targets"] = [args["target"]]
@@ -2835,8 +2988,8 @@ class OriginsRules:
             if args.get("accept"):
                 self._resolve_optional(state, item, rng)
             state["passes"] = 0
-            if state.get("decision") is not None:
-                # The optional effect opened a target window. Its saved return
+            if state.get("decision") is not None or state.get("reveal") is not None:
+                # The optional effect opened a target/reveal window. Its saved return
                 # context is restored by the target confirmation handler.
                 return
             if optional:
@@ -2877,6 +3030,17 @@ class OriginsRules:
             row["legend_exhausted"] = True
             row["power"].append("spell_any")
             state["passes"] = 0
+        elif kind == "unit_udyr":
+            source = self._unit(state, args["unit"])
+            if (source is None or source["owner"] != player or source["code"] != "OGN-157"
+                    or source["exhausted"] or not source["buff"]):
+                raise ValueError("Udyr ability is unavailable")
+            source["buff"] -= 1
+            state["decision"] = {"kind": "choice", "player": player,
+                                  "options": list(args.get("options", [])),
+                                  "item": {"effect": "udyr_choice", "owner": player,
+                                            "source": source["id"]}, "udyr_choice": True}
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
         elif kind == "unit_malzahar":
             source = self._unit(state, args["unit"])
             if source is None or source["owner"] != player or source["code"] != "OGN-113" or source["exhausted"]:
@@ -3242,6 +3406,11 @@ class OriginsRules:
                     return
                 if code == "OGN-020" and was_legion:
                     self._draw(state, player, 2, rng)
+                if code in {"OGN-196", "OGN-226"}:
+                    self._queue_optional(state, player, "replay_trash_unit",
+                                         source=unit["id"], code=code)
+                    self._cleanup(state, rng)
+                    return
                 self._cleanup(state, rng)
                 if self._is_field(state, args["location"]) and state["fields"][args["location"]]["controller"] != player:
                     state["battle"] = {"field": args["location"], "attacker": player, "combat": False}

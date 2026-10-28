@@ -181,6 +181,35 @@ class ExpansionBatchCTests(unittest.TestCase):
         self.assertTrue(attacker["exhausted"] and defender["exhausted"])
 
 
+    def test_soulgorger_and_spectral_matron_replay_eligible_trash_units(self):
+        for code in ("OGN-196", "OGN-226"):
+            state = self.rules.initial_state(random.Random(88))
+            state.update(phase="main", actor=0, turn_player=0, turn=2)
+            state["players"][0]["energy"] = 20
+            state["players"][0]["power"] = ["chaos", "order", "mind", "fury"] * 3
+            card = state["players"][0]["main"].pop()
+            state["cards"][card]["code"] = code
+            state["players"][0]["hand"].append(card)
+            trash_unit = state["players"][0]["main"].pop()
+            state["cards"][trash_unit]["code"] = "OGN-003"
+            state["players"][0]["trash"].append(trash_unit)
+            action = next(a for a in self.rules.legal_actions(state)
+                          if a.kind == "play_unit" and card in a.arguments)
+            self.rules.apply(state, action, random.Random(9))
+            self.assertEqual(state["phase"], "optional")
+            self.rules.apply(state, next(a for a in self.rules.legal_actions(state)
+                                         if a.kind == "optional_effect" and '"accept":true' in a.arguments),
+                             random.Random(9))
+            self.assertEqual(state["phase"], "reveal")
+            self.rules.apply(state, next(a for a in self.rules.legal_actions(state)
+                                         if a.kind == "choose_revealed" and trash_unit in a.arguments),
+                             random.Random(9))
+            self.rules.apply(state, next(a for a in self.rules.legal_actions(state)
+                                         if a.kind == "confirm_revealed"), random.Random(9))
+            self.assertTrue(any(u["code"] == "OGN-003" for u in state["units"]))
+            self.rules.validate(state)
+
+
     def test_qiyana_conquer_requires_optional_choice(self):
         qiyana = self.rules._new_unit(self.state, "OGN-155", 0, 0, exhausted=False)
         self.state["fields"][0]["controller"] = 0

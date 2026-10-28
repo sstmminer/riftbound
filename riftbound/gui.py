@@ -244,8 +244,11 @@ class OriginsGUI(tk.Tk):
                 # launch appear unresponsive until Restart.
                 button.configure(command=lambda u=uid: self.mulligan_click(u))
             else:
-                button.bind("<ButtonPress-1>", lambda event, u=uid: self.start_drag(event, u, zone))
-                button.bind("<ButtonRelease-1>", lambda event, u=uid: self.end_drag(event, u, zone))
+                if zone == "gear":
+                    button.bind("<Button-1>", lambda event, u=uid: self.card_menu(event, u))
+                else:
+                    button.bind("<ButtonPress-1>", lambda event, u=uid: self.start_drag(event, u, zone))
+                    button.bind("<ButtonRelease-1>", lambda event, u=uid: self.end_drag(event, u, zone))
                 button.bind("<Button-3>", lambda event, u=uid: self.card_menu(event, u))
                 if zone == "hand":
                     # The wrapper catches the opening hand click as well as the
@@ -1022,6 +1025,10 @@ class OriginsGUI(tk.Tk):
                              zone="base", factor=4,
                              compact_label=self._unit_status_label(unit),
                              exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
+        for gear in obs["players"][1].get("gear", []):
+            self._image_card(base, gear["code"], uid=gear["id"], owner=1, zone="gear", factor=4,
+                             compact_label="装备 · " + ("横置" if gear["exhausted"] else "就绪"),
+                             exhausted=gear["exhausted"])
 
     def _identity(self, parent, obs, player, *, compact=False):
         row = obs["players"][player]
@@ -1145,6 +1152,10 @@ class OriginsGUI(tk.Tk):
                              zone="base", factor=4,
                              compact_label=self._unit_status_label(unit),
                              exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
+        for gear in obs["players"][0].get("gear", []):
+            self._image_card(base, gear["code"], uid=gear["id"], owner=0, zone="gear", factor=4,
+                             compact_label="装备 · " + ("横置" if gear["exhausted"] else "就绪"),
+                             exhausted=gear["exhausted"])
         piles = self._subzone(body, "牌堆 / Player Piles", width=250)
         piles.grid(row=1, column=4, sticky="nsew", padx=4)
         self._stack(piles, obs["players"][0]["trash"], owner=0,

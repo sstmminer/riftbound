@@ -26,7 +26,7 @@
 | 抽空牌库 | 414、432 | 回收弃牌、对手得分、继续抽牌、空弃牌重复 Burn Out 即时终局 |
 | 卡牌效果 | 支持表 | 250 张显式处理器，含基础伤害、减益、抽牌、目标选择、Stun、攻击触发、静态单位、基础 Gear 资源和六种基础符文；Singularity/Back to Back 支持点选多目标并显式确认；Hidden、Karthus Deathknell、Noxian Guillotine、Mushroom Pouch、Swift Scout 已加入；未支持卡牌开局前拒绝 |
 | Gear 基础原语 | 148.1、149、359.2.d | `core.GearZone` 已验证只进控制者 Base 且进入 Ready；具体 Origins Gear 牌区尚未接入 |
-| 隐藏信息 | 107.3、108、128、422、811 | 手牌仅本人可见，牌库顺序双方不可见；Hidden facedown 区支持单卡占位、下回合 0 费打出、控制方正面查看与对手牌背显示；Noxus Saboteur 会阻止对应战场的隐藏/揭示，Bandle Tree 允许第二张，Tideturner 适用异地目标例外 |
+| 隐藏信息 | 107.3、108、128、422、811 | 手牌仅本人可见，牌库顺序双方不可见；Hidden facedown 区支持单卡占位、下回合 0 费打出、控制方正面查看与对手牌背显示；Noxus Saboteur 会阻止对应战场的对手揭示/打出，Bandle Tree 允许第二张，Tideturner 适用异地目标例外 |
 
 通用模块测试使用合成元数据；真实 Origins 卡牌与完整游戏测试在 tests/test_origins.py。三张无主动效果的战场分别调整胜利分数、单位力量、Ganking，相关效果同时作用于双方。
 

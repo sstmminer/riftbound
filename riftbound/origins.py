@@ -598,9 +598,7 @@ class OriginsRules:
                            if obj["controller"] == player
                            and sum(h["field"] == field for owner in state["players"]
                                    for h in owner.get("hidden", []))
-                               < (2 if obj["code"] == "OGN-278" else 1)
-                           and not any(u["owner"] != player and u["code"] == "OGN-018"
-                                       and u["location"] == field for u in state["units"])]
+                               < (2 if obj["code"] == "OGN-278" else 1)]
             for card in row["hand"] + row["champion"]:
                 code = state["cards"][card]["code"]
                 if code not in HIDDEN_CODES:

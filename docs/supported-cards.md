@@ -109,7 +109,7 @@
 | OGN-295 | Vilemaw's Lair | battlefield | Units can't move from here to base. |
 | OGN-298 | Zaun Warrens | battlefield | When you conquer here, discard 1, then draw 1. |
 
-| OGN-018 | Noxus Saboteur | unit | Opponents cannot hide or reveal Hidden cards at this battlefield while I am here. |
+| OGN-018 | Noxus Saboteur | unit | Opponents cannot reveal their Hidden cards at this battlefield while I am here. |
 | OGN-135 | Pakaa Cub | unit | [Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.) |
 | OGN-101 | Mushroom Pouch | gear | At the start of your Beginning Phase, if you control a facedown card at a battlefield, draw 1. |
 | OGN-263 | Swift Scout | legend | Pay 1 energy to hide a Hidden card; pay 1 energy and exhaust me to return a Teemo unit you own to your hand. |

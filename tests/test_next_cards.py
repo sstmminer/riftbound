@@ -36,7 +36,13 @@ class NextCardBatchTests(unittest.TestCase):
     def test_noxus_saboteur_blocks_opponent_hidden(self):
         saboteur = self.rules._new_unit(self.state, "OGN-018", 1, 0, exhausted=False)
         card = self.give("OGN-135")
-        self.assertFalse(any(a.kind == "hide_card" and card in a.arguments
+        # Saboteur does not prevent placing a facedown card; it prevents that
+        # opponent's later reveal/play at this battlefield.
+        hide = next(a for a in self.rules.legal_actions(self.state)
+                    if a.kind == "hide_card" and card in a.arguments)
+        self.rules.apply(self.state, hide, random.Random(1))
+        self.state["turn"] = 3
+        self.assertFalse(any(a.kind.startswith("play_hidden") and card in a.arguments
                              for a in self.rules.legal_actions(self.state)))
         self.state["units"].remove(saboteur)
 

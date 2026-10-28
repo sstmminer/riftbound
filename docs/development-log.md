@@ -8,7 +8,7 @@
 - 当前分支：`simulator`。
 - 当前规则实现版本仍为 `origins-subset/0.3.0`。
 - 第一弹目录有 298 张基础编号：142 unit、84 spell、30 gear、24 battlefield、12 legend、6 rune。
-- 目前显式执行 257 张；其余 41 张在构筑时拒绝，不会静默当作白板。
+- 目前显式执行 260 张；其余 38 张在构筑时拒绝，不会静默当作白板。
 
 ## 本轮已完成
 
@@ -167,22 +167,22 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 - 新增 Shakedown、The Harrowing、Salvage 的基础目标/弃牌区/抽牌路径；Shakedown 的“对手选择抽牌或承受伤害”仍需独立选择窗口。
 - 按 RUP5 107.3、422、811 接入 Hidden 基础流程：己方控制且未占用的战场可支付 1 点万能符能放置 facedown；下回合起可从该区以 0 费打出。观察接口对控制方提供正面卡图，对手只提供牌背；GUI 支持手牌/英雄区右键放置、战场右键打出和控制方悬浮查看。Hidden 目标限制已覆盖 Stand United、Fight or Flight、Hidden Blade、Blastcone Fae 的战场范围；Pakaa Cub 可直接使用基础 Hidden 流程，Noxus Saboteur 只阻止对手在其所在战场揭示/打出，Bandle Tree 支持第二个 facedown 槽，Tideturner 按勘误允许选择其他位置的友军。
 
-- 本轮继续接入 7 张低依赖牌：Mushroom Pouch 在开始阶段检查己方 facedown 并抽牌；Swift Scout 支持支付能量隐藏 Hidden，并把己方 Teemo 从英雄区或战场回手；Noxian Guillotine 设置本回合下次受伤击杀标记，Legion 时立即击杀；Kinkou Monk 在入场时打开最多两个友军的显式多目标确认窗口。Jinx 的弃牌触发已接入显式弃牌决策、Invert Timelines 和 Zaun Warrens 路径；Karthus 会把其控制者的 Deathknell 触发次数加倍。配套补入官方卡图和回归测试，支持集扩展到 257 张。
+- 本轮继续接入 7 张低依赖牌：Mushroom Pouch 在开始阶段检查己方 facedown 并抽牌；Swift Scout 支持支付能量隐藏 Hidden，并把己方 Teemo 从英雄区或战场回手；Noxian Guillotine 设置本回合下次受伤击杀标记，Legion 时立即击杀；Kinkou Monk 在入场时打开最多两个友军的显式多目标确认窗口。Jinx 的弃牌触发已接入显式弃牌决策、Invert Timelines 和 Zaun Warrens 路径；Karthus 会把其控制者的 Deathknell 触发次数加倍。配套补入官方卡图和回归测试，支持集扩展到 260 张。
 
 - 统一可选/事件窗口：Wildclaw Shaman 先进入触发链并确认是否发动，接受后只显示带 Buff 的己方单位，点击目标消耗一个 Buff，再令 Shaman 获得 Buff 并 Ready；Albus Ferros 先确认，再多选带 Buff 的友军，每个目标消耗一个 Buff 并引导一枚耗竭符文。Jinx 的每个弃牌事件只生成一次强制链触发。新增统一 `recycle_cards_to_main` 事件源后，Karma 会响应牌库耗尽时的 Burn Out 回收、Vision 顶牌回收、Stacked Deck、Vi、Garbage Grabber、Ekko 和战场顶部牌回收，并在链上要求选择友军给予 Buff；仍未注册的复杂回收牌会继续保持构筑拒绝。
 
-- 本轮继续扩展 7 个卡池编号：Stormbringer, Volibear（OGN-250）可选择基地友军，对目标战场敌军按该单位 Might 造成伤害后移动；Fox-Fire, Ahri（OGN-256）支持同一战场总 Might 不超过 4 的多目标击杀，并可走 Hidden 流程；Sprite Call、Sprite Mother 现在生成正确的 OGN-274 Sprite 临时衍生物；Guerilla Warfare（OGN-264）可从弃牌区选择最多两张 Hidden 牌回手，并在本回合提供免费用 Hidden 放置；Qiyana, Victorious（OGN-155）在征服后进入可选窗口，由玩家选择抽牌或横置引导符文。OGN-271/272/274 均纳入目录、牌图和构筑排除校验。
+- 本轮继续扩展 10 个卡池编号：Stormbringer, Volibear（OGN-250）可选择基地友军，对目标战场敌军按该单位 Might 造成伤害后移动；Fox-Fire, Ahri（OGN-256）支持同一战场总 Might 不超过 4 的多目标击杀，并可走 Hidden 流程；Sprite Call、Sprite Mother 现在生成正确的 OGN-274 Sprite 临时衍生物；Guerilla Warfare（OGN-264）可从弃牌区选择最多两张 Hidden 牌回手，并在本回合提供免费用 Hidden 放置；Qiyana, Victorious（OGN-155）在征服后进入可选窗口，由玩家选择抽牌或横置引导符文；Caitlyn, Patrolling（OGN-068）加入横置主动伤害能力与“最后分配战斗伤害”约束；Get Excited!（OGN-008）加入弃牌后按被弃牌能量造成伤害的两阶段目标窗口；Block（OGN-057）加入 Shield 3、临时 Tank 与 Hidden 目标路径。OGN-271/272/274 均纳入目录、牌图和构筑排除校验。
 
 - 新增公开牌区事件窗口：Sabotage 会公开对手整手牌。被展示的玩家记录为 `owner`，而施放 Sabotage 的玩家记录为 `opponent`；有合法选择时由施放者选择一张非单位牌并确认回收到对手主牌库，没有合法选择时也由施放者点击“结束展示”（被展示者不能关闭该窗口）。Dr. Mundo 在开始阶段公开自己的弃牌区并允许最多回收 3 张，Forge of the Future 公开双方弃牌区并允许选择最多 4 张。展示卡牌、已选卡牌和结束展示动作都会进入引擎事件日志与 GUI 底部日志。
 
 ## 尚未完成
 
-- 第一弹 298 张尚未全部执行。当前支持集已扩展到 257 张，完整扩展需要按机制层逐步增加处理器和回归测试。
+- 第一弹 298 张尚未全部执行。当前支持集已扩展到 260 张，完整扩展需要按机制层逐步增加处理器和回归测试。
 
 ### 当前未完成项目清单
 
-- 当前仍未接入的单位（20）：OGN-002、006、020、034、041、056、067、068、107、111、112、113、121、150、157、194、196、200、226、231。
-- 当前仍未接入的法术（16）：OGN-008、025、045、057、062、064、071、080、115、122、187、237、244、248、258、268。
+- 当前仍未接入的单位（19）：OGN-002、006、020、034、041、056、067、107、111、112、113、121、150、157、194、196、200、226、231。
+- 当前仍未接入的法术（14）：OGN-025、045、062、064、071、080、115、122、187、237、244、248、258、268。
 - 当前仍未接入的装备（5）：OGN-023、077、160、227、242；GearZone 基础、资源 Gear 和部分主动能力已经可用，但这些牌需要替代效果、Hidden 或复杂牌库选择。
 - OGN-271/272/274 已纳入目录、牌图和构筑排除校验；当前效果生成路径使用 Recruit (ZN) 与 Sprite，Recruit (DE/NX) 尚无独立生成来源。OGN-263 Swift Scout 与 OGN-278 Bandle Tree 已纳入支持集。
 - 这些卡牌当前会被构筑校验拒绝；它们不会作为无效果白板进入对局。剩余机制集中在反制、Hidden/reveal 复杂分支、控制权、复杂牌区选择、额外费用、替代效果、分割伤害和多模式能力。已支持的 OGN-147 Wildclaw Shaman 仍把“是否花费 Buff”简化为自动使用首个可用 Buff；OGN-230/235 的多资源/回收触发和部分 Jinx 弃牌来源仍需统一事件窗口。

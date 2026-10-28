@@ -102,6 +102,17 @@ class ExpansionBatchCTests(unittest.TestCase):
         self.rules.validate(self.state)
 
 
+    def test_caitlyn_exhaust_ability_damages_a_battlefield_unit(self):
+        caitlyn = self.rules._new_unit(self.state, "OGN-068", 0, 0, exhausted=False)
+        target = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        actions = [a for a in self.rules.legal_actions(self.state)
+                   if a.kind == "unit_caitlyn" and caitlyn["id"] in a.arguments and target["id"] in a.arguments]
+        self.assertTrue(actions)
+        self.rules.apply(self.state, actions[0], random.Random(9))
+        self.assertTrue(caitlyn["exhausted"])
+        self.assertEqual(target["damage"], self.rules.might(self.state, caitlyn))
+
+
     def test_thousand_tailed_watcher_debuffs_all_enemy_units(self):
         first = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
         second = self.rules._new_unit(self.state, "OGN-219", 1, "base:1", exhausted=False)

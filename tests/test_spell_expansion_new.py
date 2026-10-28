@@ -100,6 +100,38 @@ class SpellExpansionNewTests(unittest.TestCase):
         self.rules.validate(self.state)
 
 
+    def test_get_excited_discards_then_targets_and_uses_discarded_energy(self):
+        card = self.spare("OGN-008")
+        discard = self.state["players"][0]["main"].pop()
+        self.state["cards"][discard]["code"] = "OGN-003"  # Energy 2
+        self.state["players"][0]["hand"].append(discard)
+        self.state["players"][0]["power"] = ["fury"] * 4
+        target = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments and target["id"] in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.drain()
+        self.assertEqual(self.state["phase"], "decision")
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "discard_card" and discard in a.arguments), random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and target["id"] in a.arguments), random.Random(9))
+        self.drain()
+        self.assertEqual(target["damage"], 2)
+        self.assertIn(discard, self.state["players"][0]["trash"])
+
+    def test_block_grants_shield_three_and_temporary_tank(self):
+        card = self.spare("OGN-057")
+        self.state["players"][0]["power"] = ["calm"] * 4
+        target = self.rules._new_unit(self.state, "OGN-219", 0, 0, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments and target["id"] in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.drain()
+        self.assertEqual(target["combat_shield"], 3)
+        self.assertTrue(target["temporary_tank"])
+
+
     def test_stormbringer_damages_field_then_moves_base_unit(self):
         card = self.spare("OGN-250")
         self.state["players"][0]["power"] = ["fury", "body"] * 4

@@ -762,6 +762,7 @@ class OriginsGUI(tk.Tk):
             "end_reveal": "结束展示 / End reveal",
             "choose_revealed": "选择展示牌 / Select revealed card",
             "confirm_revealed": "确认展示牌选择 / Confirm revealed cards",
+            "choose_option": "确认选项 / Choose option",
             "play_hidden": "打出 Hidden / Play Hidden",
             "play_hidden_targeted": "打出 Hidden 并选择目标 / Play Hidden",
             "play_gear": "放置装备 / Play gear",
@@ -796,6 +797,9 @@ class OriginsGUI(tk.Tk):
             "mulligan": "调度 / Mulligan：" + ("、".join(str(i + 1) for i in args.get("slots", [])) or "不换牌"),
         }
         text = names.get(action.kind, action.kind)
+        if action.kind == "choose_option":
+            text = {"draw": "抽一张牌 / Draw 1", "channel": "横置引导一枚符文 / Channel rune"}.get(
+                args.get("option"), text)
         if action.kind in {"exhaust_rune", "recycle_rune"}:
             text += " · " + self._rune_name(args.get("rune"))
         if action.kind == "play_unit":
@@ -1362,6 +1366,7 @@ class OriginsGUI(tk.Tk):
             "recycle_top_two": "将牌库顶两张牌循环至底部",
             "reaver_recall": "选择一个友军移回基地",
             "recall_defender": "将目标单位移回基地",
+            "qiyana_conquer": "Qiyana：抽牌或横置引导符文",
         }
         name = effect_names.get(optional.get("effect"), optional.get("effect", "可选效果"))
         tk.Label(self.actions, text=f"可选效果（P{optional.get('player')}）：{name}",

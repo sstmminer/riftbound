@@ -1,3 +1,4 @@
+import json
 import random
 import unittest
 
@@ -80,6 +81,26 @@ class ExpansionBatchCTests(unittest.TestCase):
         self.drain()
         self.assertGreaterEqual(sum(unit["code"] == "OGN-274" and unit["temporary_unit"]
                                     for unit in self.state["units"]), 2)
+
+    def test_qiyana_conquer_requires_optional_choice(self):
+        qiyana = self.rules._new_unit(self.state, "OGN-155", 0, 0, exhausted=False)
+        self.state["fields"][0]["controller"] = 0
+        self.rules._score(self.state, 0, 0, "conquer", random.Random(9))
+        self.assertEqual(self.state["phase"], "optional")
+        optional = self.state["optional"][0]
+        self.assertEqual(optional["effect"], "qiyana_conquer")
+        accept = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "optional_effect" and '"accept":true' in a.arguments)
+        self.rules.apply(self.state, accept, random.Random(9))
+        self.assertEqual(self.state["phase"], "decision")
+        options = {json.loads(a.arguments)["option"] for a in self.rules.legal_actions(self.state)}
+        self.assertEqual(options, {"draw", "channel"})
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if '"option":"channel"' in a.arguments), random.Random(9))
+        self.assertIsNone(self.state["decision"])
+        self.assertGreaterEqual(len(self.state["players"][0]["runes"]), 1)
+        self.rules.validate(self.state)
+
 
     def test_thousand_tailed_watcher_debuffs_all_enemy_units(self):
         first = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)

@@ -24,7 +24,7 @@
 | 战斗 | 142、461–468 | Showdown、攻击/防守修正、先分配后同时造成、致命先于治疗、撤回攻击者、战后控制 |
 | 得分与终局 | 469–474、487 | 征服/据守、每战场每玩家每回合一次、最后一分替代抽牌、领先才胜利 |
 | 抽空牌库 | 414、432 | 回收弃牌、对手得分、继续抽牌、空弃牌重复 Burn Out 即时终局 |
-| 卡牌效果 | 支持表 | 256 张显式处理器，含基础伤害、减益、抽牌、目标选择、Stun、攻击触发、静态单位、基础 Gear 资源和六种基础符文；Singularity/Back to Back、Kinkou、Albus 支持点选多目标并显式确认；Wildclaw、Jinx、Karma 进入统一事件链，Burn Out 和 Vision 顶牌回收也会触发 Karma；Sabotage、Dr. Mundo、Forge of the Future 使用公开展示/选择窗口（Sabotage 的展示结束与选择权均在施放者一侧）；Hidden、Karthus Deathknell、Noxian Guillotine、Mushroom Pouch、Swift Scout 已加入；未支持卡牌开局前拒绝 |
+| 卡牌效果 | 支持表 | 257 张显式处理器，含基础伤害、减益、抽牌、目标选择、Stun、攻击触发、静态单位、基础 Gear 资源和六种基础符文；Singularity/Back to Back、Kinkou、Albus 支持点选多目标并显式确认；Wildclaw、Jinx、Karma 进入统一事件链，Burn Out 和 Vision 顶牌回收也会触发 Karma；Sabotage、Dr. Mundo、Forge of the Future 使用公开展示/选择窗口（Sabotage 的展示结束与选择权均在施放者一侧）；Hidden、Karthus Deathknell、Noxian Guillotine、Mushroom Pouch、Swift Scout 已加入；未支持卡牌开局前拒绝 |
 | Gear 基础原语 | 148.1、149、359.2.d | `core.GearZone` 已验证只进控制者 Base 且进入 Ready；具体 Origins Gear 牌区尚未接入 |
 | 隐藏信息 | 107.3、108、128、422、811 | 手牌仅本人可见，牌库顺序双方不可见；Hidden facedown 区支持单卡占位、下回合 0 费打出、控制方正面查看与对手牌背显示；Noxus Saboteur 会阻止对应战场的对手揭示/打出，Bandle Tree 允许第二张，Tideturner 适用异地目标例外 |
 

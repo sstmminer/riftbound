@@ -292,7 +292,7 @@ class OriginsRules:
             unit["damage"] = max(unit["damage"], self.might(state, unit))
 
     def _deflect(self, state, unit):
-        return int(unit["code"] in {"OGN-013", "OGN-161"} or
+        return int(unit["code"] in {"OGN-013", "OGN-155", "OGN-161"} or
                    (unit["code"] == "OGN-232" and self.might(state, unit) >= 5))
 
     def _ganking(self, state, unit):
@@ -541,6 +541,12 @@ class OriginsRules:
     def _resolve_optional(self, state, item, rng):
         player = item["player"]
         effect = item["effect"]
+        if effect == "qiyana_conquer":
+            state["decision"] = {"kind": "choice", "player": player,
+                                  "options": ["draw", "channel"],
+                                  "item": {"effect": "qiyana_conquer", "owner": player}}
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
         if effect == "channel_rune":
             self._channel_rune(state, player, exhausted=True)
         elif effect == "return_champion":
@@ -649,6 +655,8 @@ class OriginsRules:
                 self._queue_optional(state, player, "channel_rune")
         if result in {"point", "draw"} and method == "conquer":
             code = state["fields"][field]["code"]
+            if any(unit["code"] == "OGN-155" for unit in self._units(state, player, field)):
+                self._queue_optional(state, player, "qiyana_conquer")
             if code == "OGN-282":
                 row = state["players"][player]
                 target = next((u for u in self._units(state, player, field) if u["buff"]), None)
@@ -1261,6 +1269,9 @@ class OriginsRules:
             return tuple(actions)
         if phase == "decision":
             decision = state["decision"]
+            if decision["kind"] == "choice":
+                return tuple(Action.make("choose_option", option=option)
+                             for option in decision.get("options", []))
             if decision["kind"] == "predict":
                 return (Action.make("predict", recycle=False), Action.make("predict", recycle=True))
             if decision["kind"] == "target":
@@ -2297,8 +2308,26 @@ class OriginsRules:
                 self._finish_reveal(state, list(reveal["selected"]), rng)
                 return
             raise ValueError("invalid reveal action")
-        if kind in {"predict", "discard_card", "choose_target", "confirm_targets", "cancel_play"}:
-            if kind == "predict":
+        if kind in {"predict", "discard_card", "choose_target", "confirm_targets", "cancel_play", "choose_option"}:
+            if kind == "choose_option":
+                decision = state.get("decision")
+                if not decision or decision.get("kind") != "choice" or args.get("option") not in decision.get("options", []):
+                    raise ValueError("invalid choice option")
+                option = args["option"]
+                if option == "draw":
+                    self._draw(state, player, 1, rng)
+                elif option == "channel":
+                    self._channel_rune(state, player, exhausted=True)
+                state["decision"] = None
+                restored = state.pop("optional_return", None)
+                state["optional_ordered"] = False
+                if restored is None:
+                    state["phase"], state["actor"], state["passes"] = "main", state["turn_player"], 0
+                else:
+                    state["phase"], state["actor"], state["passes"] = restored["phase"], restored["actor"], restored.get("passes", 0)
+                self._cleanup(state, rng)
+                return
+            elif kind == "predict":
                 if args["recycle"] and row["main"]:
                     self._recycle_cards_to_main(state, player, [row["main"][0]],
                                                 source="main", rng=rng)

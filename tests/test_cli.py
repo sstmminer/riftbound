@@ -22,7 +22,7 @@ class CLITests(unittest.TestCase):
         self.assertFalse(json.loads(out)["full_origins_supported"])
         code, out, _ = self.invoke(["catalog", "--supported"])
         cards = [json.loads(line) for line in out.splitlines()]
-        self.assertEqual(len(cards), 256)
+        self.assertEqual(len(cards), 257)
         self.assertTrue(all(card["supported"] for card in cards))
         code, out, _ = self.invoke(["deck"])
         self.assertEqual(len(json.loads(out)["main"]), 40)

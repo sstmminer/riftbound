@@ -86,6 +86,10 @@ class OriginsRules:
         registry.register("buff_target", self._effect_buff_target)
         registry.register("buff_two", self._effect_buff_two)
         registry.register("kinkou_buff", self._effect_kinkou_buff)
+        registry.register("albus_optional", self._effect_albus_optional)
+        registry.register("albus_channel", self._effect_albus_channel)
+        registry.register("jinx_discard", self._effect_jinx_discard)
+        registry.register("karma_recycle", self._effect_karma_recycle)
         registry.register("wildclaw_optional", self._effect_wildclaw_optional)
         registry.register("wildclaw_ready", self._effect_wildclaw_ready)
         registry.register("return_unit_trigger", self._effect_return_unit_trigger)
@@ -401,11 +405,34 @@ class OriginsRules:
             state["winner"] = result.immediate_winner
 
     def _trigger_jinx_discard(self, state, player):
-        """Resolve Jinx once after a discard event completes."""
-        for unit in self._units(state, player):
-            if unit["code"] == "OGN-202":
-                unit["exhausted"] = False
-                unit["temporary"] += 1
+        """Put one mandatory Jinx trigger per discard event on the chain."""
+        triggers = [{"effect": "jinx_discard", "source": unit["id"],
+                     "owner": player}
+                    for unit in self._units(state, player)
+                    if unit["code"] == "OGN-202"]
+        if not triggers:
+            return
+        if not state.get("chain") and "chain_return" not in state:
+            state["chain_return"] = state.get("phase", "main")
+            state["chain_from_spell"] = False
+        state["chain"].extend(triggers)
+        state["phase"], state["actor"], state["passes"] = "chain", player, 0
+        self._arm_chain_top(state)
+
+    def _trigger_recycle_event(self, state, player):
+        """Emit one mandatory Karma trigger for a card recycle event."""
+        triggers = [{"effect": "karma_recycle", "source": unit["id"],
+                     "owner": player}
+                    for unit in self._units(state, player)
+                    if unit["code"] == "OGN-235"]
+        if not triggers:
+            return
+        if not state.get("chain") and "chain_return" not in state:
+            state["chain_return"] = state.get("phase", "main")
+            state["chain_from_spell"] = False
+        state["chain"].extend(triggers)
+        state["phase"], state["actor"], state["passes"] = "chain", player, 0
+        self._arm_chain_top(state)
 
     def _queue_optional(self, state, player, effect, **payload):
         state["next_object"] += 1
@@ -444,6 +471,20 @@ class OriginsRules:
             row = state["players"][player]
             for _ in range(min(2, len(row["main"]))):
                 row["main"].append(row["main"].pop(0))
+        elif effect == "albus_channel":
+            source = self._unit(state, item.get("source"))
+            candidates = [unit["id"] for unit in self._units(state, player)
+                          if unit["buff"]]
+            if source is None or not candidates:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": candidates,
+                "multi": True, "min": 0, "max": len(candidates), "selected": [],
+                "item": {"effect": "albus_channel", "owner": player,
+                          "source": source["id"]},
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
         elif effect == "reaver_recall":
             field = state.get("battle", {}).get("field")
             targets = self._units(state, player, field) if self._is_field(state, field) else []
@@ -1199,6 +1240,8 @@ class OriginsRules:
             return [u["id"] for u in self._units(state, owner) if u["id"] != source]
         if effect == "kinkou_buff":
             return [u["id"] for u in self._units(state, owner) if u["id"] != source]
+        if effect == "karma_recycle":
+            return [u["id"] for u in self._units(state, owner)]
         if effect in {"crackshot_target", "leona_stun_target"}:
             field = state.get("battle", {}).get("field")
             return [u["id"] for u in self._units(state, 1 - owner, field)] if self._is_field(state, field) else []
@@ -1681,6 +1724,26 @@ class OriginsRules:
                 self._apply_buff(state, target)
         return True
 
+    def _effect_albus_optional(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if source is None:
+            return True
+        if not any(unit["buff"] for unit in self._units(state, item["owner"])):
+            return True
+        self._queue_optional(state, item["owner"], "albus_channel", source=source["id"])
+        return True
+
+    def _effect_albus_channel(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if source is None or source["owner"] != item["owner"]:
+            return True
+        for uid in item.get("targets", []):
+            target = self._unit(state, uid)
+            if target is not None and target["owner"] == item["owner"] and target["buff"]:
+                target["buff"] -= 1
+                self._channel_rune(state, item["owner"], exhausted=True)
+        return True
+
     def _effect_wildclaw_optional(self, state, item, rng):
         """Queue Wildclaw Shaman's optional buff-spend ability.
 
@@ -1706,6 +1769,19 @@ class OriginsRules:
         target["buff"] -= 1
         self._apply_buff(state, source)
         source["exhausted"] = False
+        return True
+
+    def _effect_jinx_discard(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if source is not None and source["owner"] == item["owner"]:
+            source["exhausted"] = False
+            source["temporary"] += 1
+        return True
+
+    def _effect_karma_recycle(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if target is not None and target["owner"] == item["owner"]:
+            self._apply_buff(state, target)
         return True
 
     def _effect_draw_one(self, state, item, rng):
@@ -2397,6 +2473,7 @@ class OriginsRules:
             row["main"].append(row["trash"].pop(0))
             unit["exhausted"] = True
             unit["temporary"] += 1
+            self._trigger_recycle_event(state, player)
             state["passes"] = 0
         elif kind == "legend_recruit":
             if row["legend"] != "OGN-265" or row["legend_exhausted"] or row["energy"] < 1:
@@ -2614,6 +2691,9 @@ class OriginsRules:
                 if code == "OGN-141":
                     triggers.append({"effect": "kinkou_buff", "source": unit["id"],
                                      "owner": player, "target_multi": True})
+                if code == "OGN-230":
+                    triggers.append({"effect": "albus_optional", "source": unit["id"],
+                                     "owner": player})
                 if code == "OGN-167" and args.get("hidden_field") is not None:
                     triggers.extend({"effect": "ember_hidden_buff", "source": source["id"], "owner": player}
                                     for source in self._units(state, player) if source["code"] == "OGN-167")

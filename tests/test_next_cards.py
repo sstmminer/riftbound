@@ -130,6 +130,69 @@ class NextCardBatchTests(unittest.TestCase):
         self.assertEqual(shaman["buff"], 1)
         self.assertFalse(shaman["exhausted"])
 
+    def test_albus_confirms_multiple_buff_targets_and_channels(self):
+        card = self.give("OGN-230")
+        self.state["players"][0]["power"] = ["order"] * 8
+        first = self.rules._new_unit(self.state, "OGN-219", 0, 0, exhausted=False)
+        second = self.rules._new_unit(self.state, "OGN-219", 0, 0, exhausted=False)
+        first["buff"], second["buff"] = 1, 1
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_unit" and card in a.arguments and '"location":0' in a.arguments)
+        self.rules.apply(self.state, action, random.Random(1))
+        for _ in range(2):
+            self.rules.apply(self.state,
+                             next(a for a in self.rules.legal_actions(self.state) if a.kind == "pass"),
+                             random.Random(1))
+        self.assertEqual(self.state["phase"], "optional")
+        self.rules.apply(self.state,
+                         next(a for a in self.rules.legal_actions(self.state)
+                              if a.kind == "optional_effect" and '"accept":true' in a.arguments),
+                         random.Random(1))
+        self.assertEqual(self.state["phase"], "decision")
+        for target in (first, second):
+            self.rules.apply(self.state,
+                             next(a for a in self.rules.legal_actions(self.state)
+                                  if a.kind == "choose_target" and target["id"] in a.arguments),
+                             random.Random(1))
+        self.rules.apply(self.state,
+                         next(a for a in self.rules.legal_actions(self.state)
+                              if a.kind == "confirm_targets"),
+                         random.Random(1))
+        self.assertEqual(first["buff"], 0)
+        self.assertEqual(second["buff"], 0)
+        self.assertEqual(len(self.state["players"][0]["runes"]), 2)
+
+    def test_jinx_discard_event_resolves_once_on_chain(self):
+        jinx = self.rules._new_unit(self.state, "OGN-202", 0, 0, exhausted=True)
+        self.rules._trigger_jinx_discard(self.state, 0)
+        self.assertEqual(self.state["phase"], "chain")
+        self.assertEqual(sum(item["effect"] == "jinx_discard" for item in self.state["chain"]), 1)
+        for _ in range(2):
+            self.rules.apply(self.state,
+                             next(a for a in self.rules.legal_actions(self.state) if a.kind == "pass"),
+                             random.Random(1))
+        self.assertFalse(jinx["exhausted"])
+        self.assertEqual(jinx["temporary"], 1)
+
+    def test_karma_recycle_event_requires_a_friendly_target(self):
+        karma = self.rules._new_unit(self.state, "OGN-235", 0, 0, exhausted=False)
+        vi = self.rules._new_unit(self.state, "OGN-036", 0, 0, exhausted=False)
+        recycled = self.state["players"][0]["main"].pop()
+        self.state["players"][0]["trash"].append(recycled)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "unit_recycle_buff" and vi["id"] in a.arguments)
+        self.rules.apply(self.state, action, random.Random(1))
+        self.assertEqual(self.state["phase"], "decision")
+        self.rules.apply(self.state,
+                         next(a for a in self.rules.legal_actions(self.state)
+                              if a.kind == "choose_target" and karma["id"] in a.arguments),
+                         random.Random(1))
+        for _ in range(2):
+            self.rules.apply(self.state,
+                             next(a for a in self.rules.legal_actions(self.state) if a.kind == "pass"),
+                             random.Random(1))
+        self.assertEqual(karma["buff"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

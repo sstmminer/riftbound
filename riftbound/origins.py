@@ -90,6 +90,7 @@ class OriginsRules:
         registry.register("albus_channel", self._effect_albus_channel)
         registry.register("jinx_discard", self._effect_jinx_discard)
         registry.register("karma_recycle", self._effect_karma_recycle)
+        registry.register("sabotage", self._effect_sabotage)
         registry.register("wildclaw_optional", self._effect_wildclaw_optional)
         registry.register("wildclaw_ready", self._effect_wildclaw_ready)
         registry.register("return_unit_trigger", self._effect_return_unit_trigger)
@@ -114,6 +115,7 @@ class OriginsRules:
                  "chain": [], "pending": [], "passes": 0, "battle": None,
                  "beginning_awarded": [False, False], "dreaming_tree_used": [], "selection": None,
                  "decision": None, "optional": [], "optional_return": None,
+                 "reveal": None,
                  "optional_ordered": False, "pending_showdown": False,
                  "legend_options": [], "rune_undo": [], "winner": None, "next_object": 0}
         state["prevent_spell_ability_damage"] = False
@@ -466,6 +468,56 @@ class OriginsRules:
             "id": f"o{state['next_object']}", "player": player, "effect": effect, **payload
         })
 
+    def _open_reveal(self, state, *, owner, cards, mode, chooser=None,
+                     minimum=0, maximum=0, effect=None, item=None, choices=None, rng=None):
+        """Open a public card reveal window.
+
+        ``display`` waits for the opponent to end the reveal. ``select`` keeps
+        the revealed cards public while the chooser selects and confirms cards.
+        The saved phase/actor lets the normal chain resolver continue after the
+        window closes.
+        """
+        state["reveal"] = {
+            "kind": mode, "owner": owner, "opponent": 1 - owner,
+            "chooser": chooser if chooser is not None else owner,
+            "cards": list(cards), "selected": [], "min": minimum,
+            "max": maximum, "choices": list(choices) if choices is not None else list(cards),
+            "effect": effect, "item": item,
+            "resume": {"phase": state["phase"], "actor": state["actor"],
+                       "passes": state.get("passes", 0)},
+        }
+        state["phase"] = "reveal"
+        state["actor"] = state["reveal"]["opponent"] if mode == "display" else state["reveal"]["chooser"]
+        state["passes"] = 0
+
+    def _finish_reveal(self, state, selected, rng):
+        reveal = state.get("reveal")
+        if reveal is None:
+            raise ValueError("no reveal window is active")
+        effect = reveal.get("effect")
+        if effect == "sabotage_recycle":
+            self._recycle_cards_to_main(state, reveal["owner"], selected,
+                                        source="hand", rng=rng)
+            item = reveal.get("item")
+            if item is not None:
+                item["reveal_done"] = True
+                state["chain"].append(item)
+        elif effect == "dr_mundo_recycle":
+            self._recycle_cards_to_main(state, reveal["owner"], selected,
+                                        source="trash", rng=rng)
+        elif effect == "forge_recycle":
+            for owner in (0, 1):
+                cards = [uid for uid in selected if uid in state["players"][owner]["trash"]]
+                self._recycle_cards_to_main(state, owner, cards, source="trash", rng=rng)
+        resume = reveal.get("resume") or {"phase": "main", "actor": state["turn_player"], "passes": 0}
+        state["reveal"] = None
+        if state.get("chain") or resume["phase"] == "chain":
+            state["phase"], state["actor"], state["passes"] = "chain", resume.get("actor", state["actor"]), 0
+            self._finish_resolution(state)
+        else:
+            state["phase"], state["actor"], state["passes"] = resume["phase"], resume["actor"], resume.get("passes", 0)
+        self._cleanup(state, rng)
+
     def _resolve_optional(self, state, item, rng):
         player = item["player"]
         effect = item["effect"]
@@ -663,6 +715,11 @@ class OriginsRules:
         # 316.3: both pools empty at the start of Main Phase, after Draw.
         for obj in state["players"]:
             obj["energy"], obj["power"] = 0, []
+        if state["phase"] == "main" and any(unit["code"] == "OGN-109" for unit in self._units(state, player)) and row["trash"]:
+            self._open_reveal(state, owner=player, cards=list(row["trash"]),
+                              mode="select", chooser=player, minimum=0, maximum=min(3, len(row["trash"])),
+                              effect="dr_mundo_recycle", choices=list(row["trash"]), rng=rng)
+            return
         self._cleanup(state, rng)
 
     def _hidden_actions(self, state):
@@ -812,6 +869,8 @@ class OriginsRules:
                 result.append(Action.make("gear_kill", gear=gear["id"]))
             elif gear["code"] == "OGN-099" and row["energy"] >= 1 and len(row["trash"]) >= 3:
                 result.append(Action.make("gear_grab", gear=gear["id"]))
+            elif gear["code"] == "OGN-212":
+                result.append(Action.make("gear_forge_recycle", gear=gear["id"]))
         return result
 
     def _resource_actions(self, state):
@@ -883,7 +942,7 @@ class OriginsRules:
                 continue
             data = self.cards[code]
             targeted_only = code in {"OGN-104", "OGN-183"}
-            if code in {"OGN-022", "OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-170", "OGN-179", "OGN-183", "OGN-198", "OGN-201", "OGN-221", "OGN-224", "OGN-233"}:
+            if code in {"OGN-022", "OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-156", "OGN-170", "OGN-179", "OGN-183", "OGN-198", "OGN-201", "OGN-221", "OGN-224", "OGN-233"}:
                 targets = [[]]
             elif code == "OGN-102":
                 targets = [[u["id"]] for u in self._units(state, player)]
@@ -1148,6 +1207,21 @@ class OriginsRules:
             item = optional[0]
             return (Action.make("optional_effect", optional=item["id"], accept=True),
                     Action.make("optional_effect", optional=item["id"], accept=False))
+        if phase == "reveal":
+            reveal = state.get("reveal")
+            if not reveal:
+                return ()
+            if reveal["kind"] == "display":
+                return (Action.make("end_reveal"),) if player == reveal["opponent"] else ()
+            if player != reveal["chooser"]:
+                return ()
+            selected = list(reveal.get("selected", []))
+            actions = [Action.make("choose_revealed", card=uid)
+                       for uid in reveal.get("choices", reveal["cards"])
+                       if uid not in selected and len(selected) < reveal["max"]]
+            if len(selected) >= reveal["min"]:
+                actions.append(Action.make("confirm_revealed"))
+            return tuple(actions)
         if phase == "decision":
             decision = state["decision"]
             if decision["kind"] == "predict":
@@ -1805,6 +1879,25 @@ class OriginsRules:
             self._apply_buff(state, target)
         return True
 
+    def _effect_sabotage(self, state, item, rng):
+        if item.get("reveal_done"):
+            return True
+        owner = item["owner"]
+        opponent = 1 - owner
+        cards = [uid for uid in state["players"][opponent]["hand"]
+                 if self.cards[state["cards"][uid]["code"]]["type"] != "unit"]
+        if not cards:
+            # Sabotage still reveals the complete hand when no card is a legal
+            # choice; the opponent closes the public display.
+            self._open_reveal(state, owner=opponent,
+                              cards=list(state["players"][opponent]["hand"]),
+                              mode="display", effect=None, item=item)
+            return False
+        self._open_reveal(state, owner=opponent, cards=list(state["players"][opponent]["hand"]),
+                          mode="select", chooser=owner, minimum=1, maximum=1,
+                          effect="sabotage_recycle", item=item, choices=cards)
+        return False
+
     def _effect_draw_one(self, state, item, rng):
         self._draw(state, item["owner"], 1, rng)
         return True
@@ -2107,6 +2200,40 @@ class OriginsRules:
         # window. Consecutive rune resource actions are the only exception.
         if kind not in {"exhaust_rune", "recycle_rune", "undo_rune"}:
             state["rune_undo"] = []
+        if state.get("phase") == "reveal":
+            reveal = state.get("reveal")
+            if reveal is None:
+                raise ValueError("no reveal window is active")
+            if kind == "end_reveal":
+                if reveal["kind"] != "display" or player != reveal["opponent"]:
+                    raise ValueError("only the opponent can end this reveal")
+                resume = reveal["resume"]
+                state["reveal"] = None
+                if resume["phase"] == "chain":
+                    state["phase"], state["actor"], state["passes"] = "chain", resume["actor"], 0
+                    self._finish_resolution(state)
+                else:
+                    state["phase"], state["actor"], state["passes"] = resume["phase"], resume["actor"], resume.get("passes", 0)
+                self._cleanup(state, rng)
+                return
+            if kind == "choose_revealed":
+                if reveal["kind"] != "select" or player != reveal["chooser"]:
+                    raise ValueError("reveal selection is unavailable")
+                card = args["card"]
+                if card not in reveal["cards"] or card in reveal["selected"]:
+                    raise ValueError("invalid revealed card")
+                if len(reveal["selected"]) >= reveal["max"]:
+                    raise ValueError("too many revealed cards selected")
+                reveal["selected"].append(card)
+                return
+            if kind == "confirm_revealed":
+                if reveal["kind"] != "select" or player != reveal["chooser"]:
+                    raise ValueError("reveal selection is unavailable")
+                if len(reveal["selected"]) < reveal["min"]:
+                    raise ValueError("not enough revealed cards selected")
+                self._finish_reveal(state, list(reveal["selected"]), rng)
+                return
+            raise ValueError("invalid reveal action")
         if kind in {"predict", "discard_card", "choose_target", "confirm_targets", "cancel_play"}:
             if kind == "predict":
                 if args["recycle"] and row["main"]:
@@ -2428,6 +2555,17 @@ class OriginsRules:
                                         source="trash", rng=rng)
             self._draw(state, player, 1, rng)
             state["passes"] = 0
+        elif kind == "gear_forge_recycle":
+            gear = next((g for g in row["gear"] if g["id"] == args["gear"]), None)
+            if gear is None or gear["code"] != "OGN-212" or gear["exhausted"]:
+                raise ValueError("Forge of the Future is unavailable")
+            row["gear"].remove(gear)
+            row["trash"].append(gear["card"])
+            cards = [uid for owner in state["players"] for uid in owner["trash"]]
+            self._open_reveal(state, owner=player, cards=cards, mode="select",
+                              chooser=player, minimum=0, maximum=min(4, len(cards)),
+                              effect="forge_recycle", choices=cards, rng=rng)
+            return
         elif kind == "optional_effect":
             optional = state.get("optional", [])
             item = next((entry for entry in optional if entry["id"] == args["optional"]), None)
@@ -2793,7 +2931,7 @@ class OriginsRules:
                     self._unit(state, spend)["buff"] = 0
                 row["hand"].remove(card)
                 row["played"] += 1
-                effect = "return_unit" if code == "OGN-170" else "spell"
+                effect = "return_unit" if code == "OGN-170" else ("sabotage" if code == "OGN-156" else "spell")
                 triggers = self._second_card_triggers(state, player)
                 spell_item = {"effect": effect, "owner": player, "card": card,
                                "code": code, "targets": args["targets"],
@@ -3120,6 +3258,10 @@ class OriginsRules:
     def observe(self, state, player):
         def card(uid):
             return {"id": uid, "code": state["cards"][uid]["code"]}
+        reveal = copy.deepcopy(state.get("reveal"))
+        if reveal is not None:
+            reveal["cards"] = [card(uid) for uid in reveal.get("cards", [])]
+            reveal["selected"] = [card(uid) for uid in reveal.get("selected", [])]
         public_players = []
         for index, row in enumerate(state["players"]):
             public_players.append({"hand_count": len(row["hand"]), "main_count": len(row["main"]),
@@ -3149,6 +3291,7 @@ class OriginsRules:
                               "cards": ([card(state["players"][player]["main"][0])]
                                         if state["decision"]["kind"] == "predict" else [])}
                              if state["decision"] and state["decision"]["player"] == player else None),
+                "reveal": reveal,
                 "winner": state["winner"]}
 
     def validate(self, state):
@@ -3185,13 +3328,23 @@ class OriginsRules:
                 raise ValueError("invalid resource pool")
         located.extend(u["card"] for u in state["units"] if u["card"] is not None)
         located.extend(item["card"] for item in state["chain"]
-                       if item["effect"] in {"spell", "return_unit"})
+                       if item.get("card") is not None)
         if state["decision"] and state["decision"].get("kind") == "target":
             item = state["decision"].get("item", {})
             # A multi-target spell remains on the chain while its target window
             # is open; count its physical card only once.
             chain_cards = {entry.get("card") for entry in state["chain"]}
             if item.get("card") is not None and item["card"] not in chain_cards:
+                located.append(item["card"])
+        reveal = state.get("reveal")
+        if reveal is not None:
+            if reveal.get("kind") not in {"display", "select"}:
+                raise ValueError("invalid reveal state")
+            for uid in reveal.get("cards", []):
+                if uid not in state["cards"]:
+                    raise ValueError("invalid revealed card")
+            item = reveal.get("item") or {}
+            if item.get("card") is not None and item["card"] not in {entry.get("card") for entry in state["chain"]}:
                 located.append(item["card"])
         for item in state.get("optional", []):
             if item.get("effect") == "return_champion" and item.get("candidate") is not None:

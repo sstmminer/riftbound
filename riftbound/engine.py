@@ -173,6 +173,7 @@ class Environment:
                     if key in item}
 
         decision = observation.get("decision")
+        reveal = observation.get("reveal")
         return {"turn": observation.get("turn"), "phase": observation.get("phase"),
                 "actor": observation.get("to_act"), "points": observation.get("points"),
                 "fields": copy.deepcopy(observation.get("fields")),
@@ -182,7 +183,12 @@ class Environment:
                              for item in observation.get("optional", [])],
                 "battle": copy.deepcopy(observation.get("battle")),
                 "decision": ({key: decision[key] for key in ("kind", "player", "remaining")
-                              if key in decision} if decision else None)}
+                              if key in decision} if decision else None),
+                "reveal": ({"kind": reveal.get("kind"), "owner": reveal.get("owner"),
+                             "chooser": reveal.get("chooser"),
+                             "cards": [card.get("code") for card in reveal.get("cards", [])],
+                             "selected": [card.get("code") for card in reveal.get("selected", [])]}
+                            if reveal else None)}
 
     def legal_actions(self) -> tuple[Action, ...]:
         self._require_reset()

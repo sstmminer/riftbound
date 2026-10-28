@@ -51,6 +51,7 @@ class OriginsGUI(tk.Tk):
         self._hover_job = None
         self._preview = None
         self._decision_signature = None
+        self._reveal_window = None
         self._opponent_job = None
         self._winner_announced = False
         self._build()
@@ -758,6 +759,9 @@ class OriginsGUI(tk.Tk):
             "recycle_rune": "回收符文 / Recycle rune", "legend_energy": "传奇能力 / Legend energy",
             "undo_rune": "回撤上一步符文操作 / Undo rune action",
             "hide_card": "Hidden：放置到战场 / Hide",
+            "end_reveal": "结束展示 / End reveal",
+            "choose_revealed": "选择展示牌 / Select revealed card",
+            "confirm_revealed": "确认展示牌选择 / Confirm revealed cards",
             "play_hidden": "打出 Hidden / Play Hidden",
             "play_hidden_targeted": "打出 Hidden 并选择目标 / Play Hidden",
             "play_gear": "放置装备 / Play gear",
@@ -767,6 +771,7 @@ class OriginsGUI(tk.Tk):
             "gear_tome": "装备能力 / Bonus spell damage",
             "gear_kill": "装备能力 / Kill gear",
             "gear_grab": "装备能力 / Recycle and draw",
+            "gear_forge_recycle": "Forge：回收弃牌 / Recycle trash",
             "unit_recycle_buff": "单位能力 / Recycle for Might",
             "legend_spell_power": "传奇能力 / Spell rainbow power",
             "legend_recruit": "传奇能力 / Recruit token",
@@ -844,6 +849,12 @@ class OriginsGUI(tk.Tk):
             targets = decision.get("targets", [])
             self.log_add(f"等待 P{decision.get('player')} 选择 {decision.get('kind')}"
                          + (f"（{len(targets)} 个合法目标）" if targets else ""))
+        if before.get("reveal") != after.get("reveal"):
+            reveal = after.get("reveal") or before.get("reveal")
+            if reveal:
+                shown = "、".join(card.get("code", "") for card in reveal.get("cards", []))
+                selected = "、".join(card.get("code", "") for card in reveal.get("selected", []))
+                self.log_add(f"公开展示：{shown}" + (f"；已选：{selected}" if selected else ""))
         for index, (old_row, new_row) in enumerate(zip(before.get("players", []), after.get("players", []))):
             if (old_row.get("energy"), old_row.get("power")) != (new_row.get("energy"), new_row.get("power")):
                 self.log_add(f"P{index} 资源：法力 {old_row.get('energy')}→{new_row.get('energy')}；"
@@ -966,6 +977,9 @@ class OriginsGUI(tk.Tk):
             parts.append("可选效果队列：" + " → ".join(
                 f"P{item.get('player')} {item.get('effect', 'effect')}" for item in optional
             ))
+        reveal = obs.get("reveal")
+        if reveal:
+            parts.append("公开展示：" + "、".join(self._card_name(card["code"]) for card in reveal.get("cards", [])))
         return "\n".join(parts)
 
     def render(self):
@@ -985,6 +999,7 @@ class OriginsGUI(tk.Tk):
         self.render_chain(obs)
         self.render_banishment(obs)
         self.render_actions()
+        self._render_reveal_window(obs)
         if obs["phase"] == "decision" and obs["to_act"] == 0:
             signature = json.dumps(obs["decision"], sort_keys=True)
             if signature != self._decision_signature:
@@ -1199,6 +1214,10 @@ class OriginsGUI(tk.Tk):
             return
         legal = self.env.legal_actions()
         obs = self.env.observe(0)
+        reveal = obs.get("reveal")
+        if reveal:
+            self._render_reveal_bar(reveal, legal)
+            return
         optional = obs.get("optional") or []
         if optional and self.env.current_player == 0:
             self._render_optional_bar(optional[0], legal)
@@ -1228,6 +1247,58 @@ class OriginsGUI(tk.Tk):
         if self.env.observe(0)["phase"] == "damage":
             prompt = "点击或右键对手单位分配伤害"
         tk.Label(self.actions, text=prompt, bg="#101b2b", fg="#9fb4ce").pack(side="right")
+
+    def _render_reveal_bar(self, reveal, legal):
+        kind = reveal.get("kind")
+        text = "公开展示：" + "、".join(self._card_name(card["code"]) for card in reveal.get("cards", []))
+        if kind == "select":
+            text += f"；已选 {len(reveal.get('selected', []))}/{reveal.get('max', 0)}"
+        tk.Label(self.actions, text=text, bg="#101b2b", fg="#f3d58b").pack(side="left", padx=4)
+        for action in legal:
+            if action.kind in {"end_reveal", "confirm_revealed"}:
+                ttk.Button(self.actions, text=self.action_text(action),
+                           command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
+
+    def _render_reveal_window(self, obs):
+        reveal = obs.get("reveal")
+        if not reveal:
+            if self._reveal_window is not None and self._reveal_window.winfo_exists():
+                self._reveal_window.destroy()
+            self._reveal_window = None
+            return
+        if self._reveal_window is not None and self._reveal_window.winfo_exists():
+            self._reveal_window.destroy()
+        popup = tk.Toplevel(self)
+        self._reveal_window = popup
+        popup.title("公开展示 / Reveal")
+        popup.geometry("1100x760")
+        popup.transient(self)
+        tk.Label(popup, text="双方可见的临时展示区", bg="#101b2b", fg="#f3d58b",
+                 padx=8, pady=6).pack(fill="x")
+        body = tk.Frame(popup, bg="#101b2b")
+        body.pack(fill="both", expand=True)
+        selected = {card["id"] for card in reveal.get("selected", [])}
+        legal = self.env.legal_actions()
+        actions = {json.loads(a.arguments).get("card"): a for a in legal if a.kind == "choose_revealed"}
+        for card in reveal.get("cards", []):
+            wrapper = self._image_card(body, card["code"], uid=None, factor=3,
+                                       selected=card["id"] in selected, click=False,
+                                       compact_label=self._card_name(card["code"]))
+            if card["id"] in actions:
+                action = actions[card["id"]]
+                for child in wrapper.winfo_children():
+                    child.bind("<Button-1>", lambda _event, a=action: self.perform(a), add="+")
+                wrapper.bind("<Button-1>", lambda _event, a=action: self.perform(a), add="+")
+        if reveal.get("kind") == "display":
+            end = next((a for a in legal if a.kind == "end_reveal"), None)
+            if end is not None:
+                ttk.Button(popup, text=self.action_text(end),
+                           command=lambda a=end: self.perform(a)).pack(pady=6)
+        else:
+            confirm = next((a for a in legal if a.kind == "confirm_revealed"), None)
+            if confirm is not None:
+                ttk.Button(popup, text=self.action_text(confirm),
+                           command=lambda a=confirm: self.perform(a)).pack(pady=6)
 
     def _render_decision_bar(self, decision, legal):
         """Render target/choice instructions in the persistent bottom bar."""

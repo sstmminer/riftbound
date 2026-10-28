@@ -100,6 +100,36 @@ class NextCardBatchTests(unittest.TestCase):
                          random.Random(1))
         self.assertEqual(self.state["chain"][-1]["targets"], [first["id"], second["id"]])
 
+    def test_wildclaw_shaman_confirms_then_selects_buff_to_spend(self):
+        card = self.give("OGN-147")
+        self.state["players"][0]["power"] = ["body"] * 8
+        buffed = self.rules._new_unit(self.state, "OGN-219", 0, 0, exhausted=False)
+        buffed["buff"] = 1
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_unit" and card in a.arguments and '"location":0' in a.arguments)
+        self.rules.apply(self.state, action, random.Random(1))
+        for _ in range(2):
+            self.rules.apply(self.state,
+                             next(a for a in self.rules.legal_actions(self.state) if a.kind == "pass"),
+                             random.Random(1))
+        self.assertEqual(self.state["phase"], "optional")
+        self.assertTrue(any(a.kind == "optional_effect" and '"accept":true' in a.arguments
+                            for a in self.rules.legal_actions(self.state)))
+        self.rules.apply(self.state,
+                         next(a for a in self.rules.legal_actions(self.state)
+                              if a.kind == "optional_effect" and '"accept":true' in a.arguments),
+                         random.Random(1))
+        self.assertEqual(self.state["phase"], "decision")
+        self.assertEqual(self.state["decision"]["targets"], [buffed["id"]])
+        self.rules.apply(self.state,
+                         next(a for a in self.rules.legal_actions(self.state)
+                              if a.kind == "choose_target" and buffed["id"] in a.arguments),
+                         random.Random(1))
+        shaman = next(u for u in self.state["units"] if u["code"] == "OGN-147")
+        self.assertEqual(buffed["buff"], 0)
+        self.assertEqual(shaman["buff"], 1)
+        self.assertFalse(shaman["exhausted"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -86,6 +86,8 @@ class OriginsRules:
         registry.register("buff_target", self._effect_buff_target)
         registry.register("buff_two", self._effect_buff_two)
         registry.register("kinkou_buff", self._effect_kinkou_buff)
+        registry.register("wildclaw_optional", self._effect_wildclaw_optional)
+        registry.register("wildclaw_ready", self._effect_wildclaw_ready)
         registry.register("return_unit_trigger", self._effect_return_unit_trigger)
         registry.register("tideturner_target", self._effect_tideturner_target)
         registry.register("ember_hidden_buff", self._effect_ember_hidden_buff)
@@ -454,6 +456,19 @@ class OriginsRules:
                 }
                 state["phase"], state["actor"] = "decision", player
                 return False
+        elif effect == "wildclaw_ready":
+            source = self._unit(state, item.get("source"))
+            candidates = [unit["id"] for unit in self._units(state, player)
+                          if unit["id"] != item.get("source") and unit["buff"]]
+            if source is None or not candidates:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": candidates,
+                "item": {"effect": "wildclaw_ready", "owner": player,
+                          "source": source["id"]},
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
     def _recycle_one_rune(self, state, player):
         row = state["players"][player]
         if not row["runes"]:
@@ -1666,6 +1681,33 @@ class OriginsRules:
                 self._apply_buff(state, target)
         return True
 
+    def _effect_wildclaw_optional(self, state, item, rng):
+        """Queue Wildclaw Shaman's optional buff-spend ability.
+
+        The optional confirmation is deliberately separate from target choice:
+        accepting the trigger opens a target window for a friendly unit that
+        currently has a Buff, then consumes exactly one Buff from that unit.
+        """
+        source = self._unit(state, item.get("source"))
+        if source is None:
+            return True
+        if not any(unit["id"] != source["id"] and unit["buff"]
+                   for unit in self._units(state, item["owner"])):
+            return True
+        self._queue_optional(state, item["owner"], "wildclaw_ready", source=source["id"])
+        return True
+
+    def _effect_wildclaw_ready(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        target = self._unit(state, item.get("target"))
+        if source is None or target is None or source["owner"] != item["owner"] \
+                or target["owner"] != item["owner"] or not target["buff"]:
+            return True
+        target["buff"] -= 1
+        self._apply_buff(state, source)
+        source["exhausted"] = False
+        return True
+
     def _effect_draw_one(self, state, item, rng):
         self._draw(state, item["owner"], 1, rng)
         return True
@@ -2307,9 +2349,16 @@ class OriginsRules:
                 restored = state.pop("optional_return", None)
                 state["optional_ordered"] = False
                 if restored is not None:
-                    state["phase"] = restored["phase"]
-                    state["actor"] = restored["actor"]
-                    state["passes"] = restored.get("passes", 0)
+                    if restored["phase"] == "chain" and not state["chain"]:
+                        # The optional trigger was created while the chain
+                        # item was resolving.  Resume normal chain cleanup so
+                        # an empty chain returns to the saved main/showdown
+                        # phase instead of leaving a dead chain window open.
+                        self._finish_resolution(state)
+                    else:
+                        state["phase"] = restored["phase"]
+                        state["actor"] = restored["actor"]
+                        state["passes"] = restored.get("passes", 0)
                 self._cleanup(state, rng)
                 if item.get("resume") == "close_showdown" and state.get("battle") is not None:
                     self._close_showdown(state, rng)
@@ -2558,15 +2607,10 @@ class OriginsRules:
                 if code == "OGN-044" and additional_cost:
                     triggers.append({"effect": "draw_one", "source": unit["id"], "owner": player})
                 if code == "OGN-147":
-                    # The optional payment is represented by the explicit
-                    # first available buff marker; this keeps the play
-                    # trigger atomic while preserving the card's state.
-                    spent = next((u for u in self._units(state, player)
-                                  if u["id"] != unit["id"] and u["buff"]), None)
-                    if spent is not None:
-                        spent["buff"] = 0
-                        self._apply_buff(state, unit)
-                        unit["exhausted"] = False
+                    if any(other["id"] != unit["id"] and other["buff"]
+                           for other in self._units(state, player)):
+                        triggers.append({"effect": "wildclaw_optional",
+                                         "source": unit["id"], "owner": player})
                 if code == "OGN-141":
                     triggers.append({"effect": "kinkou_buff", "source": unit["id"],
                                      "owner": player, "target_multi": True})
@@ -2775,6 +2819,12 @@ class OriginsRules:
                         state["preserve_chain_context"] = True
                         state["phase"], state["actor"] = "trigger_order", generated[0]["owner"]
                         return
+            # An effect may queue an optional trigger while resolving.  Keep
+            # the explicit optional window open instead of letting chain
+            # cleanup overwrite it with the old phase.
+            if state.get("phase") == "optional":
+                self._cleanup(state, rng)
+                return
             self._finish_resolution(state)
             self._cleanup(state, rng)
 

@@ -1,6 +1,6 @@
 # 下载、安装和测试攻略
 
-本攻略针对 **0.3.0 / simulator 分支**。它能自动运行内置的合法 Origins 套牌及所列 202 张卡牌；尚未实现完整 Origins。包含本地图形界面，也可用命令行查看状态和生成对局文件。
+本攻略针对 **0.3.0 / simulator 分支**。它能自动运行内置的合法 Origins 套牌及所列 210 张卡牌；尚未实现完整 Origins。包含本地图形界面，也可用命令行查看状态和生成对局文件。
 
 ## 1. 下载
 
@@ -40,7 +40,7 @@ python3.12 -m venv .venv
 .venv/bin/python -m riftbound status
 ```
 
-状态应包含 `catalog_cards: 298`、`executable_cards: 202`、`supported_subset_playable: true` 和 `full_origins_supported: false`。
+状态应包含 `catalog_cards: 298`、`executable_cards: 210`、`supported_subset_playable: true` 和 `full_origins_supported: false`。
 
 ## 3. 启动图形界面
 

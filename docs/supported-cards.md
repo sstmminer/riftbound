@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 202 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 210 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -207,6 +207,14 @@
 | OGN-109 | Dr. Mundo, Expert | unit | My Might is increased by the number of cards in your trash. |
 | OGN-110 | Ekko, Recurrent | unit | [Deathknell] — Recycle me to ready your runes. |
 | OGN-144 | Spoils of War | spell | Draw 2. |
+| OGN-108 | Convergent Mutation | spell | Increase a friendly unit's Might to another friendly unit's Might this turn. |
+| OGN-145 | Unyielding Spirit | spell | Prevent all spell and ability damage this turn. |
+| OGN-149 | Carnivorous Snapvine | unit | When you play me, choose an enemy unit at a battlefield. We deal damage equal to our Mights to each other. |
+| OGN-153 | Overt Operation | spell | Spend buffs to ready units, then buff all friendly units. |
+| OGN-158 | Volibear, Imposing | unit | When an opponent moves to a battlefield other than mine, draw 1. |
+| OGN-178 | Undercover Agent | unit | [Deathknell] — Discard 2, then draw 2. |
+| OGN-189 | Kayn, Unleashed | unit | If I have moved twice this turn, I don't take damage. |
+| OGN-205 | Yasuo, Windrider | unit | The third time I move in a turn, you score 1 point. |
 支持的规则仅就这套封闭卡池验证。Recruit 是衍生物，不可放入构筑主牌库。隐蔽、装备、死亡触发、卡牌反制、控制权改变等机制尚未开放；它们对应卡牌会被拒绝，不会当作白板处理。
 
 扩展卡牌：OGN-039 Kai'Sa, Survivor 支持 Accelerate（额外支付 1 energy 与 fury power 后准备进入），并在征服时每张触发抽 1。可用符文目录现覆盖六个基础 domain（Fury、Calm、Mind、Body、Chaos、Order）；符文资源验证和回收会保留这些 domain。

@@ -209,6 +209,51 @@ class ExpansionBatchCTests(unittest.TestCase):
         self.drain()
         self.assertEqual(len(self.state["players"][0]["hand"]), before + 1)
 
+    def test_convergent_mutation_raises_one_unit_to_another_might(self):
+        first = self.rules._new_unit(self.state, "OGN-219", 0, "base:0", exhausted=False)
+        second = self.rules._new_unit(self.state, "OGN-038", 0, "base:0", exhausted=False)
+        card = self.spare("OGN-108")
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments
+                      and first["id"] in a.arguments and second["id"] in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.drain()
+        self.assertEqual(self.rules.might(self.state, first), self.rules.might(self.state, second))
+
+    def test_unyielding_spirit_prevents_spell_damage(self):
+        card = self.spare("OGN-145")
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "play_spell" and card in a.arguments),
+                         random.Random(9))
+        self.drain()
+        target = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        self.rules._deal_damage(self.state, target, 5)
+        self.assertEqual(target["damage"], 0)
+
+    def test_snapvine_fight_requires_an_enemy_target(self):
+        enemy = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        card = self.spare("OGN-149")
+        self.play_unit(card)
+        self.assertEqual(self.state["phase"], "decision")
+        self.choose_and_drain(enemy["id"])
+        self.assertGreater(enemy["damage"], 0)
+
+    def test_volibear_imposing_draws_when_opponent_enters_other_field(self):
+        self.rules._new_unit(self.state, "OGN-158", 0, "base:0", exhausted=False)
+        enemy = self.rules._new_unit(self.state, "OGN-219", 1, "base:1", exhausted=False)
+        before = len(self.state["players"][0]["hand"])
+        self.rules._resolve_move(self.state, [enemy], 0, 1, random.Random(9))
+        self.assertEqual(len(self.state["players"][0]["hand"]), before + 1)
+
+    def test_kayn_ignores_damage_after_two_moves(self):
+        kayn = self.rules._new_unit(self.state, "OGN-189", 0, "base:0", exhausted=False)
+        self.rules._resolve_move(self.state, [kayn], 0, 0, random.Random(9))
+        kayn["exhausted"] = False
+        self.rules._resolve_move(self.state, [kayn], "base:0", 0, random.Random(9))
+        before = kayn["damage"]
+        self.rules._deal_damage(self.state, kayn, 5)
+        self.assertEqual(kayn["damage"], before)
+
 
 if __name__ == "__main__":
     unittest.main()

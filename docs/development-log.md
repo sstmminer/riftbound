@@ -8,7 +8,7 @@
 - 当前分支：`simulator`。
 - 当前规则实现版本仍为 `origins-subset/0.3.0`。
 - 第一弹目录有 298 张基础编号：142 unit、84 spell、30 gear、24 battlefield、12 legend、6 rune。
-- 目前显式执行 202 张；其余 96 张在构筑时拒绝，不会静默当作白板。
+- 目前显式执行 210 张；其余 88 张在构筑时拒绝，不会静默当作白板。
 
 ## 本轮已完成
 
@@ -159,10 +159,11 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 - 新增 Yasuo, Remorseful、Viktor, Innovator、Fight or Flight、Fading Memories、Kog'Maw, Caustic、Miss Fortune, Buccaneer；支持攻击触发、对手回合触发、Deathknell、临时单位和开放战场规则。
 - 建立 Origins GearZone 基础：Gear 只能进入控制者基地，默认竖置；状态进入公开观察和牌张守恒校验。接入 21 张装备，其中 6 种领域资源 Gear、Energy Conduit、Iron Ballista、Sun Disc、Ravenborn Tome、Scrapheap 和 Forge of the Future 已有可执行基础路径。
 - 新增 Kadregrin、Eclipse Herald、Tasty Faefolk、Portal Rescue、Dr. Mundo、Ekko 和 Spoils of War，覆盖 Mighty 抽牌、Stun 触发、Deathknell、回收重播和基础抽牌。
+- 新增 Convergent Mutation、Unyielding Spirit、Carnivorous Snapvine、Overt Operation、Volibear, Imposing、Undercover Agent、Kayn, Unleashed、Yasuo, Windrider，覆盖临时防护、双目标战斗、移动计数和更多 Deathknell。
 
 ## 尚未完成
 
-- 第一弹 298 张尚未全部执行。当前支持集已扩展到 202 张，完整扩展需要按机制层逐步增加处理器和回归测试。
+- 第一弹 298 张尚未全部执行。当前支持集已扩展到 210 张，完整扩展需要按机制层逐步增加处理器和回归测试。
 - 装备牌区、Hidden/reveal、反制、控制权变化、复杂替代效果和通用分割伤害还没有完成；Deathknell、Tank、Shield 当前只覆盖已注册卡牌的基础窗口。
 - 目前只有 Singularity、Back to Back 走通用多目标确认路径；其他尚未迁移的多目标牌仍可能在施放动作中携带预生成的目标组合。
 - 装备牌模型和装备触发目标窗口仍未接入引擎，因此装备相关效果暂不声称已完成。

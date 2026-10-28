@@ -209,7 +209,15 @@
     "OGN-102": "images/OGN/OGN-102.png",
     "OGN-109": "images/OGN/OGN-109.png",
     "OGN-110": "images/OGN/OGN-110.png",
-    "OGN-144": "images/OGN/OGN-144.png"
+    "OGN-144": "images/OGN/OGN-144.png",
+    "OGN-108": "images/OGN/OGN-108.png",
+    "OGN-145": "images/OGN/OGN-145.png",
+    "OGN-149": "images/OGN/OGN-149.png",
+    "OGN-153": "images/OGN/OGN-153.png",
+    "OGN-158": "images/OGN/OGN-158.png",
+    "OGN-178": "images/OGN/OGN-178.png",
+    "OGN-189": "images/OGN/OGN-189.png",
+    "OGN-205": "images/OGN/OGN-205.png"
   },
   "back": "images/card-back.png"
 }

@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 158 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 168 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -40,6 +40,7 @@
 | OGN-082 | Whiteflame Protector | unit | When you play me, give a unit +8 :rb_might: this turn. |
 | OGN-105 | Singularity | spell | Deal 6 to each of up to two units. |
 | OGN-114 | Progress Day | spell | Draw 4. |
+| OGN-116 | Thousand-Tailed Watcher | unit | [Accelerate]; when you play me, give enemy units -3 Might this turn, to a minimum of 1 Might. |
 | OGN-131 | Dune Drake | unit | +2 :rb_might: while attacking if a ready enemy is here. |
 | OGN-127 | Cannon Barrage | spell | Deal 2 to all enemy units in combat. |
 | OGN-133 | Flurry of Blades | spell | Deal 1 to all units at battlefields. |
@@ -77,11 +78,16 @@
 | OGN-297 | Windswept Hillock | battlefield | Units here have [Ganking]. (They can move from battlefield to battlefield.) |
 
 | OGN-053 | Stand United | spell | [Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.) [Action] (Play on your turn or in showdowns.) Buff a friendly unit. Buffs give an additional +1 :rb_might: to friendly units this turn. (To buff a unit, give it a +1 :rb_might: buff if it doesn't already have one.) |
+| OGN-061 | Poro Herder | unit | When you play me, if you control a Poro, buff me and draw 1. |
 | OGN-054 | Sunlit Guardian | unit | [Shield] (+1 :rb_might: while I'm a defender.) [Tank] (I must be assigned combat damage first.) |
 | OGN-069 | Last Stand | spell | [Action] (Play on your turn or in showdowns.) Double a friendly unit's Might this turn. Give it [Temporary]. (Kill it at the start of its controller's Beginning Phase, before scoring.) |
 | OGN-083 | Consult the Past | spell | [Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.) [Reaction] (Play any time, even before spells and abilities resolve.) Draw 2. |
 | OGN-087 | Lecturing Yordle | unit | [Tank] (I must be assigned combat damage first.) When you play me, draw 1. |
+| OGN-092 | Riptide Rex | unit | When you play me, deal 6 to an enemy unit at a battlefield. |
+| OGN-094 | Sprite Call | spell | Play a ready 3 Might Sprite unit token with Temporary. |
 | OGN-096 | Watchful Sentry | unit | [Deathknell] — Draw 1. (When I die, get the effect.) |
+| OGN-097 | Blastcone Fae | unit | When you play me, give a unit -2 Might this turn, to a minimum of 1 Might. |
+| OGN-100 | Gemcraft Seer | unit | [Vision]; other friendly units have Vision. |
 | OGN-104 | Retreat | spell | [Reaction] (Play any time, even before spells and abilities resolve.) Return a friendly unit to its owner's hand. Its owner channels 1 rune exhausted. |
 | OGN-129 | Confront | spell | [Action] (Play on your turn or in showdowns.) Units you play this turn enter ready. Draw 1. |
 | OGN-132 | First Mate | unit | When you play me, ready another unit. |
@@ -121,6 +127,7 @@
 | OGN-084 | Eager Apprentice | unit | While I'm at a battlefield, the Energy costs for spells you play is reduced by :rb_energy_1:, to a minimum of :rb_energy_1:. |
 | OGN-086 | Jeweled Colossus | unit | [Vision] (When you play me, look at the top card of your Main Deck. You may recycle it.) [Shield] (+1 :rb_might: while I'm a defender.) |
 | OGN-103 | Ravenbloom Student | unit | When you play a spell, give me +1 :rb_might: this turn. |
+| OGN-106 | Sprite Mother | unit | When you play me, play a ready 3 Might Sprite unit token with Temporary here. |
 | OGN-118 | Wraith of Echoes | unit | The first time a friendly unit dies each turn, draw 1. |
 | OGN-119 | Ahri, Inquisitive | unit | When I attack or defend, give an enemy unit here -2 :rb_might: this turn, to a minimum of 1 :rb_might:. |
 | OGN-123 | Unchecked Power | spell | Exhaust all friendly units, then deal 12 to ALL units at battlefields. |
@@ -135,7 +142,10 @@
 | OGN-165 | Cemetery Attendant | unit | When you play me, return a unit from your trash to your hand. |
 | OGN-174 | Sai Scout | unit | [Vision] (When you play me, look at the top card of your Main Deck. You may recycle it.) You may play me to an open battlefield. |
 | OGN-185 | Traveling Merchant | unit | When I move, discard 1, then draw 1. |
+| OGN-188 | Zaunite Bouncer | unit | When you play me, return another unit at a battlefield to its owner's hand. |
+| OGN-191 | Maddened Marauder | unit | [Tank]; when you play me, move a unit from a battlefield to its base. |
 | OGN-195 | Rhasa the Sunderer | unit | I cost :rb_energy_1: less for each card in your trash. |
+| OGN-197 | Teemo, Scout | unit | When you play me, give me +3 Might this turn. |
 | OGN-209 | Cull the Weak | spell | Each player kills one of their units. |
 | OGN-218 | Vanguard Captain | unit | [Legion] — When you play me, play two 1 :rb_might: Recruit unit tokens here. (Get the effect if you've played another card this turn.) |
 | OGN-225 | Solari Chief | unit | When you play me, choose an enemy unit. If it is stunned, kill it. Otherwise, stun it. (It doesn't deal combat damage this turn.) |

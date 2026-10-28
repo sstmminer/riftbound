@@ -56,6 +56,16 @@ class OriginsRules:
         registry.register("buff_self", self._effect_buff_self)
         registry.register("ravenbloom", self._effect_ravenbloom)
         registry.register("ahri_debuff", self._effect_ahri_debuff)
+        registry.register("crackshot_target", self._effect_crackshot_target)
+        registry.register("leona_stun_target", self._effect_leona_stun_target)
+        registry.register("riptide_damage", self._effect_riptide_damage)
+        registry.register("fae_debuff", self._effect_fae_debuff)
+        registry.register("return_field_unit", self._effect_return_field_unit)
+        registry.register("move_field_unit", self._effect_move_field_unit)
+        registry.register("poro_herder", self._effect_poro_herder)
+        registry.register("sprite_mother", self._effect_sprite_mother)
+        registry.register("watcher_debuff", self._effect_watcher_debuff)
+        registry.register("buff_self_three", self._effect_buff_self_three)
         registry.register("peak", self._effect_peak)
         registry.register("drummer", self._effect_drummer)
         registry.register("vision", self._effect_vision)
@@ -793,12 +803,13 @@ class OriginsRules:
             raise ValueError(f"unknown phase {phase}")
         return tuple(result)
 
-    def _enter_chain(self, state, items):
-        if not state["chain"]:
+    def _enter_chain(self, state, items, *, preserve_context=False):
+        if not state["chain"] and not preserve_context:
             state["chain_return"] = state["phase"]
             state["chain_from_spell"] = any(item["effect"] == "spell" for item in items)
         state["chain"].extend(items)
         state["phase"], state["actor"], state["passes"] = "chain", items[-1]["owner"], 0
+        self._arm_chain_top(state)
 
     def _triggers(self, state, triggers):
         if not triggers:
@@ -809,6 +820,77 @@ class OriginsRules:
             state["pending"] = triggers
             state["order_return"] = state["phase"]
             state["phase"], state["actor"] = "trigger_order", triggers[0]["owner"]
+
+    def _trigger_target_candidates(self, state, item):
+        """Return targets for a triggered ability during its finalization.
+
+        RUP5 403.2 requires choices for triggered abilities before priority is
+        passed. The older implementation opened these windows only when the
+        effect resolved, which let both players respond before the controller
+        had finalized the trigger. Keep the candidate rules beside the effect
+        handlers so resolution remains a defensive fallback.
+        """
+        owner = item.get("owner")
+        effect = item.get("effect")
+        source = item.get("source")
+        if owner not in (0, 1):
+            return None
+        if effect == "kill_target":
+            return [u["id"] for u in state["units"] if u["owner"] != owner]
+        if effect == "stun_target":
+            return [u["id"] for u in state["units"]]
+        if effect == "buff_eight":
+            return [u["id"] for u in self._units(state, owner)]
+        if effect == "ready_target":
+            return [u["id"] for u in self._units(state, owner) if u["id"] != source]
+        if effect == "buff_target":
+            return [u["id"] for u in self._units(state, owner) if u["id"] != source]
+        if effect == "return_unit_trigger":
+            return [uid for uid in state["players"][owner]["trash"]
+                    if self.cards[state["cards"][uid]["code"]]["type"] == "unit"]
+        if effect == "solari_target":
+            return [u["id"] for u in state["units"] if u["owner"] != owner]
+        if effect == "buff_two":
+            return [u["id"] for u in self._units(state, owner) if u["id"] != source]
+        if effect in {"crackshot_target", "leona_stun_target"}:
+            field = state.get("battle", {}).get("field")
+            return [u["id"] for u in self._units(state, 1 - owner, field)] if self._is_field(state, field) else []
+        if effect == "riptide_damage":
+            return [u["id"] for u in state["units"]
+                    if u["owner"] != owner and self._is_field(state, u["location"])]
+        if effect == "fae_debuff":
+            return [u["id"] for u in state["units"]]
+        if effect == "return_field_unit":
+            return [u["id"] for u in state["units"]
+                    if u["id"] != source and self._is_field(state, u["location"])]
+        if effect == "move_field_unit":
+            return [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
+        return None
+
+    def _arm_chain_top(self, state):
+        """Finalize target choices for the newest triggered chain item."""
+        while state.get("chain"):
+            item = state["chain"][-1]
+            if item.get("trigger_target_finalized") or item.get("target") is not None:
+                return False
+            targets = self._trigger_target_candidates(state, item)
+            if targets is None:
+                return False
+            if not targets:
+                # RUP5 403.4: an already-triggered ability with no legal
+                # choices is removed from the Chain and never resolves.
+                state["chain"].pop()
+                continue
+            item["trigger_target_pending"] = True
+            state["decision"] = {
+                "kind": "target", "player": item["owner"],
+                "targets": targets, "item": item,
+                "trigger_target": True,
+            }
+            state["phase"], state["actor"] = "decision", item["owner"]
+            state["passes"] = 0
+            return True
+        return False
 
     def _new_unit(self, state, code, owner, location, *, card=None, exhausted=None):
         if exhausted is None:
@@ -858,6 +940,84 @@ class OriginsRules:
         if (target is not None and self._is_field(state, field)
                 and target["location"] == field and target["owner"] != item["owner"]):
             target["temporary"] -= 2
+        return True
+
+    def _effect_crackshot_target(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        field = state.get("battle", {}).get("field")
+        if (target is not None and self._is_field(state, field)
+                and target["location"] == field and target["owner"] != item["owner"]):
+            self._deal_damage(state, target, 1)
+            self._cleanup(state, rng)
+        return True
+
+    def _effect_leona_stun_target(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        field = state.get("battle", {}).get("field")
+        if (target is not None and self._is_field(state, field)
+                and target["location"] == field and target["owner"] != item["owner"]):
+            target["stunned"] = True
+            self._radiant_stun_trigger(state, item["owner"])
+        return True
+
+    def _effect_riptide_damage(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if (target is not None and target["owner"] != item["owner"]
+                and self._is_field(state, target["location"])):
+            self._deal_damage(state, target, 6)
+            self._cleanup(state, rng)
+        return True
+
+    def _effect_fae_debuff(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if target is not None:
+            target["temporary"] -= 2
+        return True
+
+    def _effect_return_field_unit(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if target is None or not self._is_field(state, target["location"]):
+            return True
+        state["units"].remove(target)
+        card = target.get("card")
+        if card is not None:
+            self._players_hand(state, target["owner"]).append(card)
+        return True
+
+    def _players_hand(self, state, player):
+        return state["players"][player]["hand"]
+
+    def _effect_move_field_unit(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if target is not None and self._is_field(state, target["location"]):
+            self._resolve_move(state, [target], f"base:{target['owner']}", item["owner"], rng,
+                               from_effect=True)
+        return True
+
+    def _effect_poro_herder(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if source is not None and any("Poro" in self.cards[u["code"]]["tags"]
+                                      for u in self._units(state, item["owner"])):
+            self._apply_buff(state, source)
+            self._draw(state, item["owner"], 1, rng)
+        return True
+
+    def _effect_sprite_mother(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if source is not None:
+            token = self._new_unit(state, TOKEN, item["owner"], source["location"], exhausted=False)
+            token["temporary_unit"] = True
+        return True
+
+    def _effect_watcher_debuff(self, state, item, rng):
+        for unit in self._units(state, 1 - item["owner"]):
+            unit["temporary"] -= 3
+        return True
+
+    def _effect_buff_self_three(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if source is not None:
+            source["temporary"] += 3
         return True
 
     def _effect_peak(self, state, item, rng):
@@ -1165,6 +1325,9 @@ class OriginsRules:
                 if target is not None:
                     target["exhausted"] = True
             self._draw(state, owner, 2 if item["targets"] else 1, rng)
+        elif code == "OGN-094":
+            token = self._new_unit(state, TOKEN, owner, f"base:{owner}", exhausted=False)
+            token["temporary_unit"] = True
         elif code == "OGN-123":
             for friendly in self._units(state, owner):
                 friendly["exhausted"] = True
@@ -1297,6 +1460,16 @@ class OriginsRules:
                     selected.append(args["target"])
                     # The decision remains open until an explicit confirmation.
                     state["passes"] = 0
+                    return
+                if decision.get("trigger_target"):
+                    if not state.get("chain") or state["chain"][-1] is not decision.get("item"):
+                        raise ValueError("trigger target is no longer on top of the chain")
+                    chain_item = state["chain"][-1]
+                    chain_item["target"] = args["target"]
+                    chain_item["trigger_target_pending"] = False
+                    chain_item["trigger_target_finalized"] = True
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", chain_item["owner"], 0
                     return
                 item = dict(decision["item"])
                 item["target"] = args["target"]
@@ -1510,14 +1683,13 @@ class OriginsRules:
             row["played"] += 1
             item = {"effect": "spell", "owner": player, "card": card,
                     "code": code, "targets": [], "destination": args.get("destination")}
+            # Ravenbloom triggers after this spell finishes resolving.
+            item["post_triggers"] = [{"effect": "ravenbloom", "owner": player}]
+            if row["played"] == 2:
+                item["post_triggers"].append({"effect": "darius", "owner": player})
             # Keep a pending spell item while the player chooses its target;
             # target confirmation fills that item before normal chain resolution.
             self._enter_chain(state, [item])
-            spell_triggers = [{"effect": "ravenbloom", "source": source["id"],
-                               "owner": player}
-                              for source in self._units(state, player)
-                              if source["code"] == "OGN-103"]
-            state["chain"].extend(spell_triggers)
             state["decision"] = {"kind": "target", "player": player,
                                   "targets": list(args.get("target_candidates", [])),
                                   "multi": code != "OGN-104", "min": int(args.get("target_min", 1)),
@@ -1570,6 +1742,24 @@ class OriginsRules:
                     triggers.append({"effect": "discard_one", "source": unit["id"], "owner": player})
                 if code == "OGN-234":
                     triggers.append({"effect": "kill_target", "source": unit["id"], "owner": player})
+                if code == "OGN-061":
+                    triggers.append({"effect": "poro_herder", "source": unit["id"], "owner": player})
+                if code == "OGN-092":
+                    triggers.append({"effect": "riptide_damage", "source": unit["id"], "owner": player})
+                if code == "OGN-097":
+                    triggers.append({"effect": "fae_debuff", "source": unit["id"], "owner": player})
+                if code == "OGN-100":
+                    triggers.append({"effect": "vision", "source": unit["id"], "owner": player})
+                if code == "OGN-106":
+                    triggers.append({"effect": "sprite_mother", "source": unit["id"], "owner": player})
+                if code == "OGN-116":
+                    triggers.append({"effect": "watcher_debuff", "source": unit["id"], "owner": player})
+                if code == "OGN-188":
+                    triggers.append({"effect": "return_field_unit", "source": unit["id"], "owner": player})
+                if code == "OGN-191":
+                    triggers.append({"effect": "move_field_unit", "source": unit["id"], "owner": player})
+                if code == "OGN-197":
+                    triggers.append({"effect": "buff_self_three", "source": unit["id"], "owner": player})
                 if code == "OGN-051":
                     triggers.append({"effect": "stun_target", "source": unit["id"],
                                      "owner": player})
@@ -1611,9 +1801,11 @@ class OriginsRules:
                     triggers.append({"effect": "drummer", "owner": player, "location": args["location"]})
                 if code == "OGN-223":
                     triggers.append({"effect": "peak", "source": unit["id"], "owner": player})
-                if code in {"OGN-030", "OGN-086", "OGN-171", "OGN-174"}:
+                if code in {"OGN-030", "OGN-086", "OGN-100", "OGN-171", "OGN-174"}:
                     triggers.append({"effect": "discard_two" if code == "OGN-030" else "vision",
                                      "source": unit["id"], "owner": player})
+                elif any(other["code"] == "OGN-100" for other in self._units(state, player)):
+                    triggers.append({"effect": "vision", "source": unit["id"], "owner": player})
                 self._cleanup(state, rng)
                 if self._is_field(state, args["location"]) and state["fields"][args["location"]]["controller"] != player:
                     state["battle"] = {"field": args["location"], "attacker": player, "combat": False}
@@ -1628,21 +1820,26 @@ class OriginsRules:
                 row["played"] += 1
                 effect = "return_unit" if code == "OGN-170" else "spell"
                 triggers = self._second_card_triggers(state, player)
+                spell_item = {"effect": effect, "owner": player, "card": card,
+                               "code": code, "targets": args["targets"],
+                               "destination": args.get("destination")}
                 if code in SPELL_CODES:
-                    triggers.extend({"effect": "ravenbloom", "source": source["id"],
-                                     "owner": player}
-                                    for source in self._units(state, player)
-                                    if source["code"] == "OGN-103")
-                self._enter_chain(state, [{"effect": effect, "owner": player, "card": card,
-                                           "code": code, "targets": args["targets"],
-                                           "destination": args.get("destination")}])
+                    spell_item["post_triggers"] = [{"effect": "ravenbloom", "owner": player}]
+                    if row["played"] == 2:
+                        spell_item["post_triggers"].append({"effect": "darius", "owner": player})
+                    # Playing a spell completes only after its resolution, so
+                    # Darius's second-card trigger is a post-spell trigger too.
+                    triggers = []
+                self._enter_chain(state, [spell_item])
                 self._cleanup(state, rng)
                 self._triggers(state, triggers)
         elif kind == "order_triggers":
             pending = state["pending"]
             state["pending"] = []
             state["phase"] = state["order_return"]
-            self._enter_chain(state, [pending[i] for i in args["order"]])
+            preserve_context = state.pop("preserve_chain_context", False)
+            self._enter_chain(state, [pending[i] for i in args["order"]],
+                              preserve_context=preserve_context)
         elif kind == "begin_move":
             state["selection"] = {"destination": args["destination"], "units": []}
             state["phase"] = "move_select"
@@ -1694,6 +1891,38 @@ class OriginsRules:
         item = state["chain"].pop()
         completed = self.effects.dispatch(item["effect"], state, item, rng)
         if completed:
+            # Ravenbloom Student and other post-spell triggers are created only
+            # after the spell has finished resolving.  Keeping them on the
+            # spell item prevents them from incorrectly resolving before it.
+            post_triggers = item.pop("post_triggers", None)
+            if post_triggers:
+                generated = []
+                for spec in post_triggers:
+                    if spec.get("effect") == "ravenbloom":
+                        generated.extend(
+                            {"effect": "ravenbloom", "source": source["id"],
+                             "owner": item["owner"]}
+                            for source in self._units(state, item["owner"])
+                            if source["code"] == "OGN-103"
+                        )
+                    elif spec.get("effect") == "darius":
+                        generated.extend(
+                            {"effect": "darius", "source": source["id"],
+                             "owner": item["owner"]}
+                            for source in self._units(state, item["owner"])
+                            if source["code"] == "OGN-027"
+                        )
+                if generated:
+                    if len(generated) == 1:
+                        state["chain"].extend(generated)
+                        state["phase"], state["actor"], state["passes"] = "chain", generated[0]["owner"], 0
+                        self._arm_chain_top(state)
+                    else:
+                        state["pending"] = generated
+                        state["order_return"] = "chain"
+                        state["preserve_chain_context"] = True
+                        state["phase"], state["actor"] = "trigger_order", generated[0]["owner"]
+                        return
             self._finish_resolution(state)
             self._cleanup(state, rng)
 
@@ -1701,13 +1930,15 @@ class OriginsRules:
         if state["chain"]:
             state["phase"] = "chain"
             state["actor"] = state["chain"][-1]["owner"]
+            self._arm_chain_top(state)
         elif state.pop("pending_showdown", False):
             state["phase"], state["actor"] = "showdown", state.get("focus", state["turn_player"])
         else:
             state["phase"] = state["chain_return"]
             if state["phase"] == "showdown":
                 if state["chain_from_spell"]:
-                    state["focus"] = 1-state.get("focus", state["actor"])
+                    state["focus"] = 1-state.get("focus", state.get("actor", state["turn_player"]))
+                state["focus"] = state.get("focus", state.get("turn_player", 0))
                 state["actor"] = state["focus"]
             else:
                 state["actor"] = state["turn_player"]
@@ -1728,7 +1959,8 @@ class OriginsRules:
             state["phase"], state["actor"] = "decision", item["owner"]
             return
         selected = state.pop("combat_trigger_selected", [])
-        state["phase"], state["actor"], state["passes"] = "showdown", state["focus"], 0
+        focus = state.get("focus", state.get("turn_player", 0))
+        state["phase"], state["actor"], state["passes"] = "showdown", focus, 0
         self._triggers(state, selected)
 
     def _close_showdown(self, state, rng):
@@ -1756,6 +1988,14 @@ class OriginsRules:
                 {"effect": "ahri_debuff", "source": unit["id"],
                  "owner": unit["owner"], "role": "defender"}
                 for unit in defenders if unit["code"] == "OGN-119"
+            ] + [
+                {"effect": "crackshot_target", "source": unit["id"],
+                 "owner": unit["owner"]}
+                for unit in attackers if unit["code"] == "OGN-130"
+            ] + [
+                {"effect": "leona_stun_target", "source": unit["id"],
+                 "owner": unit["owner"]}
+                for unit in attackers if unit["code"] == "OGN-238"
             ]
             battle["designation_triggers_added"] = True
             if ahri_triggers:
@@ -1784,11 +2024,6 @@ class OriginsRules:
         if any(unit["code"] == "OGN-148" for unit in attackers):
             for unit in defenders:
                 self._deal_damage(state, unit, 3)
-        for _ in range(sum(unit["code"] == "OGN-130" for unit in attackers)):
-            if defenders:
-                self._deal_damage(state, defenders[0], 1)
-        if any(unit["code"] == "OGN-238" for unit in attackers) and defenders:
-            defenders[0]["stunned"] = True
         if any(unit["code"] == "OGN-159" for unit in attackers):
             for unit in defenders:
                 if unit["damage"] > 0:

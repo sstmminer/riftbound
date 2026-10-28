@@ -47,11 +47,11 @@ class UnitsBatchBTests(unittest.TestCase):
         action = next(a for a in self.rules.legal_actions(self.state)
                       if a.kind == "play_unit" and attendant in a.arguments)
         self.rules.apply(self.state, action, random.Random(9))
-        self.drain()
         self.assertEqual(self.state["phase"], "decision")
         choose = next(a for a in self.rules.legal_actions(self.state)
                       if target in a.arguments)
         self.rules.apply(self.state, choose, random.Random(9))
+        self.drain()
         self.assertIn(target, row["hand"])
 
     def test_vanguard_captain_creates_two_recruits_on_legion_play(self):
@@ -69,10 +69,10 @@ class UnitsBatchBTests(unittest.TestCase):
         action = next(a for a in self.rules.legal_actions(self.state)
                       if a.kind == "play_unit" and card in a.arguments)
         self.rules.apply(self.state, action, random.Random(9))
-        self.drain()
         self.assertEqual(self.state["phase"], "decision")
         self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
                                           if enemy["id"] in a.arguments), random.Random(9))
+        self.drain()
         self.assertTrue(enemy["stunned"])
 
     def test_viktor_leader_creates_recruit_when_another_unit_dies(self):

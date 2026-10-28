@@ -114,15 +114,13 @@ class OriginsTests(unittest.TestCase):
         state["cards"][dragon]["code"] = "OGN-234"
         enemy = self.unit(state, "OGN-219", player=1, location=0)
         self.act(state, "play_unit", card=dragon, location="base:0")
-        self.assertEqual(state["phase"], "chain")
-        self.act(state, "pass")
-        self.act(state, "pass")
         self.assertEqual(state["phase"], "decision")
         self.assertIsNone(self.rules.observe(state, 1)["decision"])
         decision = self.rules.observe(state, 0)["decision"]
         self.assertEqual(decision["kind"], "target")
         self.assertEqual(decision["targets"], [enemy["id"]])
         self.act(state, "choose_target", target=enemy["id"])
+        self.drain(state)
         self.assertNotIn(enemy, state["units"])
 
     def test_solari_shieldbearer_stuns_an_explicit_target(self):
@@ -131,9 +129,9 @@ class OriginsTests(unittest.TestCase):
         state["cards"][card]["code"] = "OGN-051"
         enemy = self.unit(state, player=1, location=0)
         self.act(state, "play_unit", card=card, location="base:0")
-        self.drain(state)
         self.assertEqual(state["phase"], "decision")
         self.act(state, "choose_target", target=enemy["id"])
+        self.drain(state)
         self.assertTrue(enemy["stunned"])
 
     def test_whiteflame_protector_gives_eight_temporary_might(self):
@@ -143,9 +141,9 @@ class OriginsTests(unittest.TestCase):
         state["players"][0]["power"] = ["calm", "calm"]
         target = self.unit(state, "OGN-219", location="base:0")
         self.act(state, "play_unit", card=card, location="base:0")
-        self.drain(state)
         self.assertEqual(state["phase"], "decision")
         self.act(state, "choose_target", target=target["id"])
+        self.drain(state)
         self.assertEqual(target["temporary"], 8)
 
     def test_first_mate_readies_another_friendly_unit(self):
@@ -155,9 +153,9 @@ class OriginsTests(unittest.TestCase):
         card = self.hand(state, "OGN-219")
         state["cards"][card]["code"] = "OGN-132"
         self.act(state, "play_unit", card=card, location="base:0")
-        self.drain(state)
         self.assertEqual(state["phase"], "decision")
         self.act(state, "choose_target", target=target["id"])
+        self.drain(state)
         self.assertFalse(target["exhausted"])
 
     def test_pit_rookie_buffs_another_friendly_unit(self):
@@ -166,9 +164,9 @@ class OriginsTests(unittest.TestCase):
         card = self.hand(state, "OGN-219")
         state["cards"][card]["code"] = "OGN-136"
         self.act(state, "play_unit", card=card, location="base:0")
-        self.drain(state)
         self.assertEqual(state["phase"], "decision")
         self.act(state, "choose_target", target=target["id"])
+        self.drain(state)
         self.assertEqual(target["buff"], 1)
 
     def test_new_unit_keywords_and_entry_triggers(self):
@@ -306,6 +304,9 @@ class OriginsTests(unittest.TestCase):
                 defender = self.unit(state, "OGN-219", player=1, location=0)
                 state["battle"] = {"field": 0, "attacker": 0, "combat": True}
                 self.rules._close_showdown(state, random.Random(7))
+                self.assertEqual(state["phase"], "decision")
+                self.act(state, "choose_target", target=defender["id"])
+                self.drain(state)
                 if code == "OGN-130":
                     self.assertEqual(defender["damage"], 1)
                 else:
@@ -327,6 +328,33 @@ class OriginsTests(unittest.TestCase):
         self.drain(state)
         self.assertEqual(first["temporary"], -2)
         self.assertEqual(second["temporary"], 0)
+
+    def test_dangerous_duo_requests_banish_target_before_chain(self):
+        state = self.scenario()
+        friendly = self.unit(state, "OGN-219", location=0)
+        duo = self.hand(state, "OGN-219")
+        state["cards"][duo]["code"] = "OGN-016"
+        state["players"][0]["played"] = 1
+        self.act(state, "play_unit_targeted", card=duo, location="base:0",
+                  target_candidates=[friendly["id"]])
+        self.assertEqual(state["phase"], "decision")
+        self.assertEqual(state["decision"]["kind"], "unit_target")
+        self.assertEqual(state["decision"]["targets"], [friendly["id"]])
+
+    def test_ravenbloom_trigger_is_post_spell_resolution(self):
+        state = self.scenario()
+        student = self.unit(state, "OGN-219", location="base:0")
+        student["code"] = "OGN-103"
+        spell = self.hand(state, "OGN-024")
+        state["cards"][spell]["code"] = "OGN-048"
+        self.act(state, "play_spell", card=spell, targets=[])
+        self.assertEqual(student["temporary"], 0)
+        self.act(state, "pass")
+        self.act(state, "pass")
+        self.assertEqual(student["temporary"], 0)
+        self.act(state, "pass")
+        self.act(state, "pass")
+        self.assertEqual(student["temporary"], 1)
 
     def test_shen_has_shield_two_and_tank(self):
         state = self.scenario()
@@ -488,6 +516,23 @@ class OriginsTests(unittest.TestCase):
         uid = self.hand(state, "OGN-012")
         self.act(state, "play_unit", card=uid, location="base:0")
         self.assertEqual(state["players"][0]["energy"], before-2)
+
+    def test_darius_second_spell_trigger_waits_for_spell_resolution(self):
+        state = self.scenario()
+        darius = self.unit(state, "OGN-027", location="base:0")
+        darius["exhausted"] = True
+        state["players"][0]["played"] = 1
+        spell = self.hand(state, "OGN-024")
+        enemy = self.unit(state, "OGN-219", player=1, location=0)
+        self.act(state, "play_spell", card=spell, targets=[enemy["id"]])
+        self.assertEqual(darius["temporary"], 0)
+        self.act(state, "pass")
+        self.act(state, "pass")
+        self.assertEqual(darius["temporary"], 0)
+        self.act(state, "pass")
+        self.act(state, "pass")
+        self.assertEqual(darius["temporary"], 2)
+        self.assertFalse(darius["exhausted"])
 
     def test_damage_spell_and_reaction_resolve_lifo(self):
         state = self.scenario()

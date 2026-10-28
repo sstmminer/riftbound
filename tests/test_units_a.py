@@ -47,7 +47,7 @@ class UnitBatchATests(unittest.TestCase):
                       if a.kind == "play_spell" and spell in a.arguments)
         self.rules.apply(self.state, action, random.Random(3))
         self.assertEqual(student["temporary"], 0)
-        self.assertEqual(self.state["chain"][-1]["effect"], "ravenbloom")
+        self.assertEqual(self.state["chain"][-1]["effect"], "spell")
         while self.state["phase"] == "chain":
             self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
                                               if a.kind == "pass"), random.Random(3))

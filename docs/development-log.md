@@ -8,7 +8,7 @@
 - 当前分支：`simulator`。
 - 当前规则实现版本仍为 `origins-subset/0.3.0`。
 - 第一弹目录有 298 张基础编号：142 unit、84 spell、30 gear、24 battlefield、12 legend、6 rune。
-- 目前显式执行 216 张；其余 82 张在构筑时拒绝，不会静默当作白板。
+- 目前显式执行 222 张；其余 76 张在构筑时拒绝，不会静默当作白板。
 
 ## 本轮已完成
 
@@ -163,10 +163,11 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 - 新增 Thermo Beam 与 Acceptable Losses，接入 Gear 区域的全局清除效果；装备目标能力和更复杂的替代效果仍记录为后续机制工作。
 - 新增 Mask of Foresight、Solari Shrine、Garbage Grabber，并接入单人战斗增益、击杀眩晕单位触发和 Gear 资源回收动作。
 - 将 Fortified Position（OGN-279）纳入正式支持集；其防御触发与战斗护盾路径已有回归覆盖。
+- 新增 Raging Soul、Vi、Sona、Pit Crew、Herald of Scales，覆盖弃牌状态、回收资源、回合结束符文、Gear 触发和 Dragon 费用静态修正。
 
 ## 尚未完成
 
-- 第一弹 298 张尚未全部执行。当前支持集已扩展到 216 张，完整扩展需要按机制层逐步增加处理器和回归测试。
+- 第一弹 298 张尚未全部执行。当前支持集已扩展到 222 张，完整扩展需要按机制层逐步增加处理器和回归测试。
 
 ### 当前未完成项目清单
 

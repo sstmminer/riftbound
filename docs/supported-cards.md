@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 216 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 222 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -220,6 +220,11 @@
 | OGN-060 | Mask of Foresight | gear | When a friendly unit attacks or defends alone, give it +1 Might this turn. |
 | OGN-072 | Solari Shrine | gear | When you kill a stunned enemy unit, you may exhaust this to draw 1. |
 | OGN-099 | Garbage Grabber | gear | Recycle 3 from your trash, pay 1 Energy, exhaust this: Draw 1. |
+| OGN-019 | Raging Soul | unit | If you've discarded a card this turn, I have Assault and Ganking. |
+| OGN-036 | Vi, Destructive | unit | Recycle 1 from your trash: Give me +1 Might this turn. |
+| OGN-073 | Sona, Harmonious | unit | At end of your turn, ready 4 friendly runes. |
+| OGN-091 | Pit Crew | unit | When you play a gear, ready me. |
+| OGN-140 | Herald of Scales | unit | Your Dragons' Energy costs are reduced by 2, to a minimum of 1. |
 支持的规则仅就这套封闭卡池验证。Recruit 是衍生物，不可放入构筑主牌库。隐蔽、装备、死亡触发、卡牌反制、控制权改变等机制尚未开放；它们对应卡牌会被拒绝，不会当作白板处理。
 
 扩展卡牌：OGN-039 Kai'Sa, Survivor 支持 Accelerate（额外支付 1 energy 与 fury power 后准备进入），并在征服时每张触发抽 1。可用符文目录现覆盖六个基础 domain（Fury、Calm、Mind、Body、Chaos、Order）；符文资源验证和回收会保留这些 domain。

@@ -122,7 +122,8 @@ class OriginsRules:
             state["players"].append({"main": physical[4:], "hand": physical[:4], "champion": [chosen],
                                      "gear": [], "trash": [], "banishment": [], "rune_deck": runes, "runes": [], "energy": 0,
                                      "power": [], "buff_bonus": 0, "legend": deck["legend"], "legend_exhausted": False,
-                                     "turns": 0, "played": 0, "ready_play": False})
+                                     "turns": 0, "played": 0, "ready_play": False,
+                                     "discarded_this_turn": False, "spell_bonus_damage": 0})
             state["fields"].append({"code": rng.choice(deck["battlefields"]), "controller": None})
         state["fields"].extend({"code": code, "controller": None} for code in self.extra_fields)
         state["dreaming_tree_used"] = [False] * len(state["fields"])
@@ -198,6 +199,7 @@ class OriginsRules:
             value += 2 if unit["code"] == "OGN-037" else 0
             value += 3 if unit["code"] == "OGN-035" else 0
             value += 2 if unit["code"] in {"OGN-003", "OGN-030"} else 0
+            value += 1 if unit["code"] == "OGN-019" and state["players"][unit["owner"]].get("discarded_this_turn") else 0
             if unit["code"] == "OGN-131" and any(not other["exhausted"]
                                                     for other in self._units(state, 1-unit["owner"], location)):
                 value += 2
@@ -266,6 +268,7 @@ class OriginsRules:
         return ((unit["code"] == "OGN-125" and unit["buff"])
                 or (unit["code"] == "OGN-232" and self.might(state, unit) >= 5)
                 or unit.get("temporary_ganking", False)
+                or (unit["code"] == "OGN-019" and state["players"][unit["owner"]].get("discarded_this_turn"))
                 or (self._is_field(state, location) and state["fields"][location]["code"] == "OGN-297"))
 
     def _tank(self, unit):
@@ -488,6 +491,7 @@ class OriginsRules:
             row["played"] = 0
             row["ready_play"] = False
             row["buff_bonus"] = 0
+            row["discarded_this_turn"] = False
         row = state["players"][player]
         row["legend_exhausted"] = False
         if row["turns"] == 0 and not state["beginning_awarded"][player]:
@@ -588,6 +592,8 @@ class OriginsRules:
         for unit in self._units(state, player):
             if unit["code"] == "OGN-078" and not unit["exhausted"]:
                 result.append(Action.make("unit_buff", unit=unit["id"]))
+            if unit["code"] == "OGN-036" and not unit["exhausted"] and row["trash"]:
+                result.append(Action.make("unit_recycle_buff", unit=unit["id"]))
         if row["legend"] == "OGN-253" and not row["legend_exhausted"] and row["played"]:
             result.append(Action.make("legend_energy"))
         if row["legend"] == "OGN-247" and not row["legend_exhausted"]:
@@ -771,6 +777,9 @@ class OriginsRules:
                               if any(u["owner"] != player and u["location"] == i for u in state["units"])
                               and i not in permitted]
             energy = data["energy"] - (2 if code == "OGN-012" and row["played"] else 0)
+            if "Dragon" in data["tags"] and any(u["code"] == "OGN-140" and u["owner"] == player
+                                                  and self._is_field(u["location"]) for u in state["units"]):
+                energy = max(1, energy - 2)
             if code == "OGN-195":
                 energy = max(1, energy - len(row["trash"]))
             for accelerate in ([False, True] if code in ACCELERATE else [False]):
@@ -1247,6 +1256,7 @@ class OriginsRules:
     def _effect_discard_two(self, state, item, rng):
         owner = item["owner"]
         hand = state["players"][owner]["hand"]
+        state["players"][owner]["discarded_this_turn"] = True
         if hand:
             state["decision"] = {"kind": "discard", "player": owner,
                                   "remaining": min(2, len(hand))}
@@ -1257,6 +1267,7 @@ class OriginsRules:
     def _effect_discard_one(self, state, item, rng):
         owner = item["owner"]
         hand = state["players"][owner]["hand"]
+        state["players"][owner]["discarded_this_turn"] = True
         if hand:
             state["decision"] = {"kind": "discard", "player": owner, "remaining": 1}
             state["phase"], state["actor"] = "decision", owner
@@ -1643,6 +1654,7 @@ class OriginsRules:
             elif kind == "discard_card":
                 row["hand"].remove(args["card"])
                 row["trash"].append(args["card"])
+                row["discarded_this_turn"] = True
                 state["decision"]["remaining"] -= 1
                 if not state["decision"]["remaining"] or not row["hand"]:
                     state["decision"] = None
@@ -1817,6 +1829,9 @@ class OriginsRules:
                 self._draw(state, player, 1, rng)
             elif code == "OGN-212":
                 self._new_unit(state, TOKEN, player, f"base:{player}", exhausted=False)
+            for unit in self._units(state, player):
+                if unit["code"] == "OGN-091":
+                    unit["exhausted"] = False
             state["passes"] = 0
         elif kind == "gear_resource":
             gear = next((g for g in row["gear"] if g["id"] == args["gear"]), None)
@@ -1914,6 +1929,16 @@ class OriginsRules:
                 raise ValueError("Lee Sin ability is unavailable")
             unit["exhausted"] = True
             unit["buff"] = unit["buff"] + 1
+            state["passes"] = 0
+        elif kind == "unit_recycle_buff":
+            unit = self._unit(state, args["unit"])
+            if unit is None or unit["owner"] != player or unit["code"] != "OGN-036" or unit["exhausted"]:
+                raise ValueError("Vi ability is unavailable")
+            if not row["trash"]:
+                raise ValueError("Vi requires a card in trash")
+            row["main"].append(row["trash"].pop(0))
+            unit["exhausted"] = True
+            unit["temporary"] += 1
             state["passes"] = 0
         elif kind == "legend_recruit":
             if row["legend"] != "OGN-265" or row["legend_exhausted"] or row["energy"] < 1:
@@ -2206,6 +2231,10 @@ class OriginsRules:
         elif kind == "end_turn":
             # End-turn cleanup: lethal first, then heal all, expire all this-turn effects.
             self._cleanup(state, rng)
+            for unit in self._units(state, player):
+                if unit["code"] == "OGN-073" and self._is_field(state, unit["location"]):
+                    for rune in state["players"][player]["runes"][:4]:
+                        rune["exhausted"] = False
             for unit in state["units"]:
                 unit["damage"], unit["temporary"], unit["assault"], unit["stunned"] = 0, 0, 0, False
             for obj in state["players"]:

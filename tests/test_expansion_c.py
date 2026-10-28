@@ -162,6 +162,53 @@ class ExpansionBatchCTests(unittest.TestCase):
         self.assertTrue(any(a.kind == "play_unit" and other in a.arguments and '"location":1' in a.arguments
                             for a in self.rules.legal_actions(self.state)))
 
+    def test_kadregrin_draws_for_each_mighty_unit(self):
+        self.rules._new_unit(self.state, "OGN-219", 0, "base:0", exhausted=False)
+        card = self.spare("OGN-038")
+        before = len(self.state["players"][0]["hand"])
+        self.play_unit(card)
+        self.drain()
+        self.assertEqual(len(self.state["players"][0]["hand"]), before)
+
+    def test_portal_rescue_replays_a_friendly_unit_to_base(self):
+        target = self.rules._new_unit(self.state, "OGN-219", 0, 0, exhausted=False)
+        card = self.spare("OGN-102")
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments and target["id"] in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.drain()
+        rescued = [u for u in self.state["units"] if u["code"] == "OGN-219" and u["owner"] == 0]
+        self.assertTrue(rescued)
+        self.assertEqual(rescued[-1]["location"], "base:0")
+
+    def test_tasty_faefolk_deathknell_channels_two_and_draws(self):
+        unit = self.rules._new_unit(self.state, "OGN-075", 0, 0, exhausted=False)
+        unit["damage"] = self.rules.might(self.state, unit)
+        before_runes = len(self.state["players"][0]["runes"])
+        self.rules._cleanup(self.state, random.Random(9))
+        self.assertEqual(len(self.state["players"][0]["runes"]), before_runes + 2)
+
+    def test_ekko_deathknell_recycles_it_and_readies_runes(self):
+        card = self.spare("OGN-110")
+        self.state["players"][0]["hand"].remove(card)
+        unit = self.rules._new_unit(self.state, "OGN-110", 0, 0, card=card, exhausted=False)
+        self.state["players"][0]["runes"] = [{"id": "x", "code": "OGN-007", "exhausted": True}]
+        self.state["players"][0]["rune_deck"] = [{"id": f"d{i}", "code": "OGN-007", "exhausted": False}
+                                                     for i in range(11)]
+        unit["damage"] = self.rules.might(self.state, unit)
+        self.rules._cleanup(self.state, random.Random(9))
+        self.assertIn(card, self.state["players"][0]["main"])
+        self.assertFalse(self.state["players"][0]["runes"][0]["exhausted"])
+
+    def test_spoils_of_war_draws_two(self):
+        card = self.spare("OGN-144")
+        before = len(self.state["players"][0]["hand"])
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "play_spell" and card in a.arguments),
+                         random.Random(9))
+        self.drain()
+        self.assertEqual(len(self.state["players"][0]["hand"]), before + 1)
+
 
 if __name__ == "__main__":
     unittest.main()

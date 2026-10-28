@@ -35,7 +35,7 @@ class EffectRegistryTests(unittest.TestCase):
         rules = OriginsRules()
         self.assertEqual(
             rules.effects.names(),
-            ("ahri_debuff", "buff_eight", "buff_self", "buff_self_three", "buff_target", "buff_two", "channel_one", "crackshot_target", "darius", "discard_one", "discard_two", "draw_one", "drummer", "fae_debuff", "fortified_shield", "kill_target", "leona_stun_target", "move_field_unit", "peak", "poro_herder", "ravenbloom", "ready_self", "ready_target", "reaver_recall_target", "return_field_unit", "return_unit", "return_unit_trigger", "riptide_damage", "solari_target", "spell", "sprite_mother", "stun_target", "viktor_innovator", "vision", "watcher_debuff", "yasuo_attack_target"),
+            ("ahri_debuff", "buff_eight", "buff_self", "buff_self_three", "buff_target", "buff_two", "channel_one", "crackshot_target", "darius", "discard_one", "discard_two", "draw_one", "drummer", "fae_debuff", "fortified_shield", "kadregrin_draw", "kill_target", "leona_stun_target", "move_field_unit", "peak", "poro_herder", "portal_rescue", "ravenbloom", "ready_self", "ready_target", "reaver_recall_target", "return_field_unit", "return_unit", "return_unit_trigger", "riptide_damage", "solari_target", "spell", "sprite_mother", "stun_target", "viktor_innovator", "vision", "watcher_debuff", "yasuo_attack_target"),
         )
 
 

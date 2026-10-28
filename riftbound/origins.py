@@ -68,6 +68,8 @@ class OriginsRules:
         registry.register("watcher_debuff", self._effect_watcher_debuff)
         registry.register("buff_self_three", self._effect_buff_self_three)
         registry.register("viktor_innovator", self._effect_viktor_innovator)
+        registry.register("kadregrin_draw", self._effect_kadregrin_draw)
+        registry.register("portal_rescue", self._effect_portal_rescue)
         registry.register("peak", self._effect_peak)
         registry.register("drummer", self._effect_drummer)
         registry.register("vision", self._effect_vision)
@@ -155,6 +157,8 @@ class OriginsRules:
         location = unit["location"]
         if unit["code"] == "OGN-028":
             value += state["points"][unit["owner"]]
+        if unit["code"] == "OGN-109":
+            value += len(state["players"][unit["owner"]]["trash"])
         if self._is_field(state, location) and state["fields"][location]["code"] == "OGN-294":
             value += 1
         role = self._role(state, unit)
@@ -222,6 +226,12 @@ class OriginsRules:
         if friendly:
             self._apply_buff(state, friendly[0])
 
+    def _stun_triggers(self, state, player):
+        for source in self._units(state, player):
+            if source["code"] == "OGN-059":
+                source["exhausted"] = False
+                source["temporary"] += 1
+
     def _channel_rune(self, state, player, *, exhausted=False):
         row = state["players"][player]
         if not row["rune_deck"]:
@@ -259,6 +269,8 @@ class OriginsRules:
                 return
         deathknell = []
         deathknell_channel = []
+        deathknell_channel_two = []
+        deathknell_recycle = []
         kogmaw_fields = []
         viktor_tokens = []
         machine_tokens = []
@@ -275,6 +287,10 @@ class OriginsRules:
                     deathknell.append(unit["owner"])
                 if unit["code"] == "OGN-216":
                     deathknell_channel.append(unit["owner"])
+                if unit["code"] == "OGN-075":
+                    deathknell_channel_two.append(unit["owner"])
+                if unit["code"] == "OGN-110" and unit.get("card") is not None:
+                    deathknell_recycle.append((unit["owner"], unit["card"]))
                 if unit["code"] == "OGN-190" and self._is_field(state, unit["location"]):
                     kogmaw_fields.append(unit["location"])
                 if unit["code"] != TOKEN and any(other["owner"] == unit["owner"]
@@ -290,6 +306,17 @@ class OriginsRules:
                 self._draw(state, player, 1, draw_rng)
         for player in deathknell_channel:
             self._channel_rune(state, player, exhausted=True)
+        for player in deathknell_channel_two:
+            self._channel_rune(state, player, exhausted=True)
+            self._channel_rune(state, player, exhausted=True)
+            self._draw(state, player, 1, rng if rng is not None else random.Random(0))
+        for player, card in deathknell_recycle:
+            trash = state["players"][player]["trash"]
+            if card in trash:
+                trash.remove(card)
+                state["players"][player]["main"].append(card)
+            for rune in state["players"][player]["runes"]:
+                rune["exhausted"] = False
         for player in viktor_tokens:
             self._new_unit(state, TOKEN, player, f"base:{player}")
         for player in machine_tokens:
@@ -570,8 +597,10 @@ class OriginsRules:
                 continue
             data = self.cards[code]
             targeted_only = code == "OGN-104"
-            if code in {"OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-170", "OGN-201", "OGN-233"}:
+            if code in {"OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-170", "OGN-201", "OGN-233"}:
                 targets = [[]]
+            elif code == "OGN-102":
+                targets = [[u["id"]] for u in self._units(state, player)]
             elif code == "OGN-048":
                 targets = [[]] + [[u["id"]] for u in self._units(state, player) if not u["exhausted"]]
             elif code in {"OGN-128", "OGN-209"}:
@@ -1080,6 +1109,28 @@ class OriginsRules:
         token = self._new_unit(state, TOKEN, item["owner"], f"base:{item['owner']}", exhausted=False)
         return True
 
+    def _effect_kadregrin_draw(self, state, item, rng):
+        mighty = sum(self.might(state, unit) >= 5
+                     for unit in self._units(state, item["owner"]))
+        if mighty:
+            self._draw(state, item["owner"], mighty, rng)
+        return True
+
+    def _effect_portal_rescue(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if target is None or target["owner"] != item["owner"]:
+            return True
+        owner = target["owner"]
+        card = target.get("card")
+        code = target["code"]
+        if target in state["units"]:
+            state["units"].remove(target)
+        if card is not None:
+            state["players"][owner]["banishment"].append(card)
+            state["players"][owner]["banishment"].remove(card)
+        self._new_unit(state, code, owner, f"base:{owner}", card=card, exhausted=True)
+        return True
+
     def _effect_peak(self, state, item, rng):
         source = self._unit(state, item.get("source"))
         if source:
@@ -1160,6 +1211,7 @@ class OriginsRules:
         if target is not None:
             target["stunned"] = True
             self._radiant_stun_trigger(state, item["owner"])
+            self._stun_triggers(state, item["owner"])
         return True
 
     def _effect_buff_eight(self, state, item, rng):
@@ -1219,6 +1271,7 @@ class OriginsRules:
             self._cleanup(state, rng)
         else:
             target["stunned"] = True
+            self._stun_triggers(state, item["owner"])
         return True
 
     def _effect_ready_self(self, state, item, rng):
@@ -1300,6 +1353,8 @@ class OriginsRules:
                     self._apply_buff(state, unit)
                     self._resolve_move(state, [unit], destination, owner, rng,
                                        ready=False, from_effect=True)
+            elif code == "OGN-102":
+                self._effect_portal_rescue(state, {"owner": owner, "target": uid}, rng)
             elif code == "OGN-168":
                 if self._is_field(state, unit["location"]):
                     self._resolve_move(state, [unit], f"base:{unit['owner']}", owner, rng,
@@ -1391,6 +1446,8 @@ class OriginsRules:
                 if target is not None:
                     target["exhausted"] = True
             self._draw(state, owner, 2 if item["targets"] else 1, rng)
+        elif code == "OGN-144":
+            self._draw(state, owner, 2, rng)
         elif code == "OGN-094":
             token = self._new_unit(state, TOKEN, owner, f"base:{owner}", exhausted=False)
             token["temporary_unit"] = True
@@ -1845,6 +1902,8 @@ class OriginsRules:
                     triggers.append({"effect": "poro_herder", "source": unit["id"], "owner": player})
                 if code == "OGN-092":
                     triggers.append({"effect": "riptide_damage", "source": unit["id"], "owner": player})
+                if code == "OGN-038":
+                    triggers.append({"effect": "kadregrin_draw", "source": unit["id"], "owner": player})
                 if code == "OGN-097":
                     triggers.append({"effect": "fae_debuff", "source": unit["id"], "owner": player})
                 if code == "OGN-100":

@@ -292,6 +292,14 @@ class OriginsRules:
                 state["units"].remove(unit)
                 if unit["card"] is not None:
                     state["players"][unit["owner"]]["trash"].append(unit["card"])
+                if unit.get("stunned"):
+                    for player in (0, 1):
+                        if player != unit["owner"]:
+                            shrine = next((g for g in state["players"][player]["gear"]
+                                           if g["code"] == "OGN-072" and not g["exhausted"]), None)
+                            if shrine is not None:
+                                shrine["exhausted"] = True
+                                self._draw(state, player, 1, rng if rng is not None else random.Random(0))
                 if unit["code"] == "OGN-096":
                     deathknell.append(unit["owner"])
                 if unit["code"] == "OGN-216":
@@ -563,6 +571,8 @@ class OriginsRules:
                 result.append(Action.make("gear_tome", gear=gear["id"]))
             elif gear["code"] == "OGN-186":
                 result.append(Action.make("gear_kill", gear=gear["id"]))
+            elif gear["code"] == "OGN-099" and row["energy"] >= 1 and len(row["trash"]) >= 3:
+                result.append(Action.make("gear_grab", gear=gear["id"]))
         return result
 
     def _resource_actions(self, state):
@@ -1845,6 +1855,15 @@ class OriginsRules:
             self._draw(state, player, 1, rng)
             self._channel_rune(state, player, exhausted=True)
             state["passes"] = 0
+        elif kind == "gear_grab":
+            if self._consume_gear(state, {"owner": player, "gear": args["gear"]}) is None:
+                raise ValueError("gear ability is unavailable")
+            if row["energy"] < 1 or len(row["trash"]) < 3:
+                raise ValueError("Garbage Grabber cost is unavailable")
+            row["energy"] -= 1
+            del row["trash"][:3]
+            self._draw(state, player, 1, rng)
+            state["passes"] = 0
         elif kind == "optional_effect":
             optional = state.get("optional", [])
             item = next((entry for entry in optional if entry["id"] == args["optional"]), None)
@@ -2298,6 +2317,9 @@ class OriginsRules:
         # Attack triggers that have no player choice resolve before combat damage.
         attackers = self._units(state, battle["attacker"], field)
         defenders = self._units(state, 1-battle["attacker"], field)
+        for player, side in ((battle["attacker"], attackers), (1-battle["attacker"], defenders)):
+            if len(side) == 1 and any(g["code"] == "OGN-060" for g in state["players"][player]["gear"]):
+                side[0]["temporary"] += 1
         if not battle.get("designation_triggers_added"):
             ahri_triggers = [
                 {"effect": "ahri_debuff", "source": unit["id"],

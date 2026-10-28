@@ -71,6 +71,9 @@ class OriginsRules:
         registry.register("kadregrin_draw", self._effect_kadregrin_draw)
         registry.register("portal_rescue", self._effect_portal_rescue)
         registry.register("snapvine_fight", self._effect_snapvine_fight)
+        registry.register("gear_debuff", self._effect_gear_debuff)
+        registry.register("gear_buff_exhausted", self._effect_gear_buff_exhausted)
+        registry.register("gear_move", self._effect_gear_move)
         registry.register("peak", self._effect_peak)
         registry.register("drummer", self._effect_drummer)
         registry.register("vision", self._effect_vision)
@@ -545,6 +548,21 @@ class OriginsRules:
                 result.append(Action.make("gear_resource", gear=gear["id"], domain=gear_resource[gear["code"]]))
             elif gear["code"] == "OGN-098":
                 result.append(Action.make("gear_resource", gear=gear["id"], energy=1))
+            elif gear["code"] == "OGN-090":
+                result.extend(Action.make("gear_target", gear=gear["id"], effect="gear_debuff", target=u["id"])
+                               for u in self._units(state))
+            elif gear["code"] == "OGN-124":
+                result.extend(Action.make("gear_target", gear=gear["id"], effect="gear_buff_exhausted", target=u["id"])
+                               for u in self._units(state, player) if u["exhausted"])
+            elif gear["code"] == "OGN-184":
+                result.extend(Action.make("gear_target", gear=gear["id"], effect="gear_move", target=u["id"])
+                               for u in self._units(state, player) if self._is_field(state, u["location"]))
+            elif gear["code"] == "OGN-021":
+                result.append(Action.make("gear_ready_next", gear=gear["id"]))
+            elif gear["code"] == "OGN-032":
+                result.append(Action.make("gear_tome", gear=gear["id"]))
+            elif gear["code"] == "OGN-186":
+                result.append(Action.make("gear_kill", gear=gear["id"]))
         return result
 
     def _resource_actions(self, state):
@@ -1163,6 +1181,38 @@ class OriginsRules:
             self._cleanup(state, rng)
         return True
 
+    def _consume_gear(self, state, item):
+        gear = next((g for g in state["players"][item["owner"]]["gear"]
+                     if g["id"] == item.get("gear")), None)
+        if gear is None or gear["exhausted"]:
+            return None
+        gear["exhausted"] = True
+        return gear
+
+    def _effect_gear_debuff(self, state, item, rng):
+        if self._consume_gear(state, item) is None:
+            return True
+        target = self._unit(state, item.get("target"))
+        if target is not None:
+            target["temporary"] -= 1
+        return True
+
+    def _effect_gear_buff_exhausted(self, state, item, rng):
+        if self._consume_gear(state, item) is None:
+            return True
+        target = self._unit(state, item.get("target"))
+        if target is not None and target["owner"] == item["owner"] and target["exhausted"]:
+            self._apply_buff(state, target)
+        return True
+
+    def _effect_gear_move(self, state, item, rng):
+        if self._consume_gear(state, item) is None:
+            return True
+        target = self._unit(state, item.get("target"))
+        if target is not None and target["owner"] == item["owner"] and self._is_field(state, target["location"]):
+            self._resolve_move(state, [target], f"base:{item['owner']}", item["owner"], rng, from_effect=True)
+        return True
+
     def _effect_peak(self, state, item, rng):
         source = self._unit(state, item.get("source"))
         if source:
@@ -1640,6 +1690,14 @@ class OriginsRules:
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "chain", chain_item["owner"], 0
                     return
+                if decision.get("gear_action"):
+                    item = dict(decision["item"])
+                    item["target"] = args["target"]
+                    state["decision"] = None
+                    self.effects.dispatch(item["effect"], state, item, rng)
+                    state["phase"], state["actor"] = "main", player
+                    state["passes"] = 0
+                    return
                 item = dict(decision["item"])
                 item["target"] = args["target"]
                 if item.get("effect") == "spell":
@@ -1749,6 +1807,33 @@ class OriginsRules:
                 row["energy"] += int(args["energy"])
             else:
                 row["power"].append(args["domain"])
+            state["passes"] = 0
+        elif kind == "gear_target":
+            gear = next((g for g in row["gear"] if g["id"] == args["gear"]), None)
+            if gear is None or gear["exhausted"]:
+                raise ValueError("gear ability is unavailable")
+            self.effects.dispatch(args["effect"], state,
+                                  {"effect": args["effect"], "owner": player,
+                                   "gear": args["gear"], "target": args["target"]}, rng)
+            state["passes"] = 0
+        elif kind == "gear_ready_next":
+            if self._consume_gear(state, {"owner": player, "gear": args["gear"]}) is None:
+                raise ValueError("gear ability is unavailable")
+            row["ready_play"] = True
+            state["passes"] = 0
+        elif kind == "gear_tome":
+            if self._consume_gear(state, {"owner": player, "gear": args["gear"]}) is None:
+                raise ValueError("gear ability is unavailable")
+            row["spell_bonus_damage"] = row.get("spell_bonus_damage", 0) + 1
+            state["passes"] = 0
+        elif kind == "gear_kill":
+            gear = next((g for g in row["gear"] if g["id"] == args["gear"]), None)
+            if gear is None:
+                raise ValueError("gear is unavailable")
+            row["gear"].remove(gear)
+            row["trash"].append(gear["card"])
+            self._draw(state, player, 1, rng)
+            self._channel_rune(state, player, exhausted=True)
             state["passes"] = 0
         elif kind == "optional_effect":
             optional = state.get("optional", [])

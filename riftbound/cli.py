@@ -9,7 +9,9 @@ from .catalog import load_origins
 from .engine import Environment, RulesUnavailable, replay
 from .origins import OriginsRules
 from .policies import GreedyPolicy
-from .support import SUPPORTED, complex_test_deck, daughter_deck, starter_deck, vision_deck
+from .support import (SUPPORTED, complex_test_deck, cost_abilities_deck, daughter_deck,
+                      repeat_targets_deck, replay_windows_deck, resource_and_gear_deck,
+                      reveal_targets_deck, starter_deck, vision_deck)
 from .training import RandomPolicy, self_play
 
 
@@ -77,12 +79,12 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("status")
     gui = commands.add_parser("gui", help="launch the local Tk graphical client")
-    gui.add_argument("--variant", choices=("starter", "vision", "daughter", "complex"), default="starter")
+    gui.add_argument("--variant", choices=("starter", "vision", "daughter", "complex", "repeat", "replay", "cost", "resources", "reveal"), default="starter")
     catalog = commands.add_parser("catalog")
     catalog.add_argument("--supported", action="store_true")
     deck_cmd = commands.add_parser("deck", help="print the included legal constructed deck")
     deck_cmd.add_argument("--output", type=Path)
-    deck_cmd.add_argument("--variant", choices=("starter", "vision", "daughter", "complex"), default="starter")
+    deck_cmd.add_argument("--variant", choices=("starter", "vision", "daughter", "complex", "repeat", "replay", "cost", "resources", "reveal"), default="starter")
     validate = commands.add_parser("validate-deck")
     validate.add_argument("path", type=Path)
     sim = commands.add_parser("simulate")
@@ -113,7 +115,12 @@ def main(argv=None):
         elif args.command == "deck":
             deck = (vision_deck() if args.variant == "vision" else
                     daughter_deck() if args.variant == "daughter" else
-                    complex_test_deck() if args.variant == "complex" else starter_deck())
+                    complex_test_deck() if args.variant == "complex" else
+                    repeat_targets_deck() if args.variant == "repeat" else
+                    replay_windows_deck() if args.variant == "replay" else
+                    cost_abilities_deck() if args.variant == "cost" else
+                    resource_and_gear_deck() if args.variant == "resources" else
+                    reveal_targets_deck() if args.variant == "reveal" else starter_deck())
             if args.output:
                 write_json(args.output, deck)
             else:

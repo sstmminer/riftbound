@@ -6,7 +6,10 @@ import unittest
 from riftbound.engine import Environment, InvalidAction, RulesUnavailable, replay
 from riftbound.origins import OriginsRules
 from riftbound.policies import GreedyPolicy
-from riftbound.support import complex_test_deck, daughter_deck, starter_deck, vision_deck
+from riftbound.support import (complex_test_deck, cost_abilities_deck, daughter_deck,
+                                repeat_targets_deck, replay_windows_deck,
+                                resource_and_gear_deck, reveal_targets_deck,
+                                starter_deck, vision_deck)
 from riftbound.training import RandomPolicy, self_play
 
 
@@ -72,6 +75,13 @@ class OriginsTests(unittest.TestCase):
         rules = OriginsRules([deck, deck])
         self.assertEqual(rules.decks[0]["legend"], "OGN-247")
         self.assertEqual(len(deck["main"]), 40)
+
+    def test_complex_mechanics_qa_decks_are_constructed_legal(self):
+        for factory in (repeat_targets_deck, replay_windows_deck, cost_abilities_deck,
+                        resource_and_gear_deck, reveal_targets_deck):
+            deck = factory()
+            rules = OriginsRules([deck, deck])
+            self.assertEqual(len(rules.decks[0]["main"]), 40)
 
     def test_complex_test_deck_is_constructed_legal(self):
         deck = complex_test_deck()

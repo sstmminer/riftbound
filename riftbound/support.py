@@ -67,3 +67,59 @@ def complex_test_deck() -> dict:
     return {"legend": "OGN-247", "chosen_champion": "OGN-039", "main": main,
             "runes": ["OGN-007"] * 6 + ["OGN-089"] * 6,
             "battlefields": ["OGN-281", "OGN-285", "OGN-288"]}
+
+
+def _mechanics_deck(counts: dict[int, int], *, legend="OGN-247", champion="OGN-039", runes=("OGN-007", "OGN-126")) -> dict:
+    """Build a legal 40-card QA deck from explicit supported card numbers."""
+    main = [f"OGN-{number:03d}" for number, count in counts.items() for _ in range(count)]
+    assert len(main) == 40
+    if champion not in main:
+        main[-1] = champion
+    return {"legend": legend, "chosen_champion": champion, "main": main,
+            "runes": [runes[0]] * 6 + [runes[1]] * 6,
+            "battlefields": list(DEFAULT_FIELDS)}
+
+
+def repeat_targets_deck() -> dict:
+    """QA deck for Icathian Rain, Falling Star and explicit target confirmation."""
+    return _mechanics_deck({248: 3, 29: 3, 105: 3, 3: 3, 8: 3,
+                            1: 3, 10: 3, 12: 3, 13: 3, 15: 3,
+                            30: 3, 39: 3, 11: 3, 16: 1},
+                           legend="OGN-247", champion="OGN-039",
+                           runes=("OGN-007", "OGN-089"))
+
+
+def replay_windows_deck() -> dict:
+    """QA deck for trash replay and player choice windows."""
+    return _mechanics_deck({196: 3, 187: 3, 183: 3, 201: 3, 198: 3,
+                            29: 3, 8: 3, 9: 3, 5: 3, 22: 3,
+                            24: 3, 1: 3, 10: 2, 30: 2},
+                           legend="OGN-251", champion="OGN-030",
+                           runes=("OGN-007", "OGN-166"))
+
+
+def cost_abilities_deck() -> dict:
+    """QA deck for additional costs, Accelerate, Assault and Udyr."""
+    return _mechanics_deck({2: 3, 20: 3, 34: 3, 150: 3, 157: 3,
+                            1: 3, 3: 3, 10: 3, 12: 3, 13: 3,
+                            15: 3, 4: 3, 9: 3, 217: 1},
+                           legend="OGN-249", champion="OGN-158",
+                           runes=("OGN-007", "OGN-126"))
+
+
+def resource_and_gear_deck() -> dict:
+    """QA deck for Malzahar, Gear sacrifice and Order replay effects."""
+    return _mechanics_deck({113: 3, 226: 3, 231: 3, 227: 3, 237: 3,
+                            109: 3, 110: 3, 116: 3, 117: 3, 118: 3,
+                            119: 3, 234: 3, 238: 3, 232: 1},
+                           legend="OGN-265", champion="OGN-117",
+                           runes=("OGN-089", "OGN-214"))
+
+
+def reveal_targets_deck() -> dict:
+    """QA deck for public reveal, Hidden placement and target windows."""
+    return _mechanics_deck({264: 3, 183: 3, 196: 3, 187: 3, 201: 3,
+                            198: 3, 189: 3, 190: 3, 197: 3, 202: 3,
+                            205: 3, 109: 3, 110: 3, 119: 1},
+                           legend="OGN-263", champion="OGN-197",
+                           runes=("OGN-089", "OGN-166"))

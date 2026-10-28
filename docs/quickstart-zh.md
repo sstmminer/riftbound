@@ -50,7 +50,7 @@ python3.12 -m venv .venv
 python -m riftbound gui
 ```
 
-默认使用 starter 体验套牌。要演示包含 Mystic Poro 的 Vision/洞察交互，运行 `python -m riftbound gui --variant vision`；运行 `python -m riftbound gui --variant daughter` 可测试 Daughter of the Void、Kai'Sa、Chemtech Enforcer 和 Fury/Mind 资源簇；运行 `python -m riftbound gui --variant complex` 可打开专门的复杂机制试验卡组，集中测试 Legion、Buff、Vision、Deathknell、Assault、Reaction、Singularity 和 Reaver's Row。窗口顶部也可以切换套牌并点击“重新开始”。战场数量由规则状态和卡牌效果决定，界面会自动显示新增战场。
+默认使用 starter 体验套牌。要演示包含 Mystic Poro 的 Vision/洞察交互，运行 `python -m riftbound gui --variant vision`；运行 `python -m riftbound gui --variant daughter` 可测试 Daughter of the Void、Kai'Sa、Chemtech Enforcer 和 Fury/Mind 资源簇；运行 `python -m riftbound gui --variant complex` 可打开综合复杂机制试验卡组；还可以使用 `repeat`（重复目标与 X 费用）、`replay`（弃牌区单位重播）、`cost`（额外费用/Udyr）、`resources`（资源与 Gear）和 `reveal`（Hidden/公开展示）测试卡组。窗口顶部也可以切换套牌并点击“重新开始”。战场数量由规则状态和卡牌效果决定，界面会自动显示新增战场。
 
 Windows 将 `python` 换成 `.\.venv\Scripts\python.exe`，macOS/Linux 换成 `.venv/bin/python`。窗口包含传奇区、英雄区（规则中的 Champion Zone）、动态战场区、两个基地/手牌、弃牌区、放逐区和公开状态区。
 

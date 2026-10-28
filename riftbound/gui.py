@@ -15,7 +15,9 @@ from tkinter import messagebox, ttk
 from .engine import Environment, InvalidAction
 from .origins import OriginsRules
 from .policies import GreedyPolicy
-from .support import complex_test_deck, daughter_deck, starter_deck, vision_deck
+from .support import (complex_test_deck, cost_abilities_deck, daughter_deck,
+                      repeat_targets_deck, replay_windows_deck, resource_and_gear_deck,
+                      reveal_targets_deck, starter_deck, vision_deck)
 
 
 IMAGE_ROOT = Path(__file__).with_name("data") / "images"
@@ -79,7 +81,7 @@ class OriginsGUI(tk.Tk):
         ttk.Button(toolbar, text="规则/范围", command=self.show_scope).pack(side="right", padx=3)
         ttk.Button(toolbar, text="重新开始", command=self.restart).pack(side="right", padx=3)
         self.variant_box = ttk.Combobox(toolbar, state="readonly", width=10,
-                                        values=("starter", "vision", "daughter", "complex"))
+                                        values=("starter", "vision", "daughter", "complex", "repeat", "replay", "cost", "resources", "reveal"))
         self.variant_box.set(self.variant)
         self.variant_box.pack(side="right", padx=5)
 
@@ -403,7 +405,7 @@ class OriginsGUI(tk.Tk):
                 pass
             self._opponent_job = None
         selected = self.variant_box.get() or self.variant
-        self.variant = selected if selected in {"starter", "vision", "daughter", "complex"} else "starter"
+        self.variant = selected if selected in {"starter", "vision", "daughter", "complex", "repeat", "replay", "cost", "resources", "reveal"} else "starter"
         self.rules = OriginsRules(self._decks(), extra_fields=self.extra_fields)
         self.env = Environment(self.rules, max_steps=3000)
         self.env.reset(seed=self.seed)
@@ -420,7 +422,12 @@ class OriginsGUI(tk.Tk):
     def _decks(self):
         deck = (vision_deck() if self.variant == "vision" else
                 daughter_deck() if self.variant == "daughter" else
-                complex_test_deck() if self.variant == "complex" else starter_deck())
+                complex_test_deck() if self.variant == "complex" else
+                repeat_targets_deck() if self.variant == "repeat" else
+                replay_windows_deck() if self.variant == "replay" else
+                cost_abilities_deck() if self.variant == "cost" else
+                resource_and_gear_deck() if self.variant == "resources" else
+                reveal_targets_deck() if self.variant == "reveal" else starter_deck())
         return [deck, deck]
 
     def show_scope(self):

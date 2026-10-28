@@ -16,7 +16,7 @@ from .catalog import load_origins, require_supported
 from .core import DOMAINS, Card, Deck, Scoreboard, Unit, channel_count, draw_cards, mulligan, validate_deck
 from .engine import Action, canonical
 from .effects import EffectRegistry
-from .support import ACCELERATE, FIELD_CODES, GEAR_CODES, HIDDEN_CODES, LEGENDS, REACTIONS, RUNES, SPELL_CODES, TOKEN, UNIT_CODES, starter_deck
+from .support import ACCELERATE, FIELD_CODES, GEAR_CODES, HIDDEN_CODES, LEGENDS, REACTIONS, RUNES, SPELL_CODES, SPRITE_TOKEN, TOKEN, UNIT_CODES, starter_deck
 
 
 def card_model(row):
@@ -974,6 +974,8 @@ class OriginsRules:
                            if self._is_field(enemy["location"])]
             elif code == "OGN-266":
                 targets = [[u["id"]] for u in state["units"] if self._is_field(u["location"])]
+            elif code == "OGN-250":
+                targets = [[u["id"]] for u in self._units(state, player, f"base:{player}")]
             elif code == "OGN-270":
                 targets = [[u["id"]] for u in self._units(state, player, f"base:{player}")]
             elif code in {"OGN-043", "OGN-203"}:
@@ -994,6 +996,16 @@ class OriginsRules:
             elif code in {"OGN-169", "OGN-172", "OGN-213"}:
                 targets = [[u["id"]] for u in state["units"] if self._is_field(state, u["location"])
                            and (code != "OGN-169" or self.might(state, u) <= 3)]
+            elif code == "OGN-256":
+                # Fox-Fire may kill any number of units at one battlefield,
+                # provided their current Might totals no more than four.
+                targets = [[]]
+                for field in range(len(state["fields"])):
+                    field_units = list(self._units(state, location=field))
+                    for count in range(1, len(field_units) + 1):
+                        targets.extend(list(combo) for combo in combinations(
+                            [u["id"] for u in field_units], count)
+                            if sum(self.might(state, self._unit(state, uid)) for uid in combo) <= 4)
             elif code == "OGN-220":
                 targets = [[friendly["id"], enemy["id"]]
                            for friendly in self._units(state, player)
@@ -1022,7 +1034,7 @@ class OriginsRules:
             targeted_added = False
             for selected in targets:
                 destinations = [None]
-                if code in {"OGN-043", "OGN-173", "OGN-270"}:
+                if code in {"OGN-043", "OGN-173", "OGN-250", "OGN-270"}:
                     unit = self._unit(state, selected[0])
                     destinations = [f"base:{unit['owner']}", *range(len(state["fields"]))]
                     destinations = [destination for destination in destinations
@@ -1526,7 +1538,7 @@ class OriginsRules:
     def _effect_sprite_mother(self, state, item, rng):
         source = self._unit(state, item.get("source"))
         if source is not None:
-            token = self._new_unit(state, TOKEN, item["owner"], source["location"], exhausted=False)
+            token = self._new_unit(state, SPRITE_TOKEN, item["owner"], source["location"], exhausted=False)
             token["temporary_unit"] = True
         return True
 
@@ -1968,6 +1980,14 @@ class OriginsRules:
                 if valid_destination and valid_owner and destination != unit["location"]:
                     self._resolve_move(state, [unit], destination, owner, rng,
                                        ready=code == "OGN-173", from_effect=True)
+            elif code == "OGN-250":
+                destination = item.get("destination")
+                if (unit["owner"] == owner and unit["location"] == f"base:{owner}"
+                        and self._is_field(state, destination)):
+                    for enemy in list(self._units(state, 1 - owner, destination)):
+                        self._deal_damage(state, enemy, self.might(state, unit))
+                    self._resolve_move(state, [unit], destination, owner, rng,
+                                       ready=False, from_effect=True)
             elif code == "OGN-270":
                 destination = item.get("destination")
                 if (unit["owner"] == owner and unit["location"] == f"base:{owner}"
@@ -2011,7 +2031,7 @@ class OriginsRules:
                                                 "OGN-029": 3, "OGN-085": 6}[code])
             elif code == "OGN-105":
                 self._deal_damage(state, unit, 6)
-            elif code == "OGN-229":
+            elif code in {"OGN-229", "OGN-256"}:
                 unit["damage"] = max(unit["damage"], self.might(state, unit))
             elif code == "OGN-093":
                 unit["temporary"] -= 4
@@ -2116,7 +2136,7 @@ class OriginsRules:
             for unit in self._units(state, owner):
                 self._apply_buff(state, unit)
         elif code == "OGN-094":
-            token = self._new_unit(state, TOKEN, owner, f"base:{owner}", exhausted=False)
+            token = self._new_unit(state, SPRITE_TOKEN, owner, f"base:{owner}", exhausted=False)
             token["temporary_unit"] = True
         elif code == "OGN-123":
             for friendly in self._units(state, owner):

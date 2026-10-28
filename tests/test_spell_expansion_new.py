@@ -70,6 +70,35 @@ class SpellExpansionNewTests(unittest.TestCase):
         self.rules._cleanup(self.state, random.Random(9))
         self.assertNotIn(target, self.state["units"])
 
+    def test_stormbringer_damages_field_then_moves_base_unit(self):
+        card = self.spare("OGN-250")
+        self.state["players"][0]["power"] = ["fury", "body"] * 4
+        source = self.rules._new_unit(self.state, "OGN-219", 0, "base:0", exhausted=False)
+        enemy = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments
+                      and source["id"] in a.arguments and '"destination":0' in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.drain()
+        self.assertEqual(source["location"], 0)
+        self.assertTrue(source["exhausted"])
+        self.assertGreaterEqual(enemy["damage"], 3)
+
+    def test_fox_fire_kills_selected_units_with_might_budget(self):
+        card = self.spare("OGN-256")
+        self.state["players"][0]["power"] = ["calm", "mind"] * 4
+        first = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        second = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        actions = [a for a in self.rules.legal_actions(self.state)
+                   if a.kind == "play_spell" and card in a.arguments
+                   and first["id"] in a.arguments and second["id"] in a.arguments]
+        self.assertTrue(actions)
+        self.rules.apply(self.state, actions[0], random.Random(9))
+        self.drain()
+        self.assertNotIn(first, self.state["units"])
+        self.assertNotIn(second, self.state["units"])
+
+
 
 if __name__ == "__main__":
     unittest.main()

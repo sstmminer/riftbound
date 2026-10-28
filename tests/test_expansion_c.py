@@ -70,7 +70,7 @@ class ExpansionBatchCTests(unittest.TestCase):
         card = self.spare("OGN-106")
         self.play_unit(card)
         self.drain()
-        self.assertTrue(any(unit["code"] == "OGN-273" and unit["temporary_unit"]
+        self.assertTrue(any(unit["code"] == "OGN-274" and unit["temporary_unit"]
                             and not unit["exhausted"] for unit in self.state["units"]))
 
         spell = self.spare("OGN-094")
@@ -78,7 +78,7 @@ class ExpansionBatchCTests(unittest.TestCase):
                                           if a.kind == "play_spell" and spell in a.arguments),
                          random.Random(9))
         self.drain()
-        self.assertGreaterEqual(sum(unit["code"] == "OGN-273" and unit["temporary_unit"]
+        self.assertGreaterEqual(sum(unit["code"] == "OGN-274" and unit["temporary_unit"]
                                     for unit in self.state["units"]), 2)
 
     def test_thousand_tailed_watcher_debuffs_all_enemy_units(self):

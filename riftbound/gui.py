@@ -1253,10 +1253,20 @@ class OriginsGUI(tk.Tk):
         text = "公开展示：" + "、".join(self._card_name(card["code"]) for card in reveal.get("cards", []))
         if kind == "select":
             text += f"；已选 {len(reveal.get('selected', []))}/{reveal.get('max', 0)}"
+        elif kind == "display":
+            # The public-display branch is closed by the player who caused the
+            # reveal (the displayed player's opponent).  Keep this wording
+            # explicit because ``owner`` is the player whose cards are shown,
+            # while older state snapshots called the closer merely ``opponent``.
+            text += "；由展示对象的对手结束展示 / Displayed player's opponent ends reveal"
         tk.Label(self.actions, text=text, bg="#101b2b", fg="#f3d58b").pack(side="left", padx=4)
+        closer = reveal.get("end_player", reveal.get("closer", reveal.get("opponent")))
+        can_close = closer is None or closer == self.env.current_player
         for action in legal:
-            if action.kind in {"end_reveal", "confirm_revealed"}:
-                ttk.Button(self.actions, text=self.action_text(action),
+            if action.kind in {"end_reveal", "confirm_revealed"} and (action.kind != "end_reveal" or can_close):
+                label = ("施放者结束展示 / Caster ends reveal"
+                         if action.kind == "end_reveal" else self.action_text(action))
+                ttk.Button(self.actions, text=label,
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
 
     def _render_reveal_window(self, obs):
@@ -1289,10 +1299,12 @@ class OriginsGUI(tk.Tk):
                 for child in wrapper.winfo_children():
                     child.bind("<Button-1>", lambda _event, a=action: self.perform(a), add="+")
                 wrapper.bind("<Button-1>", lambda _event, a=action: self.perform(a), add="+")
+        closer = reveal.get("end_player", reveal.get("closer", reveal.get("opponent")))
+        can_close = closer is None or closer == self.env.current_player
         if reveal.get("kind") == "display":
             end = next((a for a in legal if a.kind == "end_reveal"), None)
-            if end is not None:
-                ttk.Button(popup, text=self.action_text(end),
+            if end is not None and can_close:
+                ttk.Button(popup, text="施放者结束展示 / Caster ends reveal",
                            command=lambda a=end: self.perform(a)).pack(pady=6)
         else:
             confirm = next((a for a in legal if a.kind == "confirm_revealed"), None)

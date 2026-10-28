@@ -185,7 +185,7 @@ class Environment:
                 "decision": ({key: decision[key] for key in ("kind", "player", "remaining")
                               if key in decision} if decision else None),
                 "reveal": ({"kind": reveal.get("kind"), "owner": reveal.get("owner"),
-                             "chooser": reveal.get("chooser"),
+                             "chooser": reveal.get("chooser"), "closer": reveal.get("closer"),
                              "cards": [card.get("code") for card in reveal.get("cards", [])],
                              "selected": [card.get("code") for card in reveal.get("selected", [])]}
                             if reveal else None)}

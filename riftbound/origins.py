@@ -469,17 +469,25 @@ class OriginsRules:
         })
 
     def _open_reveal(self, state, *, owner, cards, mode, chooser=None,
-                     minimum=0, maximum=0, effect=None, item=None, choices=None, rng=None):
+                     minimum=0, maximum=0, effect=None, item=None, choices=None,
+                     closer=None, rng=None):
         """Open a public card reveal window.
 
-        ``display`` waits for the opponent to end the reveal. ``select`` keeps
-        the revealed cards public while the chooser selects and confirms cards.
+        ``display`` waits for the revealed player's opponent (``closer``) to
+        end the reveal. ``select`` keeps the revealed cards public while the
+        chooser selects and confirms cards.  ``owner`` always identifies the
+        player whose cards are being revealed; it is deliberately separate
+        from the player who is allowed to close or select the window.
         The saved phase/actor lets the normal chain resolver continue after the
         window closes.
         """
+        if closer is None:
+            closer = (1 - owner) if mode == "display" else (
+                chooser if chooser is not None else owner)
         state["reveal"] = {
             "kind": mode, "owner": owner, "opponent": 1 - owner,
             "chooser": chooser if chooser is not None else owner,
+            "closer": closer,
             "cards": list(cards), "selected": [], "min": minimum,
             "max": maximum, "choices": list(choices) if choices is not None else list(cards),
             "effect": effect, "item": item,
@@ -487,7 +495,7 @@ class OriginsRules:
                        "passes": state.get("passes", 0)},
         }
         state["phase"] = "reveal"
-        state["actor"] = state["reveal"]["opponent"] if mode == "display" else state["reveal"]["chooser"]
+        state["actor"] = state["reveal"]["closer"] if mode == "display" else state["reveal"]["chooser"]
         state["passes"] = 0
 
     def _finish_reveal(self, state, selected, rng):
@@ -1212,7 +1220,7 @@ class OriginsRules:
             if not reveal:
                 return ()
             if reveal["kind"] == "display":
-                return (Action.make("end_reveal"),) if player == reveal["opponent"] else ()
+                return (Action.make("end_reveal"),) if player == reveal["closer"] else ()
             if player != reveal["chooser"]:
                 return ()
             selected = list(reveal.get("selected", []))
@@ -1888,10 +1896,11 @@ class OriginsRules:
                  if self.cards[state["cards"][uid]["code"]]["type"] != "unit"]
         if not cards:
             # Sabotage still reveals the complete hand when no card is a legal
-            # choice; the opponent closes the public display.
+            # choice; the Sabotage caster closes the public display.
             self._open_reveal(state, owner=opponent,
                               cards=list(state["players"][opponent]["hand"]),
-                              mode="display", effect=None, item=item)
+                              mode="display", chooser=owner, closer=owner,
+                              effect=None, item=item)
             return False
         self._open_reveal(state, owner=opponent, cards=list(state["players"][opponent]["hand"]),
                           mode="select", chooser=owner, minimum=1, maximum=1,
@@ -2205,8 +2214,16 @@ class OriginsRules:
             if reveal is None:
                 raise ValueError("no reveal window is active")
             if kind == "end_reveal":
-                if reveal["kind"] != "display" or player != reveal["opponent"]:
-                    raise ValueError("only the opponent can end this reveal")
+                if reveal["kind"] != "display" or player != reveal["closer"]:
+                    raise ValueError("only the displayed player's opponent can end this reveal")
+                # A display-only effect still has to complete the card that
+                # opened the window (including post-spell triggers).  The
+                # chain resolver had popped that item before opening the
+                # reveal, so put it back on top and mark the reveal complete.
+                item = reveal.get("item")
+                if item is not None and reveal.get("resume", {}).get("phase") == "chain":
+                    item["reveal_done"] = True
+                    state["chain"].append(item)
                 resume = reveal["resume"]
                 state["reveal"] = None
                 if resume["phase"] == "chain":

@@ -1,3 +1,4 @@
+import copy
 import random
 import unittest
 
@@ -38,6 +39,44 @@ class RevealWindowTests(unittest.TestCase):
                          random.Random(1))
         self.assertIn(opponent_card, self.state["players"][1]["main"])
         self.rules.validate(self.state)
+
+    def test_sabotage_display_only_is_closed_by_spell_caster(self):
+        """When every revealed card is a unit, the caster closes the display.
+
+        ``owner`` in a reveal record is the player whose hand is shown.  The
+        player allowed to end a display-only reveal is that player's opponent,
+        i.e. the Sabotage caster (P0 in this fixture), not the hand owner.
+        """
+        row = self.state["players"][0]
+        card = row["main"].pop()
+        self.state["cards"][card]["code"] = "OGN-156"
+        row["hand"].append(card)
+        opponent = self.state["players"][1]
+        for uid in opponent["hand"]:
+            self.state["cards"][uid]["code"] = "OGN-001"  # unit: no legal choice
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(1))
+        for _ in range(2):
+            self.rules.apply(self.state,
+                             next(a for a in self.rules.legal_actions(self.state) if a.kind == "pass"),
+                             random.Random(1))
+        self.assertEqual(self.state["phase"], "reveal")
+        self.assertEqual(self.state["reveal"]["owner"], 1)
+        self.assertEqual(self.state["reveal"]["closer"], 0)
+        self.assertEqual(self.state["actor"], 0)
+        end_action = next(a for a in self.rules.legal_actions(self.state)
+                          if a.kind == "end_reveal")
+        self.assertIsNotNone(end_action)
+        wrong_state = copy.deepcopy(self.state)
+        wrong_state["actor"] = 1
+        self.assertFalse(any(a.kind == "end_reveal" for a in self.rules.legal_actions(wrong_state)))
+        with self.assertRaises(ValueError):
+            self.rules.apply(wrong_state, end_action, random.Random(1))
+        self.rules.apply(self.state, end_action, random.Random(1))
+        self.assertIsNone(self.state["reveal"])
+        self.assertTrue(self.state["chain"])
+        self.assertTrue(self.state["chain"][-1].get("reveal_done"))
 
     def test_forge_opens_non_overlapping_trash_selection(self):
         row = self.state["players"][0]

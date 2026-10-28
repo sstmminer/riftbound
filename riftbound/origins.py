@@ -85,6 +85,7 @@ class OriginsRules:
         registry.register("ready_target", self._effect_ready_target)
         registry.register("buff_target", self._effect_buff_target)
         registry.register("buff_two", self._effect_buff_two)
+        registry.register("kinkou_buff", self._effect_kinkou_buff)
         registry.register("return_unit_trigger", self._effect_return_unit_trigger)
         registry.register("tideturner_target", self._effect_tideturner_target)
         registry.register("ember_hidden_buff", self._effect_ember_hidden_buff)
@@ -1183,6 +1184,8 @@ class OriginsRules:
             return [u["id"] for u in state["units"] if u["owner"] != owner]
         if effect == "buff_two":
             return [u["id"] for u in self._units(state, owner) if u["id"] != source]
+        if effect == "kinkou_buff":
+            return [u["id"] for u in self._units(state, owner) if u["id"] != source]
         if effect in {"crackshot_target", "leona_stun_target"}:
             field = state.get("battle", {}).get("field")
             return [u["id"] for u in self._units(state, 1 - owner, field)] if self._is_field(state, field) else []
@@ -1219,7 +1222,7 @@ class OriginsRules:
             targets = self._trigger_target_candidates(state, item)
             if targets is None:
                 return False
-            if not targets:
+            if not targets and not item.get("target_multi"):
                 # RUP5 403.4: an already-triggered ability with no legal
                 # choices is removed from the Chain and never resolves.
                 state["chain"].pop()
@@ -1229,6 +1232,10 @@ class OriginsRules:
                 "kind": "target", "player": item["owner"],
                 "targets": targets, "item": item,
                 "trigger_target": True,
+                "multi": bool(item.get("target_multi")),
+                "min": 0 if item.get("target_multi") else 1,
+                "max": 2 if item.get("target_multi") else 1,
+                "selected": [],
             }
             state["phase"], state["actor"] = "decision", item["owner"]
             state["passes"] = 0
@@ -1652,6 +1659,13 @@ class OriginsRules:
         target = self._unit(state, item["target"])
         if target is not None and target["owner"] == item["owner"]:
             target["temporary"] += 2
+        return True
+
+    def _effect_kinkou_buff(self, state, item, rng):
+        for uid in item.get("targets", []):
+            target = self._unit(state, uid)
+            if target is not None and target["owner"] == item["owner"] and not target["buff"]:
+                self._apply_buff(state, target)
         return True
 
     def _effect_draw_one(self, state, item, rng):
@@ -2085,6 +2099,14 @@ class OriginsRules:
                     info = decision["hidden"]
                     state["decision"] = None
                     self._play_hidden_from_decision(state, player, info, selected, rng)
+                    return
+                if decision.get("trigger_target"):
+                    item = state["chain"][-1]
+                    item["targets"] = selected
+                    item["trigger_target_pending"] = False
+                    item["trigger_target_finalized"] = True
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                     return
                 item = dict(decision["item"])
                 item["targets"] = selected
@@ -2547,6 +2569,9 @@ class OriginsRules:
                         spent["buff"] = 0
                         self._apply_buff(state, unit)
                         unit["exhausted"] = False
+                if code == "OGN-141":
+                    triggers.append({"effect": "kinkou_buff", "source": unit["id"],
+                                     "owner": player, "target_multi": True})
                 if code == "OGN-167" and args.get("hidden_field") is not None:
                     triggers.extend({"effect": "ember_hidden_buff", "source": source["id"], "owner": player}
                                     for source in self._units(state, player) if source["code"] == "OGN-167")

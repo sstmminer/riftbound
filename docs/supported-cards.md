@@ -260,3 +260,6 @@
 | OGN-235 | Karma, Channeler | unit | [Vision] (When you play me, look at the top card of your Main Deck. You may recycle it.) When you recycle one or more cards to your Main Deck, buff a friendly unit. (If it doesn't have a buff, it gets a +1 [M] buff. Runes aren't cards.) |
 | OGN-236 | Karthus, Eternal | unit | Your [Deathknell] effects trigger an additional time. |
 | OGN-279 | Fortified Position | battlefield | When you defend here, choose a unit. It gains [Shield 2] this combat. (+2 :rb_might: while it's a defender.) |
+
+<!-- Newly added explicit cards; keep this list synchronized with support.py. -->
+| OGN-141 | Kinkou Monk | unit | When you play me, buff up to two other friendly units. (Each one that doesn't have a buff gets a +1 [M] buff.) |

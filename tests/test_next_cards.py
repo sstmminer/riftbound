@@ -69,6 +69,31 @@ class NextCardBatchTests(unittest.TestCase):
         self.rules._cleanup(self.state, random.Random(1))
         self.assertNotIn(target, self.state["units"])
 
+    def test_kinkou_monk_requires_explicit_up_to_two_targets(self):
+        card = self.give("OGN-141")
+        self.state["players"][0]["power"] = ["body"] * 8
+        first = self.rules._new_unit(self.state, "OGN-219", 0, 0, exhausted=False)
+        second = self.rules._new_unit(self.state, "OGN-219", 0, 0, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_unit" and card in a.arguments and '"location":0' in a.arguments)
+        self.rules.apply(self.state, action, random.Random(1))
+        self.assertEqual(self.state["phase"], "decision")
+        self.assertTrue(any(a.kind == "choose_target" and first["id"] in a.arguments
+                            for a in self.rules.legal_actions(self.state)))
+        self.rules.apply(self.state,
+                         next(a for a in self.rules.legal_actions(self.state)
+                              if a.kind == "choose_target" and first["id"] in a.arguments),
+                         random.Random(1))
+        self.rules.apply(self.state,
+                         next(a for a in self.rules.legal_actions(self.state)
+                              if a.kind == "choose_target" and second["id"] in a.arguments),
+                         random.Random(1))
+        self.rules.apply(self.state,
+                         next(a for a in self.rules.legal_actions(self.state)
+                              if a.kind == "confirm_targets"),
+                         random.Random(1))
+        self.assertEqual(self.state["chain"][-1]["targets"], [first["id"], second["id"]])
+
 
 if __name__ == "__main__":
     unittest.main()

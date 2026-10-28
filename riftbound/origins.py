@@ -58,6 +58,7 @@ class OriginsRules:
         registry.register("ahri_debuff", self._effect_ahri_debuff)
         registry.register("crackshot_target", self._effect_crackshot_target)
         registry.register("leona_stun_target", self._effect_leona_stun_target)
+        registry.register("yasuo_attack_target", self._effect_yasuo_attack_target)
         registry.register("riptide_damage", self._effect_riptide_damage)
         registry.register("fae_debuff", self._effect_fae_debuff)
         registry.register("return_field_unit", self._effect_return_field_unit)
@@ -66,6 +67,7 @@ class OriginsRules:
         registry.register("sprite_mother", self._effect_sprite_mother)
         registry.register("watcher_debuff", self._effect_watcher_debuff)
         registry.register("buff_self_three", self._effect_buff_self_three)
+        registry.register("viktor_innovator", self._effect_viktor_innovator)
         registry.register("peak", self._effect_peak)
         registry.register("drummer", self._effect_drummer)
         registry.register("vision", self._effect_vision)
@@ -257,6 +259,7 @@ class OriginsRules:
                 return
         deathknell = []
         deathknell_channel = []
+        kogmaw_fields = []
         viktor_tokens = []
         machine_tokens = []
         while True:
@@ -272,6 +275,8 @@ class OriginsRules:
                     deathknell.append(unit["owner"])
                 if unit["code"] == "OGN-216":
                     deathknell_channel.append(unit["owner"])
+                if unit["code"] == "OGN-190" and self._is_field(state, unit["location"]):
+                    kogmaw_fields.append(unit["location"])
                 if unit["code"] != TOKEN and any(other["owner"] == unit["owner"]
                                                   and other["code"] == "OGN-246"
                                                   and other["id"] not in dead_ids
@@ -290,6 +295,11 @@ class OriginsRules:
         for player in machine_tokens:
             for _ in range(3):
                 self._new_unit(state, TOKEN, player, f"base:{player}")
+        if kogmaw_fields:
+            for field in kogmaw_fields:
+                for unit in list(self._units(state, location=field)):
+                    self._deal_damage(state, unit, 4)
+            self._cleanup(state, rng)
         if state["phase"] == "main":
             for field, row in enumerate(state["fields"]):
                 if row["controller"] is not None and not self._units(state, row["controller"], field):
@@ -556,6 +566,9 @@ class OriginsRules:
                 targets = [[u["id"]] for u in self._units(state, 1-player)]
             elif code == "OGN-173":
                 targets = [[u["id"]] for u in self._units(state, player)]
+            elif code in {"OGN-168", "OGN-180"}:
+                targets = [[u["id"]] for u in state["units"]
+                           if self._is_field(state, u["location"])]
             elif code in {"OGN-053", "OGN-069", "OGN-104", "OGN-146"}:
                 targets = [[u["id"]] for u in self._units(state, player)]
             elif code == "OGN-252":
@@ -653,8 +666,12 @@ class OriginsRules:
                 continue
             data = self.cards[code]
             permitted = locations.copy()
-            if code in {"OGN-174", "OGN-176"}:
+            if code in {"OGN-174", "OGN-176", "OGN-193"}:
                 permitted += [i for i in range(len(state["fields"])) if not self._units(state, location=i) and i not in permitted]
+            if any(other["owner"] == player and other["code"] == "OGN-193"
+                   for other in state["units"]):
+                permitted += [i for i in range(len(state["fields"]))
+                              if not self._units(state, location=i) and i not in permitted]
             if code == "OGN-161":
                 permitted += [i for i in range(len(state["fields"]))
                               if any(u["owner"] != player and u["location"] == i for u in state["units"])
@@ -855,6 +872,9 @@ class OriginsRules:
         if effect in {"crackshot_target", "leona_stun_target"}:
             field = state.get("battle", {}).get("field")
             return [u["id"] for u in self._units(state, 1 - owner, field)] if self._is_field(state, field) else []
+        if effect == "yasuo_attack_target":
+            field = state.get("battle", {}).get("field")
+            return [u["id"] for u in self._units(state, 1 - owner, field)] if self._is_field(state, field) else []
         if effect == "riptide_damage":
             return [u["id"] for u in state["units"]
                     if u["owner"] != owner and self._is_field(state, u["location"])]
@@ -960,6 +980,17 @@ class OriginsRules:
             self._radiant_stun_trigger(state, item["owner"])
         return True
 
+    def _effect_yasuo_attack_target(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        target = self._unit(state, item.get("target"))
+        field = state.get("battle", {}).get("field")
+        if (source is not None and target is not None and self._is_field(state, field)
+                and source["location"] == field and target["location"] == field
+                and target["owner"] != item["owner"]):
+            self._deal_damage(state, target, self.might(state, source))
+            self._cleanup(state, rng)
+        return True
+
     def _effect_riptide_damage(self, state, item, rng):
         target = self._unit(state, item.get("target"))
         if (target is not None and target["owner"] != item["owner"]
@@ -1018,6 +1049,10 @@ class OriginsRules:
         source = self._unit(state, item.get("source"))
         if source is not None:
             source["temporary"] += 3
+        return True
+
+    def _effect_viktor_innovator(self, state, item, rng):
+        token = self._new_unit(state, TOKEN, item["owner"], f"base:{item['owner']}", exhausted=False)
         return True
 
     def _effect_peak(self, state, item, rng):
@@ -1240,6 +1275,10 @@ class OriginsRules:
                     self._apply_buff(state, unit)
                     self._resolve_move(state, [unit], destination, owner, rng,
                                        ready=False, from_effect=True)
+            elif code == "OGN-168":
+                if self._is_field(state, unit["location"]):
+                    self._resolve_move(state, [unit], f"base:{unit['owner']}", owner, rng,
+                                       from_effect=True)
             elif code == "OGN-053":
                 state["players"][owner]["buff_bonus"] = 1
                 self._apply_buff(state, unit)
@@ -1247,6 +1286,8 @@ class OriginsRules:
                 # Last Stand doubles the unit's current Might for this turn;
                 # the temporary marker is removed at the next Beginning Phase.
                 unit["temporary"] += self.might(state, unit)
+                unit["temporary_unit"] = True
+            elif code == "OGN-180":
                 unit["temporary_unit"] = True
             elif code in {"OGN-206", "OGN-207"}:
                 unit["temporary"] += 2 if code == "OGN-206" else 3
@@ -1687,6 +1728,12 @@ class OriginsRules:
             item["post_triggers"] = [{"effect": "ravenbloom", "owner": player}]
             if row["played"] == 2:
                 item["post_triggers"].append({"effect": "darius", "owner": player})
+            if state["turn_player"] != player:
+                item["post_triggers"].extend(
+                    {"effect": "viktor_innovator", "owner": player}
+                    for source in self._units(state, player)
+                    if source["code"] == "OGN-117"
+                )
             # Keep a pending spell item while the player chooses its target;
             # target confirmation fills that item before normal chain resolution.
             self._enter_chain(state, [item])
@@ -1760,6 +1807,10 @@ class OriginsRules:
                     triggers.append({"effect": "move_field_unit", "source": unit["id"], "owner": player})
                 if code == "OGN-197":
                     triggers.append({"effect": "buff_self_three", "source": unit["id"], "owner": player})
+                if state["turn_player"] != player:
+                    triggers.extend({"effect": "viktor_innovator", "source": source["id"], "owner": player}
+                                    for source in self._units(state, player)
+                                    if source["code"] == "OGN-117")
                 if code == "OGN-051":
                     triggers.append({"effect": "stun_target", "source": unit["id"],
                                      "owner": player})
@@ -1827,6 +1878,12 @@ class OriginsRules:
                     spell_item["post_triggers"] = [{"effect": "ravenbloom", "owner": player}]
                     if row["played"] == 2:
                         spell_item["post_triggers"].append({"effect": "darius", "owner": player})
+                    if state["turn_player"] != player:
+                        spell_item["post_triggers"].extend(
+                            {"effect": "viktor_innovator", "owner": player}
+                            for source in self._units(state, player)
+                            if source["code"] == "OGN-117"
+                        )
                     # Playing a spell completes only after its resolution, so
                     # Darius's second-card trigger is a post-spell trigger too.
                     triggers = []
@@ -1912,6 +1969,13 @@ class OriginsRules:
                             for source in self._units(state, item["owner"])
                             if source["code"] == "OGN-027"
                         )
+                    elif spec.get("effect") == "viktor_innovator":
+                        generated.extend(
+                            {"effect": "viktor_innovator", "source": source["id"],
+                             "owner": item["owner"]}
+                            for source in self._units(state, item["owner"])
+                            if source["code"] == "OGN-117"
+                        )
                 if generated:
                     if len(generated) == 1:
                         state["chain"].extend(generated)
@@ -1996,6 +2060,10 @@ class OriginsRules:
                 {"effect": "leona_stun_target", "source": unit["id"],
                  "owner": unit["owner"]}
                 for unit in attackers if unit["code"] == "OGN-238"
+            ] + [
+                {"effect": "yasuo_attack_target", "source": unit["id"],
+                 "owner": unit["owner"]}
+                for unit in attackers if unit["code"] == "OGN-076"
             ]
             battle["designation_triggers_added"] = True
             if ahri_triggers:

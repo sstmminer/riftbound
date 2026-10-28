@@ -22,7 +22,7 @@ class ExpansionBatchCTests(unittest.TestCase):
 
     def play_unit(self, card, location="base:0"):
         action = next(a for a in self.rules.legal_actions(self.state)
-                      if a.kind == "play_unit" and card in a.arguments and location in a.arguments)
+                      if a.kind == "play_unit" and card in a.arguments and str(location) in a.arguments)
         self.rules.apply(self.state, action, random.Random(9))
 
     def drain(self):
@@ -105,6 +105,62 @@ class ExpansionBatchCTests(unittest.TestCase):
         self.choose_and_drain(enemy["id"])
         self.assertEqual(enemy["location"], "base:1")
         self.assertTrue(enemy["exhausted"])
+
+    def test_yasuo_attack_trigger_chooses_target_before_combat_damage(self):
+        attacker = self.rules._new_unit(self.state, "OGN-076", 0, 0, exhausted=False)
+        defender = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        self.state.update(phase="showdown", actor=0, focus=0, passes=0,
+                          battle={"field": 0, "attacker": 0, "combat": True})
+        self.rules._close_showdown(self.state, random.Random(9))
+        self.assertEqual(self.state["phase"], "decision")
+        self.choose_and_drain(defender["id"])
+        self.assertNotIn(defender, self.state["units"])
+
+    def test_fight_or_flight_moves_a_field_unit_to_base(self):
+        enemy = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        card = self.spare("OGN-168")
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments and enemy["id"] in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.drain()
+        self.assertEqual(enemy["location"], "base:1")
+        self.assertTrue(enemy["exhausted"])
+
+    def test_fading_memories_marks_a_field_unit_temporary(self):
+        enemy = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        card = self.spare("OGN-180")
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments and enemy["id"] in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.drain()
+        self.assertTrue(enemy["temporary_unit"])
+
+    def test_kogmaw_deathknell_damages_every_unit_at_its_field(self):
+        kog = self.rules._new_unit(self.state, "OGN-190", 0, 0, exhausted=False)
+        enemy = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        kog["damage"] = self.rules.might(self.state, kog)
+        self.rules._cleanup(self.state, random.Random(9))
+        self.assertNotIn(kog, self.state["units"])
+        self.assertEqual(enemy["damage"], 4)
+
+    def test_viktor_innovator_triggers_when_playing_on_opponent_turn(self):
+        self.state["turn_player"] = 1
+        self.state["actor"] = 0
+        self.rules._new_unit(self.state, "OGN-117", 0, "base:0", exhausted=False)
+        card = self.spare("OGN-219")
+        self.play_unit(card)
+        self.drain()
+        self.assertTrue(any(unit["code"] == "OGN-273" and unit["owner"] == 0
+                            for unit in self.state["units"]))
+
+    def test_miss_fortune_buccaneer_allows_open_battlefield_play(self):
+        card = self.spare("OGN-193")
+        self.assertTrue(any(a.kind == "play_unit" and card in a.arguments and '"location":0' in a.arguments
+                            for a in self.rules.legal_actions(self.state)))
+        self.play_unit(card, location=0)
+        other = self.spare("OGN-219")
+        self.assertTrue(any(a.kind == "play_unit" and other in a.arguments and '"location":1' in a.arguments
+                            for a in self.rules.legal_actions(self.state)))
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@
 - 当前分支：`simulator`。
 - 当前规则实现版本仍为 `origins-subset/0.3.0`。
 - 第一弹目录有 298 张基础编号：142 unit、84 spell、30 gear、24 battlefield、12 legend、6 rune。
-- 目前显式执行 168 张；其余 130 张在构筑时拒绝，不会静默当作白板。
+- 目前显式执行 174 张；其余 124 张在构筑时拒绝，不会静默当作白板。
 
 ## 本轮已完成
 
@@ -156,10 +156,11 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 - 按 RUP5 403.2、403.4 将已执行的单位入场目标触发统一为“触发最终化时选择目标”：Harnessed Dragon、Solari Shieldbearer、Whiteflame Protector、First Mate、Pit Rookie、Cemetery Attendant、Solari Chief，以及新增 Riptide Rex、Blastcone Fae、Zaunite Bouncer、Maddened Marauder。没有合法目标的触发会从链上移除。
 - 按 RUP5 383.4.e/f、466.2.c–d 将 Crackshot Corsair 和 Leona, Determined 的攻击触发加入战斗链并要求目标选择，移除原先自动选择第一个敌方单位的路径。
 - 新增 10 张显式卡牌：Poro Herder、Riptide Rex、Sprite Call、Blastcone Fae、Gemcraft Seer、Sprite Mother、Thousand-Tailed Watcher、Zaunite Bouncer、Maddened Marauder、Teemo, Scout；支持集扩展到 168 张，并为每张加入官方卡图与回归测试。
+- 新增 Yasuo, Remorseful、Viktor, Innovator、Fight or Flight、Fading Memories、Kog'Maw, Caustic、Miss Fortune, Buccaneer；支持攻击触发、对手回合触发、Deathknell、临时单位和开放战场规则。
 
 ## 尚未完成
 
-- 第一弹 298 张尚未全部执行。当前支持集已扩展到 168 张，完整扩展需要按机制层逐步增加处理器和回归测试。
+- 第一弹 298 张尚未全部执行。当前支持集已扩展到 174 张，完整扩展需要按机制层逐步增加处理器和回归测试。
 - 装备牌区、Hidden/reveal、反制、控制权变化、复杂替代效果和通用分割伤害还没有完成；Deathknell、Tank、Shield 当前只覆盖已注册卡牌的基础窗口。
 - 目前只有 Singularity、Back to Back 走通用多目标确认路径；其他尚未迁移的多目标牌仍可能在施放动作中携带预生成的目标组合。
 - 装备牌模型和装备触发目标窗口仍未接入引擎，因此装备相关效果暂不声称已完成。

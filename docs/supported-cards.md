@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 168 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 174 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -78,6 +78,7 @@
 | OGN-297 | Windswept Hillock | battlefield | Units here have [Ganking]. (They can move from battlefield to battlefield.) |
 
 | OGN-053 | Stand United | spell | [Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.) [Action] (Play on your turn or in showdowns.) Buff a friendly unit. Buffs give an additional +1 :rb_might: to friendly units this turn. (To buff a unit, give it a +1 :rb_might: buff if it doesn't already have one.) |
+| OGN-076 | Yasuo, Remorseful | unit | When I attack, deal damage equal to my Might to an enemy unit here. |
 | OGN-061 | Poro Herder | unit | When you play me, if you control a Poro, buff me and draw 1. |
 | OGN-054 | Sunlit Guardian | unit | [Shield] (+1 :rb_might: while I'm a defender.) [Tank] (I must be assigned combat damage first.) |
 | OGN-069 | Last Stand | spell | [Action] (Play on your turn or in showdowns.) Double a friendly unit's Might this turn. Give it [Temporary]. (Kill it at the start of its controller's Beginning Phase, before scoring.) |
@@ -140,12 +141,17 @@
 | OGN-161 | Deadbloom Predator | unit | [Deflect] (Opponents must pay :rb_rune_rainbow: to choose me with a spell or ability.) You may play me to an occupied enemy battlefield. |
 | OGN-164 | Sett, Brawler | unit | When I'm played and when I conquer, buff me. (If I don't have a buff, I get a +1 :rb_might: buff.) Spend my buff: Give me +4 :rb_might: this turn. |
 | OGN-165 | Cemetery Attendant | unit | When you play me, return a unit from your trash to your hand. |
+| OGN-168 | Fight or Flight | spell | Move a unit from a battlefield to its base. |
 | OGN-174 | Sai Scout | unit | [Vision] (When you play me, look at the top card of your Main Deck. You may recycle it.) You may play me to an open battlefield. |
 | OGN-185 | Traveling Merchant | unit | When I move, discard 1, then draw 1. |
+| OGN-180 | Fading Memories | spell | Give a unit at a battlefield Temporary. |
 | OGN-188 | Zaunite Bouncer | unit | When you play me, return another unit at a battlefield to its owner's hand. |
 | OGN-191 | Maddened Marauder | unit | [Tank]; when you play me, move a unit from a battlefield to its base. |
 | OGN-195 | Rhasa the Sunderer | unit | I cost :rb_energy_1: less for each card in your trash. |
 | OGN-197 | Teemo, Scout | unit | When you play me, give me +3 Might this turn. |
+| OGN-190 | Kog'Maw, Caustic | unit | [Deathknell] — Deal 4 to all units at my battlefield. |
+| OGN-193 | Miss Fortune, Buccaneer | unit | You may play me to an open battlefield. Friendly units may be played to open battlefields. |
+| OGN-117 | Viktor, Innovator | unit | When you play a card on an opponent's turn, play a Recruit unit token in your base. |
 | OGN-209 | Cull the Weak | spell | Each player kills one of their units. |
 | OGN-218 | Vanguard Captain | unit | [Legion] — When you play me, play two 1 :rb_might: Recruit unit tokens here. (Get the effect if you've played another card this turn.) |
 | OGN-225 | Solari Chief | unit | When you play me, choose an enemy unit. If it is stunned, kill it. Otherwise, stun it. (It doesn't deal combat damage this turn.) |

@@ -94,10 +94,10 @@ class OriginsGUI(tk.Tk):
         # row stays at the intended battlefield size.
         self.board.grid_rowconfigure(0, weight=1, minsize=345)
         self.board.grid_rowconfigure(1, weight=0, minsize=390)
-        self.board.grid_rowconfigure(2, weight=1, minsize=300)
+        self.board.grid_rowconfigure(2, weight=1, minsize=330)
         self._panel("opponent", "对手区域 / Opponent", 0, height=345)
         self._panel("battlefields", "战场区 / Battlefields", 1, height=390)
-        self._panel("player", "我方区域 / Player", 2, height=300)
+        self._panel("player", "我方区域 / Player", 2, height=330)
         self._panel("chain", "结算链 / Chain", 0, column=1, height=360)
         self._panel("banishment", "放逐区 / Banishment", 1, column=1, rowspan=2, height=900)
 
@@ -982,7 +982,7 @@ class OriginsGUI(tk.Tk):
 
     def render_opponent(self, obs):
         body = self._clear("opponent")
-        body.grid_rowconfigure(0, weight=1)
+        body.grid_rowconfigure(0, weight=1, minsize=165)
         body.grid_rowconfigure(1, weight=0, minsize=165)
         # Match the player's left-to-right arrangement: identity, runes,
         # hand, piles, status.  Keeping the rune pool beside the hand also
@@ -1000,12 +1000,12 @@ class OriginsGUI(tk.Tk):
                   lambda parent, rune: self._rune_card(parent, rune, player=1,
                                                         pack=False, show_label=False),
                   per_row=10, row_height=130)
-        hand = self._subzone(body, f"对手手牌 · {obs['players'][1]['hand_count']} 张", width=500)
+        hand = self._subzone(body, f"对手手牌 · {obs['players'][1]['hand_count']} 张", width=500, height=165)
         hand.grid(row=0, column=2, sticky="nsew", padx=4)
         self._fan(hand, range(min(10, obs["players"][1]["hand_count"])),
                   lambda parent, _item: self._image_card(parent, BACK_CODE, factor=4,
                                                          compact_label="", pack=False, show_label=False),
-                  per_row=10, row_height=135)
+                  per_row=10, row_height=165)
         piles = self._subzone(body, "对手牌堆 / Opponent Piles", width=250)
         piles.grid(row=0, column=3, sticky="nsew", padx=4)
         self._stack(piles, obs["players"][1]["trash"], owner=1,
@@ -1100,7 +1100,7 @@ class OriginsGUI(tk.Tk):
     def render_player(self, obs):
         body = self._clear("player")
         body.grid_rowconfigure(0, weight=0, minsize=165)
-        body.grid_rowconfigure(1, weight=1, minsize=135)
+        body.grid_rowconfigure(1, weight=1, minsize=165)
         body.grid_columnconfigure(1, weight=1, minsize=300)
         body.grid_columnconfigure(2, weight=2, minsize=500)
         body.grid_columnconfigure(3, weight=0, minsize=150)
@@ -1122,7 +1122,7 @@ class OriginsGUI(tk.Tk):
             ttk.Button(controls, text=f"回撤符文操作 ({undo_count})",
                        command=self.undo_rune).pack(side="left", padx=2)
 
-        hand_zone = self._subzone(body, f"手牌 / Hand · {len(obs['hand'])} 张", width=500)
+        hand_zone = self._subzone(body, f"手牌 / Hand · {len(obs['hand'])} 张", width=500, height=165)
         hand_zone.grid(row=1, column=2, sticky="nsew", padx=4)
         self._fan(hand_zone, obs["hand"],
                   lambda parent, card: self._image_card(parent, card["code"], uid=card["id"],

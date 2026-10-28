@@ -16,7 +16,7 @@ from .catalog import load_origins, require_supported
 from .core import DOMAINS, Card, Deck, Scoreboard, Unit, channel_count, draw_cards, mulligan, validate_deck
 from .engine import Action, canonical
 from .effects import EffectRegistry
-from .support import ACCELERATE, FIELD_CODES, LEGENDS, REACTIONS, RUNES, SPELL_CODES, TOKEN, UNIT_CODES, starter_deck
+from .support import ACCELERATE, FIELD_CODES, GEAR_CODES, LEGENDS, REACTIONS, RUNES, SPELL_CODES, TOKEN, UNIT_CODES, starter_deck
 
 
 def card_model(row):
@@ -113,7 +113,7 @@ class OriginsRules:
                      for i, code in enumerate(deck["runes"])]
             rng.shuffle(runes)
             state["players"].append({"main": physical[4:], "hand": physical[:4], "champion": [chosen],
-                                     "trash": [], "banishment": [], "rune_deck": runes, "runes": [], "energy": 0,
+                                     "gear": [], "trash": [], "banishment": [], "rune_deck": runes, "runes": [], "energy": 0,
                                      "power": [], "buff_bonus": 0, "legend": deck["legend"], "legend_exhausted": False,
                                      "turns": 0, "played": 0, "ready_play": False})
             state["fields"].append({"code": rng.choice(deck["battlefields"]), "controller": None})
@@ -488,6 +488,31 @@ class OriginsRules:
             obj["energy"], obj["power"] = 0, []
         self._cleanup(state, rng)
 
+    def _gear_actions(self, state):
+        """Play supported gear to the controller's Base and expose simple abilities."""
+        player = state["actor"]
+        row = state["players"][player]
+        result = []
+        if state["phase"] == "main":
+            for card in row["hand"]:
+                code = state["cards"][card]["code"]
+                if code not in GEAR_CODES:
+                    continue
+                data = self.cards[code]
+                for payment in self._payments(state, player, data["energy"], data["domains"],
+                                               data["power_cost"]):
+                    result.append(Action.make("play_gear", card=card, payment=payment))
+        gear_resource = {"OGN-040": "fury", "OGN-081": "calm", "OGN-120": "mind",
+                         "OGN-163": "body", "OGN-204": "chaos", "OGN-245": "order"}
+        for gear in row["gear"]:
+            if gear["exhausted"]:
+                continue
+            if gear["code"] in gear_resource:
+                result.append(Action.make("gear_resource", gear=gear["id"], domain=gear_resource[gear["code"]]))
+            elif gear["code"] == "OGN-098":
+                result.append(Action.make("gear_resource", gear=gear["id"], energy=1))
+        return result
+
     def _resource_actions(self, state):
         player = state["actor"]
         row = state["players"][player]
@@ -807,7 +832,7 @@ class OriginsRules:
             tanks = [u for u in unassigned if self._tank(u)]
             choices = tanks or unassigned or targets
             return tuple(Action.make("assign_damage", target=u["id"]) for u in choices)
-        result = self._resource_actions(state) + self._spell_actions(state)
+        result = self._resource_actions(state) + self._gear_actions(state) + self._spell_actions(state)
         if phase in {"chain", "showdown"}:
             result.append(Action.make("pass"))
         elif phase == "main":
@@ -1595,6 +1620,33 @@ class OriginsRules:
             row["power"] = list(snapshot["power"])
             row["energy"] = snapshot["energy"]
             state["passes"] = 0
+        elif kind == "play_gear":
+            card = args["card"]
+            code = state["cards"][card]["code"]
+            if code not in GEAR_CODES or card not in row["hand"]:
+                raise ValueError("unsupported gear")
+            data = self.cards[code]
+            self._pay(row, data["energy"], args["payment"])
+            row["hand"].remove(card)
+            row["played"] += 1
+            row["gear"].append({"id": card, "card": card, "code": code,
+                                "owner": player, "location": f"base:{player}",
+                                "exhausted": code == "OGN-017"})
+            if code == "OGN-182":
+                self._draw(state, player, 1, rng)
+            elif code == "OGN-212":
+                self._new_unit(state, TOKEN, player, f"base:{player}", exhausted=False)
+            state["passes"] = 0
+        elif kind == "gear_resource":
+            gear = next((g for g in row["gear"] if g["id"] == args["gear"]), None)
+            if gear is None or gear["exhausted"]:
+                raise ValueError("gear resource is unavailable")
+            gear["exhausted"] = True
+            if args.get("energy"):
+                row["energy"] += int(args["energy"])
+            else:
+                row["power"].append(args["domain"])
+            state["passes"] = 0
         elif kind == "optional_effect":
             optional = state.get("optional", [])
             item = next((entry for entry in optional if entry["id"] == args["optional"]), None)
@@ -2183,6 +2235,7 @@ class OriginsRules:
                                    "rune_deck_count": len(row["rune_deck"]), "runes": copy.deepcopy(row["runes"]),
                                    "energy": row["energy"], "power": row["power"].copy(),
                                    "power_count": len(row["power"]),
+                                   "gear": copy.deepcopy(row["gear"]),
                                    "legend": row["legend"], "legend_exhausted": row["legend_exhausted"],
                                    "champion": [card(uid) for uid in row["champion"]],
                                    "banishment": [card(uid) for uid in row["banishment"]],
@@ -2219,6 +2272,13 @@ class OriginsRules:
                 located.extend(row[zone])
                 if any(state["cards"][uid]["owner"] != player for uid in row[zone]):
                     raise ValueError("card in non-owner zone")
+            for gear in row.get("gear", []):
+                if (gear.get("owner") != player or gear.get("location") != f"base:{player}"
+                        or gear.get("card") not in state["cards"]
+                        or state["cards"][gear["card"]]["owner"] != player
+                        or gear.get("exhausted") not in (True, False)):
+                    raise ValueError("invalid gear state")
+                located.append(gear["card"])
             runes = row["runes"] + row["rune_deck"]
             if len(runes) != 12 or len({r["id"] for r in runes}) != 12:
                 raise ValueError("rune conservation failed")

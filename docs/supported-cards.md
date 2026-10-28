@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 174 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 195 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -179,6 +179,27 @@
 | OGN-291 | The Candlelit Sanctum | battlefield | When you conquer here, look at the top two cards of your Main Deck. You may recycle one or both of them. Put those you don't back in any order. |
 | OGN-292 | The Dreaming Tree | battlefield | When a player chooses a friendly unit here with a spell for the first time each turn, they draw 1. |
 | OGN-293 | The Grand Plaza | battlefield | When you hold here, if you have 7+ units here, you win the game. |
+| OGN-017 | Iron Ballista | gear | Enters exhausted. |
+| OGN-021 | Sun Disc | gear | Exhaust: Legion — the next unit you play this turn enters ready. |
+| OGN-032 | Ravenborn Tome | gear | Exhaust: the next spell you play this turn deals 1 Bonus Damage. |
+| OGN-040 | Seal of Rage | gear | Exhaust: Add Fury power. |
+| OGN-063 | Spirit's Refuge | gear | When you play this, buff a friendly unit. |
+| OGN-081 | Seal of Focus | gear | Exhaust: Add Calm power. |
+| OGN-090 | Orb of Regret | gear | Exhaust: give a unit -1 Might this turn. |
+| OGN-098 | Energy Conduit | gear | Exhaust: Add 1 Energy. |
+| OGN-120 | Seal of Insight | gear | Exhaust: Add Mind power. |
+| OGN-124 | Arena Bar | gear | Exhaust: buff an exhausted friendly unit. |
+| OGN-143 | Pirate's Haven | gear | When you ready a friendly unit, give it +1 Might this turn. |
+| OGN-152 | Mistfall | gear | When you buff a friendly unit, you may ready it. |
+| OGN-163 | Seal of Strength | gear | Exhaust: Add Body power. |
+| OGN-181 | Pack of Wonders | gear | Exhaust: return another friendly gear, unit, or Hidden card. |
+| OGN-182 | Scrapheap | gear | When played, draw 1. |
+| OGN-184 | The Syren | gear | Exhaust: move a friendly battlefield unit to base. |
+| OGN-186 | Treasure Trove | gear | When this leaves the board, draw 1 and channel 1 rune exhausted. |
+| OGN-204 | Seal of Discord | gear | Exhaust: Add Chaos power. |
+| OGN-212 | Forge of the Future | gear | When played, create a Recruit token. |
+| OGN-228 | Vanguard Helm | gear | When a buffed friendly unit dies, buff another friendly unit. |
+| OGN-245 | Seal of Unity | gear | Exhaust: Add Order power. |
 支持的规则仅就这套封闭卡池验证。Recruit 是衍生物，不可放入构筑主牌库。隐蔽、装备、死亡触发、卡牌反制、控制权改变等机制尚未开放；它们对应卡牌会被拒绝，不会当作白板处理。
 
 扩展卡牌：OGN-039 Kai'Sa, Survivor 支持 Accelerate（额外支付 1 energy 与 fury power 后准备进入），并在征服时每张触发抽 1。可用符文目录现覆盖六个基础 domain（Fury、Calm、Mind、Body、Chaos、Order）；符文资源验证和回收会保留这些 domain。

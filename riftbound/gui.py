@@ -775,6 +775,7 @@ class OriginsGUI(tk.Tk):
             "legend_buff": "传奇能力 / Buff unit",
             "legend_move": "传奇能力 / Move unit",
             "legend_ganking": "传奇能力 / Grant Ganking",
+            "legend_teemo": "Swift Scout：回收 Teemo / Return Teemo",
             "end_turn": "结束回合 / End turn", "pass": "让过 / Pass", "commit_move": "确认移动 / Commit",
             "cancel_move": "取消移动 / Cancel", "select_unit": "选择单位 / Select unit",
             "assign_damage": "分配伤害 / Assign damage",

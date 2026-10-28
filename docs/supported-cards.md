@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 226 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 249 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -108,6 +108,13 @@
 | OGN-290 | The Arena's Greatest | battlefield | At the start of each player's first Beginning Phase, that player gains 1 point. |
 | OGN-295 | Vilemaw's Lair | battlefield | Units can't move from here to base. |
 | OGN-298 | Zaun Warrens | battlefield | When you conquer here, discard 1, then draw 1. |
+
+| OGN-018 | Noxus Saboteur | unit | Opponents cannot hide or reveal Hidden cards at this battlefield while I am here. |
+| OGN-135 | Pakaa Cub | unit | [Hidden] (Hide now for :rb_rune_rainbow: to react with later for :rb_energy_0:.) |
+| OGN-101 | Mushroom Pouch | gear | At the start of your Beginning Phase, if you control a facedown card at a battlefield, draw 1. |
+| OGN-263 | Swift Scout | legend | Pay 1 energy to hide a Hidden card; pay 1 energy and exhaust me to return a Teemo unit you own to your hand. |
+| OGN-278 | Bandle Tree | battlefield | You may hide an additional card here. |
+| OGN-254 | Noxian Guillotine, Darius | spell | Choose a unit. Kill it the next time it takes damage this turn; Legion kills it immediately instead. |
 | OGN-035 | Vayne, Hunter | unit | [Assault 3] (+3 :rb_might: while I'm an attacker.) If an opponent controls a battlefield, I enter ready. When I conquer, you may pay :rb_energy_1: to return me to my owner's hand. |
 | OGN-043 | Charm | spell | Move an enemy unit. |
 | OGN-130 | Crackshot Corsair | unit | When I attack, deal 1 to an enemy unit here. |
@@ -231,3 +238,25 @@
 支持的规则仅就这套封闭卡池验证。Recruit 是衍生物，不可放入构筑主牌库。隐蔽、装备、死亡触发、卡牌反制、控制权改变等机制尚未开放；它们对应卡牌会被拒绝，不会当作白板处理。
 
 扩展卡牌：OGN-039 Kai'Sa, Survivor 支持 Accelerate（额外支付 1 energy 与 fury power 后准备进入），并在征服时每张触发抽 1。可用符文目录现覆盖六个基础 domain（Fury、Calm、Mind、Body、Chaos、Order）；符文资源验证和回收会保留这些 domain。
+
+<!-- Newly added explicit cards; keep this list synchronized with support.py. -->
+| OGN-026 | Brynhir Thundersong | unit | When you play me, opponents can't play cards this turn. |
+| OGN-031 | Raging Firebrand | unit | When you play me, the next spell you play this turn costs :rb_energy_5: less. |
+| OGN-044 | Clockwork Keeper | unit | You may pay [C] as an additional cost to play me. When you play me, if you paid the additional cost, draw 1. |
+| OGN-070 | Mageseeker Warden | unit | While I'm at a battlefield, opponents can only play units to their base. While I'm at a battlefield, spells and abilities can't ready enemy units and gear. |
+| OGN-147 | Wildclaw Shaman | unit | When you play me, you may spend a buff to buff me and ready me. (If I don't have a buff, I get a +1 :rb_might: buff.) |
+| OGN-156 | Sabotage | spell | Choose an opponent. They reveal their hand. Choose a non-unit card from it, and recycle that card. |
+| OGN-162 | Miss Fortune, Captain | unit | [Accelerate] (You may pay :rb_energy_1::rb_rune_body: as an additional cost to have me enter ready.) [Ganking] (I can move from battlefield to battlefield.) The first time I move each turn, you may ready something else that's exhausted. |
+| OGN-167 | Ember Monk | unit | When you play a card from [Hidden], give me +2 :rb_might: this turn. |
+| OGN-177 | Stealthy Pursuer | unit | When a friendly unit moves from my location, I may be moved with it. |
+| OGN-183 | Stacked Deck | spell | [Action] (Play on your turn or in showdowns.) Look at the top 3 cards of your Main Deck. Put 1 into your hand and recycle the rest. |
+| OGN-192 | Mindsplitter | unit | When you play me, choose an opponent. They reveal their hand. Choose a card from it, and they discard that card. |
+| OGN-199 | Tideturner | unit | [Hidden] (Hide now for [A] to react with later for [0].) When you play me, you may choose a unit you control at another location. Move me to its location and it to my original location. |
+| OGN-202 | Jinx, Rebel | unit | When you discard one or more cards, ready me and give me +1 :rb_might: this turn. |
+| OGN-203 | Possession | spell | [Action] (Play on your turn or in showdowns.) Choose an enemy unit at a battlefield. Take control of it and recall it. (Send it to your base. This isn't a move.) |
+| OGN-208 | Cruel Patron | unit | As an additional cost to play me, kill a friendly unit. |
+| OGN-221 | Imperial Decree | spell | [Action] (Play on your turn or in showdowns.) When any unit takes damage this turn, kill it. |
+| OGN-230 | Albus Ferros | unit | When you play me, spend any number of buffs. For each buff spent, channel 1 rune exhausted. |
+| OGN-235 | Karma, Channeler | unit | [Vision] (When you play me, look at the top card of your Main Deck. You may recycle it.) When you recycle one or more cards to your Main Deck, buff a friendly unit. (If it doesn't have a buff, it gets a +1 [M] buff. Runes aren't cards.) |
+| OGN-236 | Karthus, Eternal | unit | Your [Deathknell] effects trigger an additional time. |
+| OGN-279 | Fortified Position | battlefield | When you defend here, choose a unit. It gains [Shield 2] this combat. (+2 :rb_might: while it's a defender.) |

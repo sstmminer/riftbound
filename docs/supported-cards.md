@@ -1,6 +1,6 @@
 # 可执行卡牌范围（0.3.0）
 
-目录包含 Origins 298 个基础编号；以下 222 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
+目录包含 Origins 298 个基础编号；以下 226 张才具有显式实现，并随包附带对应的清晰卡图与横置方向资源。未注册卡牌在套牌装载时拒绝。此版本不支持其余卡池、完整 Origins、Best-of-3 Match 或多人模式。
 
 | 编号 | 名称 | 类型 | 已实现文本 |
 | --- | --- | --- | --- |
@@ -218,6 +218,9 @@
 | OGN-022 | Thermo Beam | spell | Kill all gear. |
 | OGN-179 | Acceptable Losses | spell | Each player kills one of their gear. |
 | OGN-060 | Mask of Foresight | gear | When a friendly unit attacks or defends alone, give it +1 Might this turn. |
+| OGN-033 | Shakedown | spell | Choose an enemy unit and deal 6 to it. |
+| OGN-198 | The Harrowing | spell | Play a unit from your trash, ignoring its Energy cost. |
+| OGN-224 | Salvage | spell | Draw 1. |
 | OGN-072 | Solari Shrine | gear | When you kill a stunned enemy unit, you may exhaust this to draw 1. |
 | OGN-099 | Garbage Grabber | gear | Recycle 3 from your trash, pay 1 Energy, exhaust this: Draw 1. |
 | OGN-019 | Raging Soul | unit | If you've discarded a card this turn, I have Assault and Ganking. |

@@ -638,10 +638,12 @@ class OriginsRules:
                 continue
             data = self.cards[code]
             targeted_only = code == "OGN-104"
-            if code in {"OGN-022", "OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-170", "OGN-179", "OGN-201", "OGN-233"}:
+            if code in {"OGN-022", "OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-170", "OGN-179", "OGN-198", "OGN-201", "OGN-224", "OGN-233"}:
                 targets = [[]]
             elif code == "OGN-102":
                 targets = [[u["id"]] for u in self._units(state, player)]
+            elif code == "OGN-033":
+                targets = [[u["id"]] for u in self._units(state, 1 - player)]
             elif code == "OGN-048":
                 targets = [[]] + [[u["id"]] for u in self._units(state, player) if not u["exhausted"]]
             elif code in {"OGN-128", "OGN-209"}:
@@ -1510,6 +1512,8 @@ class OriginsRules:
                 unit["exhausted"] = False
             elif code == "OGN-252":
                 self._deal_damage(state, unit, 5)
+            elif code == "OGN-033":
+                self._deal_damage(state, unit, 6)
             elif code == "OGN-262":
                 if self._is_field(state, unit["location"]):
                     unit["stunned"] = True
@@ -1556,6 +1560,16 @@ class OriginsRules:
             self._draw(state, owner, 2 if item["targets"] else 1, rng)
         elif code == "OGN-144":
             self._draw(state, owner, 2, rng)
+        elif code == "OGN-224":
+            self._draw(state, owner, 1, rng)
+        elif code == "OGN-198":
+            row = state["players"][owner]
+            candidate = next((uid for uid in row["trash"]
+                              if self.cards[state["cards"][uid]["code"]]["type"] == "unit"), None)
+            if candidate is not None:
+                row["trash"].remove(candidate)
+                self._new_unit(state, state["cards"][candidate]["code"], owner,
+                               f"base:{owner}", card=candidate, exhausted=True)
         elif code == "OGN-022":
             for player in (0, 1):
                 for gear in list(state["players"][player]["gear"]):

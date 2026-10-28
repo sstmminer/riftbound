@@ -70,6 +70,36 @@ class SpellExpansionNewTests(unittest.TestCase):
         self.rules._cleanup(self.state, random.Random(9))
         self.assertNotIn(target, self.state["units"])
 
+    def test_guerilla_warfare_returns_hidden_cards_and_grants_free_hide(self):
+        card = self.spare("OGN-264")
+        hidden = self.state["players"][0]["main"].pop()
+        self.state["cards"][hidden]["code"] = "OGN-094"
+        self.state["players"][0]["trash"].append(hidden)
+        self.state["players"][0]["power"] = ["mind", "chaos"] * 4
+        self.rules._new_unit(self.state, "OGN-003", 0, 0, exhausted=False)
+        self.state["fields"][0]["controller"] = 0
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.drain()
+        self.assertEqual(self.state["phase"], "reveal")
+        self.assertIn(hidden, self.state["reveal"]["choices"])
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_revealed" and hidden in a.arguments),
+                         random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "confirm_revealed"), random.Random(9))
+        self.drain()
+        row = self.state["players"][0]
+        self.assertIn(hidden, row["hand"])
+        self.assertTrue(row["free_hide_turn"])
+        hide = next(a for a in self.rules.legal_actions(self.state)
+                    if a.kind == "hide_card" and hidden in a.arguments and '"ignore_cost":true' in a.arguments)
+        self.rules.apply(self.state, hide, random.Random(9))
+        self.assertTrue(any(h["id"] == hidden for h in row["hidden"]))
+        self.rules.validate(self.state)
+
+
     def test_stormbringer_damages_field_then_moves_base_unit(self):
         card = self.spare("OGN-250")
         self.state["players"][0]["power"] = ["fury", "body"] * 4

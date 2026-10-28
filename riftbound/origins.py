@@ -135,6 +135,7 @@ class OriginsRules:
                                      "gear": [], "hidden": [], "trash": [], "banishment": [], "rune_deck": runes, "runes": [], "energy": 0,
                                      "power": [], "buff_bonus": 0, "legend": deck["legend"], "legend_exhausted": False,
                                      "turns": 0, "played": 0, "ready_play": False,
+                                     "free_hide_turn": False,
                                      "discarded_this_turn": False, "spell_bonus_damage": 0,
                                      "cards_locked_turn": False, "spell_discount": 0})
             state["fields"].append({"code": rng.choice(deck["battlefields"]), "controller": None})
@@ -517,6 +518,17 @@ class OriginsRules:
             for owner in (0, 1):
                 cards = [uid for uid in selected if uid in state["players"][owner]["trash"]]
                 self._recycle_cards_to_main(state, owner, cards, source="trash", rng=rng)
+        elif effect == "guerrilla_return_hidden":
+            row = state["players"][reveal["owner"]]
+            for uid in selected:
+                if uid in row["trash"] and state["cards"][uid]["code"] in HIDDEN_CODES:
+                    row["trash"].remove(uid)
+                    row["hand"].append(uid)
+            row["free_hide_turn"] = True
+            item = reveal.get("item")
+            if item is not None:
+                item["reveal_done"] = True
+                state["chain"].append(item)
         resume = reveal.get("resume") or {"phase": "main", "actor": state["turn_player"], "passes": 0}
         state["reveal"] = None
         if state.get("chain") or resume["phase"] == "chain":
@@ -675,6 +687,7 @@ class OriginsRules:
             row["discarded_this_turn"] = False
             row["cards_locked_turn"] = False
             row["spell_discount"] = 0
+            row["free_hide_turn"] = False
         row = state["players"][player]
         row["legend_exhausted"] = False
         if row["turns"] == 0 and not state["beginning_awarded"][player]:
@@ -745,8 +758,12 @@ class OriginsRules:
                 if code not in HIDDEN_CODES:
                     continue
                 for field in open_fields:
-                    for payment in self._payments(state, player, 0, DOMAINS, 0, 1):
-                        result.append(Action.make("hide_card", card=card, field=field, payment=payment))
+                    if row.get("free_hide_turn"):
+                        result.append(Action.make("hide_card", card=card, field=field,
+                                                  payment=[], ignore_cost=True))
+                    else:
+                        for payment in self._payments(state, player, 0, DOMAINS, 0, 1):
+                            result.append(Action.make("hide_card", card=card, field=field, payment=payment))
                     if row["legend"] == "OGN-263" and row["energy"] >= 1:
                         result.append(Action.make("hide_card", card=card, field=field,
                                                   payment=[], use_energy=True))
@@ -950,7 +967,7 @@ class OriginsRules:
                 continue
             data = self.cards[code]
             targeted_only = code in {"OGN-104", "OGN-183"}
-            if code in {"OGN-022", "OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-156", "OGN-170", "OGN-179", "OGN-183", "OGN-198", "OGN-201", "OGN-221", "OGN-224", "OGN-233"}:
+            if code in {"OGN-022", "OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-156", "OGN-170", "OGN-179", "OGN-183", "OGN-198", "OGN-264", "OGN-201", "OGN-221", "OGN-224", "OGN-233"}:
                 targets = [[]]
             elif code == "OGN-102":
                 targets = [[u["id"]] for u in self._units(state, player)]
@@ -2176,6 +2193,15 @@ class OriginsRules:
         elif code == "OGN-233":
             for unit in self._units(state, owner):
                 unit["temporary"] += 5
+        elif code == "OGN-264" and not item.get("reveal_done"):
+            row = state["players"][owner]
+            choices = [uid for uid in row["trash"]
+                       if state["cards"][uid]["code"] in HIDDEN_CODES]
+            self._open_reveal(state, owner=owner, cards=list(choices), mode="select",
+                              chooser=owner, minimum=0, maximum=min(2, len(choices)),
+                              effect="guerrilla_return_hidden", item=item,
+                              choices=list(choices), rng=rng)
+            return False
         if code == "OGN-127" and state["battle"] is not None:
             field = state["battle"]["field"]
             for unit in self._units(state, location=field):
@@ -2502,6 +2528,9 @@ class OriginsRules:
                 if row["legend"] != "OGN-263" or row["energy"] < 1:
                     raise ValueError("Swift Scout energy hide is unavailable")
                 row["energy"] -= 1
+            elif args.get("ignore_cost"):
+                if not row.get("free_hide_turn"):
+                    raise ValueError("free Hidden placement is unavailable")
             else:
                 self._pay(row, 0, args["payment"])
             if card in row["hand"]:

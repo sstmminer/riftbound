@@ -17,6 +17,11 @@ Twisted Fate 和 OGN-258 Dragon's Rage。新增效果分别覆盖弃牌区可选
 这五张牌的官方缩略图和高清悬浮图已从固定的 `origin/archive-download` 归档导入，图像映射
 记录在 `riftbound/data/card_images.json`；后续新增卡牌必须先运行 `tools/import_card_assets.py`。
 
+Mystic Reversal（OGN-080）按 RUP5 751–755 修正：它不是 Counter，不会移除目标法术；结算后
+目标法术留在链上并转由 Mystic Reversal 控制者控制，旧目标清空，立即重新打开合法目标窗口，
+包括重复目标、成对目标和目的地选择。重新选择不重复支付原出牌费用；真正的 Defy/Wind Wall
+Counter 仍按 426.1.a 从链上移除并进入弃牌区。
+
 当前仍未注册的卡牌集中在需要控制法术链、延迟死亡替代、多区域同时选择、复制全部能力、
 牌库免费打出和分配伤害的复杂效果：OGN-025/115/244、OGN-023/077/160/242、
 OGN-041/107/111/112/121/194。它们继续保持构筑拒绝，避免以白板或错误时机实现。

@@ -176,6 +176,21 @@ class TargetWindowMigrationTests(unittest.TestCase):
                                           if a.kind == "choose_target" and second["id"] in a.arguments),
                          random.Random(9))
 
+    def test_time_warp_banishes_itself_and_grants_extra_turn(self):
+        card = self.spare("OGN-122")
+        self.state["players"][0]["power"] = ["mind"] * 4
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.assertIn(card, self.state["players"][0]["banishment"])
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "end_turn"), random.Random(9))
+        self.assertEqual(self.state["turn_player"], 0)
+
     def test_twisted_fate_recycles_top_rune_and_targets_fury_damage(self):
         source = self.rules._new_unit(self.state, "OGN-200", 0, 0, exhausted=False)
         target = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)

@@ -1117,7 +1117,7 @@ class OriginsRules:
                     result.append(Action.make("play_field_targeted", card=card,
                                               fields=list(range(len(state["fields"]))),
                                               x_choice=code == "OGN-268", payment=payment))
-            if code in {"OGN-022", "OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-071", "OGN-156", "OGN-170", "OGN-179", "OGN-183", "OGN-187", "OGN-237", "OGN-198", "OGN-248", "OGN-264", "OGN-268", "OGN-201", "OGN-221", "OGN-224", "OGN-233"}:
+            if code in {"OGN-022", "OGN-047", "OGN-083", "OGN-114", "OGN-122", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-071", "OGN-156", "OGN-170", "OGN-179", "OGN-183", "OGN-187", "OGN-237", "OGN-198", "OGN-248", "OGN-264", "OGN-268", "OGN-201", "OGN-221", "OGN-224", "OGN-233"}:
                 targets = [[]]
             elif code == "OGN-008":
                 targets = [[u["id"]] for u in state["units"] if self._is_field(state, u["location"])]
@@ -2570,6 +2570,8 @@ class OriginsRules:
                     state["players"][player]["trash"].append(gears.pop(0)["card"])
         elif code == "OGN-145":
             state["prevent_spell_ability_damage"] = True
+        elif code == "OGN-122":
+            state["extra_turn"] = owner
         elif code == "OGN-153":
             for unit in self._units(state, owner):
                 if unit["buff"]:
@@ -2680,7 +2682,10 @@ class OriginsRules:
         elif code in {"OGN-024", "OGN-058", "OGN-095"} or (code == "OGN-005" and killed):
             if state["winner"] is None:
                 self._draw(state, owner, 1, rng)
-        state["players"][owner]["trash"].append(item["card"])
+        if code == "OGN-122":
+            state["players"][owner]["banishment"].append(item["card"])
+        else:
+            state["players"][owner]["trash"].append(item["card"])
         if code == "OGN-008" and item.get("discarded_card") is not None:
             self._trigger_jinx_discard(state, owner)
         return True
@@ -4061,7 +4066,8 @@ class OriginsRules:
             if decree and decree.get("turn") == state.get("turn"):
                 state.pop("imperial_decree", None)
             self._cleanup(state, rng)
-            state["turn_player"] = 1-player
+            extra_turn = state.pop("extra_turn", None)
+            state["turn_player"] = extra_turn if extra_turn is not None else 1-player
             if state["winner"] is None:
                 self._start_turn(state, rng)
         else:

@@ -68,5 +68,31 @@ class RemainingOriginsUnitTests(unittest.TestCase):
         self.assertEqual(len(row["main"]), before_main)
 
 
+    def test_kaisa_conquer_replays_low_energy_trash_spell_and_recycles(self):
+        self.state.update(phase="main", actor=0, turn_player=0)
+        row = self.state["players"][0]
+        kaisa_card = self._card(0, "OGN-112")
+        self.rules._new_unit(self.state, "OGN-112", 0, 0, card=kaisa_card, exhausted=False)
+        self.state["fields"][0]["controller"] = 0
+        spell = row["main"].pop()
+        self.state["cards"][spell]["code"] = "OGN-005"
+        row["trash"].append(spell)
+        row["energy"], row["power"] = 20, ["fury"] * 3
+        self.state["points"][0] = 4
+        self.rules._score(self.state, 0, 0, "conquer", random.Random(7))
+        accept = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "optional_effect" and '"accept":true' in a.arguments)
+        self.rules.apply(self.state, accept, random.Random(7))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_revealed"), random.Random(7))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "confirm_revealed"), random.Random(7))
+        while self.state["phase"] == "chain":
+            self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                              if a.kind == "pass"), random.Random(7))
+        self.assertIn(spell, row["main"])
+        self.assertNotIn(spell, row["trash"])
+
+
 if __name__ == "__main__":
     unittest.main()

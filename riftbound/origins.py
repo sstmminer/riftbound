@@ -2411,14 +2411,23 @@ class OriginsRules:
             state["chain"].remove(target)
             target["targets"] = []
             target.pop("destination", None)
+            target.pop("field", None)
+            target.pop("x", None)
             state["chain"].append(target)
             if item.get("card") is not None:
                 state["players"][item["owner"]]["trash"].append(item["card"])
             spec = self._counter_retarget_spec(state, target)
             if spec is not None:
-                state["decision"] = {"kind": "target", "player": item["owner"],
-                                      "targets": spec["targets"], "item": target,
-                                      "counter_retarget": True, **spec}
+                if spec.get("kind") == "field":
+                    state["decision"] = {"kind": "field", "player": item["owner"],
+                                          "fields": spec["fields"], "item": target,
+                                          "counter_retarget": True,
+                                          "x_choice": spec.get("x_choice", False),
+                                          "x_max": spec.get("x_max", 0)}
+                else:
+                    state["decision"] = {"kind": "target", "player": item["owner"],
+                                          "targets": spec["targets"], "item": target,
+                                          "counter_retarget": True, **spec}
                 state["decision"].pop("targets", None)
                 state["decision"]["targets"] = spec["targets"]
                 state["phase"], state["actor"], state["passes"] = "decision", item["owner"], 0
@@ -2452,6 +2461,18 @@ class OriginsRules:
             candidates = [u["id"] for u in state["units"]]
             return {"targets": candidates, "multi": False, "min": 1, "max": 1,
                     "destination_select": True}
+        if code == "OGN-266":
+            return {"kind": "field", "fields": list(range(len(state["fields"]))) }
+        if code == "OGN-268":
+            return {"kind": "field", "fields": list(range(len(state["fields"]))),
+                    "x_choice": True, "x_max": len(state["players"][item["owner"]]["power"])}
+        if code == "OGN-256":
+            candidates = [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
+            return {"targets": candidates, "multi": True, "min": 0, "max": len(candidates),
+                    "target_might_limit": 4, "same_location": True}
+        if code == "OGN-048":
+            candidates = [u["id"] for u in self._units(state, item["owner"]) if not u["exhausted"]]
+            return {"targets": candidates, "multi": True, "min": 0, "max": 1}
         if code in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085"}:
             candidates = [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
         elif code == "OGN-033":
@@ -2905,7 +2926,8 @@ class OriginsRules:
             if decision.get("x_choice"):
                 state["decision"] = {"kind": "choice", "player": player,
                                       "options": list(range(decision.get("x_max", 0) + 1)),
-                                      "item": item, "x_choice": True}
+                                      "item": item, "x_choice": True,
+                                      "counter_retarget": decision.get("counter_retarget", False)}
                 state["phase"], state["actor"], state["passes"] = "decision", player, 0
                 return
             state["decision"] = None
@@ -2932,7 +2954,8 @@ class OriginsRules:
                     x = int(option)
                     if x < 0 or x > len(row["power"]):
                         raise ValueError("invalid X payment")
-                    self._pay(row, 0, list(range(x)))
+                    if not decision.get("counter_retarget"):
+                        self._pay(row, 0, list(range(x)))
                     item["x"] = x
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0

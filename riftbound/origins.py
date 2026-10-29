@@ -3151,6 +3151,8 @@ class OriginsRules:
                             destinations = [f"base:{target['owner']}", *range(len(state["fields"]))]
                         elif code in {"OGN-173", "OGN-250", "OGN-270"}:
                             destinations = [f"base:{item['owner']}", *range(len(state["fields"]))]
+                        elif code == "OGN-258":
+                            destinations = [f"base:{target['owner']}", *range(len(state["fields"]))]
                         else:
                             raise ValueError("unknown Mystic Reversal destination")
                         destinations = [destination for destination in destinations

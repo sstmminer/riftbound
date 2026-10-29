@@ -2428,8 +2428,8 @@ class OriginsRules:
                     state["decision"] = {"kind": "target", "player": item["owner"],
                                           "targets": spec["targets"], "item": target,
                                           "counter_retarget": True, **spec}
-                state["decision"].pop("targets", None)
-                state["decision"]["targets"] = spec["targets"]
+                if spec.get("kind") != "field":
+                    state["decision"]["targets"] = spec["targets"]
                 state["phase"], state["actor"], state["passes"] = "decision", item["owner"], 0
                 return False
             return True

@@ -246,6 +246,62 @@ class TargetWindowMigrationTests(unittest.TestCase):
         self.assertIn(target_card, self.state["players"][1]["trash"])
         self.assertIn(counter, self.state["players"][0]["trash"])
 
+    def test_mystic_reversal_requeues_spell_for_immediate_retargeting(self):
+        counter = self.spare("OGN-080")
+        target_card = self.state["players"][1]["main"].pop()
+        self.state["cards"][target_card]["code"] = "OGN-005"
+        target_unit = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        self.state["chain"] = [{"effect": "spell", "owner": 1, "card": target_card,
+                                 "code": "OGN-005", "targets": [], "destination": None}]
+        self.state["chain_return"] = "main"
+        self.state.update(phase="chain", actor=0, turn_player=0, passes=0)
+        self.state["players"][0]["energy"] = 10
+        self.state["players"][0]["power"] = ["calm"] * 4
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_counter" and counter in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_chain_target" and "chain:0" in a.arguments),
+                         random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.assertEqual(self.state["phase"], "decision")
+        self.assertTrue(self.state["decision"].get("counter_retarget"))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and target_unit["id"] in a.arguments),
+                         random.Random(9))
+        self.assertEqual(self.state["chain"][-1]["targets"], [target_unit["id"]])
+
+    def test_mystic_reversal_requeues_spell_and_requests_new_target(self):
+        counter = self.spare("OGN-080")
+        target_card = self.state["players"][1]["main"].pop()
+        self.state["cards"][target_card]["code"] = "OGN-005"
+        unit = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        self.state["chain"] = [{"effect": "spell", "owner": 1, "card": target_card,
+                                 "code": "OGN-005", "targets": [], "destination": None}]
+        self.state["chain_return"] = "main"
+        self.state.update(phase="chain", actor=0, turn_player=0, passes=0)
+        self.state["players"][0]["energy"] = 10
+        self.state["players"][0]["power"] = ["calm"] * 4
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_counter" and counter in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_chain_target"), random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.assertEqual(self.state["phase"], "decision")
+        self.assertTrue(self.state["decision"].get("counter_retarget"))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and unit["id"] in a.arguments),
+                         random.Random(9))
+        self.assertEqual(self.state["chain"][-1]["owner"], 0)
+        self.assertEqual(self.state["chain"][-1]["targets"], [unit["id"]])
+
     def test_twisted_fate_recycles_top_rune_and_targets_fury_damage(self):
         source = self.rules._new_unit(self.state, "OGN-200", 0, 0, exhausted=False)
         target = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)

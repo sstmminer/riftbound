@@ -2404,8 +2404,25 @@ class OriginsRules:
             return True
         if code == "OGN-080":
             target["owner"] = item["owner"]
+            # Mystic Reversal takes control of the spell, then puts it back on
+            # top of the Chain.  Its previous choices are cleared and the new
+            # controller must make any legal target choices before priority
+            # resumes.
+            state["chain"].remove(target)
+            target["targets"] = []
+            target.pop("destination", None)
+            state["chain"].append(target)
             if item.get("card") is not None:
                 state["players"][item["owner"]]["trash"].append(item["card"])
+            spec = self._counter_retarget_spec(state, target)
+            if spec is not None:
+                state["decision"] = {"kind": "target", "player": item["owner"],
+                                      "targets": spec["targets"], "item": target,
+                                      "counter_retarget": True, **spec}
+                state["decision"].pop("targets", None)
+                state["decision"]["targets"] = spec["targets"]
+                state["phase"], state["actor"], state["passes"] = "decision", item["owner"], 0
+                return False
             return True
         state["chain"].remove(target)
         card = target.get("card")
@@ -2414,6 +2431,38 @@ class OriginsRules:
             state["players"][owner]["trash"].append(card)
         state["players"][item["owner"]]["trash"].append(item["card"])
         return True
+
+    def _counter_retarget_spec(self, state, item):
+        """Return the immediate target window for a spell retaken by Mystic Reversal."""
+        code = item.get("code")
+        if code == "OGN-029":
+            return {"targets": [u["id"] for u in state["units"]],
+                    "multi": True, "min": 2, "max": 2, "allow_repeat": True}
+        if code == "OGN-248":
+            count = 2 if code == "OGN-029" else 6
+            return {"targets": [u["id"] for u in state["units"] if self._is_field(state, u["location"])],
+                    "multi": True, "min": count, "max": count, "allow_repeat": True}
+        if code in PAIR_TARGET_SPELLS | {"OGN-105", "OGN-206"}:
+            return {"targets": [u["id"] for u in state["units"]],
+                    "multi": True, "min": 2, "max": 2,
+                    "target_pairs": [[a["id"], b["id"]] for a in state["units"]
+                                     for b in state["units"] if a["id"] != b["id"]]
+                    if code in PAIR_TARGET_SPELLS else []}
+        if code in DESTINATION_TARGET_SPELLS:
+            candidates = [u["id"] for u in state["units"]]
+            return {"targets": candidates, "multi": False, "min": 1, "max": 1,
+                    "destination_select": True}
+        if code in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085"}:
+            candidates = [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
+        elif code == "OGN-033":
+            candidates = [u["id"] for u in self._units(state, 1 - item["owner"])]
+        elif code in {"OGN-046", "OGN-069", "OGN-102", "OGN-146", "OGN-154", "OGN-207"}:
+            candidates = [u["id"] for u in self._units(state, item["owner"])]
+        else:
+            candidates = [u["id"] for u in state["units"]]
+        if code in SIMPLE_TARGET_SPELLS | {"OGN-008", "OGN-057"}:
+            return {"targets": candidates, "multi": False, "min": 1, "max": 1}
+        return None
 
     def _effect_spell(self, state, item, rng):
         code, owner = item["code"], item["owner"]
@@ -3048,9 +3097,21 @@ class OriginsRules:
                 decision = state["decision"]
                 if args["target"] not in decision["targets"]:
                     raise ValueError("invalid target choice")
+                if decision.get("counter_retarget") and not decision.get("multi"):
+                    item = decision["item"]
+                    item["targets"] = [args["target"]]
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                    return
                 if decision.get("dragon_rage_second"):
                     item = decision["item"]
                     item["targets"] = [*item.get("targets", [])[:1], args["target"]]
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                    return
+                if decision.get("counter_retarget") and not decision.get("multi"):
+                    item = decision["item"]
+                    item["targets"] = [args["target"]]
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                     return
@@ -3327,6 +3388,12 @@ class OriginsRules:
                     total = sum(self.might(state, unit) for unit in units if unit is not None)
                     if total > int(decision["target_might_limit"]):
                         raise ValueError("selected targets exceed the total Might limit")
+                if decision.get("counter_retarget"):
+                    item = decision["item"]
+                    item["targets"] = selected
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                    return
                 if decision.get("play_hidden_targeted"):
                     info = decision["hidden"]
                     state["decision"] = None
@@ -3337,6 +3404,12 @@ class OriginsRules:
                     item["targets"] = selected
                     item["trigger_target_pending"] = False
                     item["trigger_target_finalized"] = True
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                    return
+                if decision.get("counter_retarget"):
+                    item = decision["item"]
+                    item["targets"] = selected
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                     return

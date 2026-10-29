@@ -228,9 +228,10 @@ class TargetWindowMigrationTests(unittest.TestCase):
         self.state["cards"][target_card]["code"] = "OGN-005"
         self.state["chain"] = [{"effect": "spell", "owner": 1, "card": target_card,
                                  "code": "OGN-005", "targets": [], "destination": None}]
+        self.state["chain_return"] = "main"
         self.state.update(phase="chain", actor=0, turn_player=0, passes=0)
         self.state["players"][0]["energy"] = 10
-        self.state["players"][0]["power"] = ["fury"] * 4
+        self.state["players"][0]["power"] = ["calm"] * 4
         action = next(a for a in self.rules.legal_actions(self.state)
                       if a.kind == "play_counter" and counter in a.arguments)
         self.rules.apply(self.state, action, random.Random(9))

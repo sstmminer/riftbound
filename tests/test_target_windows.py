@@ -222,6 +222,29 @@ class TargetWindowMigrationTests(unittest.TestCase):
         self.rules.apply(self.state, accept, random.Random(9))
         self.assertTrue(any(u.get("card") == card for u in self.state["units"]))
 
+    def test_defy_clicks_a_spell_on_the_live_chain(self):
+        counter = self.spare("OGN-045")
+        target_card = self.state["players"][1]["main"].pop()
+        self.state["cards"][target_card]["code"] = "OGN-005"
+        self.state["chain"] = [{"effect": "spell", "owner": 1, "card": target_card,
+                                 "code": "OGN-005", "targets": [], "destination": None}]
+        self.state.update(phase="chain", actor=0, turn_player=0, passes=0)
+        self.state["players"][0]["energy"] = 10
+        self.state["players"][0]["power"] = ["fury"] * 4
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_counter" and counter in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.assertEqual(self.state["decision"]["kind"], "chain_target")
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_chain_target" and "chain:0" in a.arguments),
+                         random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.assertIn(target_card, self.state["players"][1]["trash"])
+        self.assertIn(counter, self.state["players"][0]["trash"])
+
     def test_twisted_fate_recycles_top_rune_and_targets_fury_damage(self):
         source = self.rules._new_unit(self.state, "OGN-200", 0, 0, exhausted=False)
         target = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)

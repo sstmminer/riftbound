@@ -500,7 +500,7 @@ class OriginsGUI(tk.Tk):
                 return
             if zone == "hand" and self.env.current_player == 0:
                 direct = next((a for a in self.env.legal_actions()
-                               if a.kind in {"play_spell_targeted", "play_field_targeted", "play_unit_targeted"}
+                               if a.kind in {"play_spell_targeted", "play_field_targeted", "play_counter", "play_unit_targeted"}
                                and json.loads(a.arguments).get("card") == uid), None)
                 if direct is not None:
                     self.perform(direct)
@@ -713,6 +713,26 @@ class OriginsGUI(tk.Tk):
             return True
         self.perform(action)
         return True
+
+    def _decision_chain_click(self, chain_target):
+        """Choose a spell/ability currently visible on the live Chain."""
+        obs = self.env.observe(0)
+        decision = obs.get("decision")
+        if (self.env.current_player != 0 or obs["phase"] != "decision"
+                or not decision or decision.get("kind") != "chain_target"):
+            return False
+        action = next((action for action in self.env.legal_actions()
+                       if action.kind == "choose_chain_target"
+                       and json.loads(action.arguments).get("target") == chain_target), None)
+        if action is None:
+            self.set_notice("这张牌不是当前可无效化的结算链目标。")
+            return True
+        self.perform(action)
+        return True
+
+    def _decision_chain_event(self, event, chain_target):
+        self._decision_chain_click(chain_target)
+        return "break"
 
     def commit_decision_targets(self):
         """Commit a multi-target choice after the player explicitly confirms."""
@@ -929,6 +949,7 @@ class OriginsGUI(tk.Tk):
             "optional_effect": "可选效果 / Optional effect",
             "order_optional": "选择可选效果顺序 / Order optional effects",
             "play_spell_targeted": "施放法术并选择目标 / Cast and choose targets",
+            "play_counter": "施放反制法术并选择结算链目标 / Cast counter and choose chain target",
             "play_field_targeted": "施放法术并选择战场 / Cast and choose battlefield",
             "play_unit_targeted": "打出单位并选择技能目标 / Play and choose ability target",
             "gear_targeted": "装备能力并选择目标 / Gear ability and choose target",
@@ -936,6 +957,7 @@ class OriginsGUI(tk.Tk):
             "legend_targeted": "传奇能力并选择目标 / Legend ability and choose target",
             "legend_move_targeted": "传奇能力并选择移动目标 / Legend move and choose target",
             "choose_target": "选择目标 / Choose target",
+            "choose_chain_target": "选择结算链目标 / Choose chain target",
             "choose_field": "选择战场 / Choose battlefield",
             "confirm_targets": "确认目标 / Confirm targets",
             "cancel_play": "取消打出 / Cancel play",
@@ -1084,28 +1106,43 @@ class OriginsGUI(tk.Tk):
         body = self._clear("chain")
         body.configure(width=205, height=390)
         body.pack_propagate(False)
-        items = list(reversed(obs.get("chain") or []))
-        items += [{**item, "pending": True} for item in (obs.get("pending") or [])]
+        chain = list(obs.get("chain") or [])
+        items = [(f"chain:{chain_index}", item, False)
+                 for chain_index, item in reversed(list(enumerate(chain)))]
+        items += [(None, {**item, "pending": True}, True)
+                  for item in (obs.get("pending") or [])]
         if not items:
             tk.Label(body, text="当前没有待结算项目", bg="#1b2a3e", fg="#9fb4ce",
                      justify="left", wraplength=180).pack(pady=10)
             return
-        for index, item in enumerate(items):
+        decision = obs.get("decision") or {}
+        chain_targets = set(decision.get("targets", [])) if decision.get("kind") == "chain_target" else set()
+        for index, (chain_target, item, pending) in enumerate(items):
             effect = item.get("effect")
             code = item.get("code") if effect == "spell" else self._chain_source_code(obs, item)
             if not code:
                 code = BACK_CODE
-            card = tk.Frame(body, bg="#31445f", padx=2, pady=2)
+            selectable = chain_target in chain_targets
+            card = tk.Frame(body, bg="#f4c542" if selectable else "#31445f", padx=2, pady=2)
             x = 4 + (index % 2) * 98
             y = 4 + (index // 2) * 88
             card.place(x=x, y=y, width=92, height=84)
             self._image_card(card, code, factor=7, compact_label="", click=False,
                              pack=True, show_label=False)
             label = "法术" if effect == "spell" else "技能虚影"
-            if item.get("pending"):
+            if pending:
                 label += " · 待排序"
+            if chain_target is not None:
+                label = f"#{len(chain) - 1 - int(chain_target.split(':', 1)[1]) + 1} · " + label
             tk.Label(card, text=label, bg="#31445f", fg="#dbe8f7",
                      font=("TkDefaultFont", 7, "bold")).place(relx=.5, rely=.9, anchor="center")
+            if selectable:
+                def bind_chain_click(widget, target=chain_target):
+                    widget.bind("<Button-1>", lambda event, t=target:
+                                self._decision_chain_event(event, t), add="+")
+                    for child in widget.winfo_children():
+                        bind_chain_click(child, target)
+                bind_chain_click(card)
 
     def _state_summary(self, obs):
         phases = {
@@ -1421,7 +1458,7 @@ class OriginsGUI(tk.Tk):
                                "legend_recruit", "legend_channel", "unit_buff", "legend_buff",
                                "legend_move", "legend_ganking",
                                "legend_targeted", "legend_move_targeted", "commit_move", "cancel_move", "order_triggers",
-                               "play_spell_targeted", "play_field_targeted", "play_unit_targeted"}:
+                               "play_spell_targeted", "play_field_targeted", "play_counter", "play_unit_targeted"}:
                 ttk.Button(self.actions, text=self.action_text(action),
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
         prompt = "左键选择/多选单位，再拖到基地/战场移动；右键查看其他操作"
@@ -1506,6 +1543,8 @@ class OriginsGUI(tk.Tk):
             prompt = "选择技能目标：点击场上或基地中的合法单位"
         elif kind == "field":
             prompt = "选择战场：点击战场区域"
+        elif kind == "chain_target":
+            prompt = "选择要无效化的结算链项目：点击右侧结算链中的卡牌"
         elif decision.get("accelerate"):
             domains = "/".join(decision["accelerate"].get("domains", []))
             prompt = (f"加速：可先横置/回收符文支付 1 法力 + {domains} 符能，"

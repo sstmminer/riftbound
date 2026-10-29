@@ -126,6 +126,7 @@ class OriginsRules:
         registry.register("adaptatron_conquer", self._effect_adaptatron_conquer)
         registry.register("return_unit", self._effect_return_unit)
         registry.register("spell", self._effect_spell)
+        registry.register("counter", self._effect_counter)
         return registry
 
     def initial_state(self, rng):
@@ -1152,6 +1153,22 @@ class OriginsRules:
                 continue
             data = self.cards[code]
             targeted_only = code in {"OGN-029", "OGN-104", "OGN-183", "OGN-248"}
+            if code in {"OGN-045", "OGN-064", "OGN-080"}:
+                if state.get("chain"):
+                    counter_targets = []
+                    for index, target in enumerate(state["chain"]):
+                        if target.get("effect") != "spell":
+                            continue
+                        target_data = self.cards.get(target.get("code"), {})
+                        if code == "OGN-045" and (target_data.get("energy", 99) > 4
+                                                    or target_data.get("power_cost", 99) > 1):
+                            continue
+                        counter_targets.append(f"chain:{index}")
+                    if counter_targets:
+                        for payment in self._payments(state, player, data["energy"], data["domains"], data["power_cost"]):
+                            result.append(Action.make("play_counter", card=card, payment=payment,
+                                                      targets=counter_targets))
+                continue
             if code in FIELD_TARGET_SPELLS or code == "OGN-268":
                 energy = max(0, data["energy"] - row.get("spell_discount", 0))
                 for payment in self._payments(state, player, energy, data["domains"], data["power_cost"], spell=True):
@@ -1554,6 +1571,9 @@ class OriginsRules:
             if decision["kind"] == "field":
                 return tuple(Action.make("choose_field", field=field)
                              for field in decision.get("fields", []))
+            if decision["kind"] == "chain_target":
+                return tuple(Action.make("choose_chain_target", target=target)
+                             for target in decision.get("targets", []))
             if decision["kind"] == "target":
                 if decision.get("multi"):
                     selected = list(decision.get("selected", []))
@@ -2360,6 +2380,41 @@ class OriginsRules:
         state["players"][owner]["trash"].append(item["card"])
         return True
 
+    def _effect_counter(self, state, item, rng):
+        target_id = item.get("counter_target", "")
+        try:
+            index = int(str(target_id).split(":", 1)[1])
+        except (ValueError, IndexError):
+            if item.get("card") is not None:
+                state["players"][item["owner"]]["trash"].append(item["card"])
+            return True
+        if index < 0 or index >= len(state.get("chain", [])):
+            if item.get("card") is not None:
+                state["players"][item["owner"]]["trash"].append(item["card"])
+            return True
+        target = state["chain"][index]
+        if target is item or target.get("effect") != "spell":
+            if item.get("card") is not None:
+                state["players"][item["owner"]]["trash"].append(item["card"])
+            return True
+        code = item.get("code")
+        data = self.cards.get(target.get("code"), {})
+        if code == "OGN-045" and (data.get("energy", 99) > 4 or data.get("power_cost", 99) > 1):
+            state["players"][item["owner"]]["trash"].append(item["card"])
+            return True
+        if code == "OGN-080":
+            target["owner"] = item["owner"]
+            if item.get("card") is not None:
+                state["players"][item["owner"]]["trash"].append(item["card"])
+            return True
+        state["chain"].remove(target)
+        card = target.get("card")
+        owner = target.get("owner")
+        if card is not None and owner in (0, 1):
+            state["players"][owner]["trash"].append(card)
+        state["players"][item["owner"]]["trash"].append(item["card"])
+        return True
+
     def _effect_spell(self, state, item, rng):
         code, owner = item["code"], item["owner"]
         returned = []
@@ -2804,6 +2859,16 @@ class OriginsRules:
                                       "item": item, "x_choice": True}
                 state["phase"], state["actor"], state["passes"] = "decision", player, 0
                 return
+            state["decision"] = None
+            state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+            return
+        if kind == "choose_chain_target":
+            decision = state.get("decision")
+            target = args.get("target")
+            if not decision or decision.get("kind") != "chain_target" or target not in decision.get("targets", []):
+                raise ValueError("chain target selection is unavailable")
+            item = decision["item"]
+            item["counter_target"] = target
             state["decision"] = None
             state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
             return
@@ -3710,6 +3775,21 @@ class OriginsRules:
             row["legend_exhausted"] = True
             self._resolve_move(state, [target], destination, player, rng, from_effect=True)
             state["passes"] = 0
+        elif kind == "play_counter":
+            card = args["card"]
+            code = state["cards"][card]["code"]
+            if code not in {"OGN-045", "OGN-064", "OGN-080"} or card not in row["hand"]:
+                raise ValueError("counter spell is unavailable")
+            data = self.cards[code]
+            self._pay(row, data["energy"], args.get("payment", []))
+            row["hand"].remove(card)
+            row["played"] += 1
+            item = {"effect": "counter", "owner": player, "card": card,
+                    "code": code, "targets": [], "counter_targets": list(args.get("targets", []))}
+            self._enter_chain(state, [item])
+            state["decision"] = {"kind": "chain_target", "player": player,
+                                  "targets": list(args.get("targets", [])), "item": item}
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
         elif kind == "play_field_targeted":
             card = args["card"]
             code = state["cards"][card]["code"]

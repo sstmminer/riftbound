@@ -241,8 +241,15 @@ class OriginsGUI(tk.Tk):
         if uid is not None and click:
             decision = self.env.observe(0).get("decision") if self.env.current_player == 0 else None
             if decision and self.env.observe(0)["phase"] == "decision":
-                button.bind("<Button-1>", lambda _event, u=uid: self._decision_target_click(u))
-                wrapper.bind("<Button-1>", lambda _event, u=uid: self._decision_target_click(u))
+                # Stop the image-button event before it can bubble into the
+                # wrapper handler.  Both bindings are kept so clicking the
+                # card label or its image uses the same target path, but one
+                # physical click is always processed exactly once.
+                def select_decision_target(event, u=uid):
+                    self._decision_target_click(u)
+                    return "break"
+                button.bind("<Button-1>", select_decision_target)
+                wrapper.bind("<Button-1>", select_decision_target)
             elif (zone == "hand" and self.env.current_player == 0
                   and self.env.observe(0)["phase"] == "mulligan"):
                 # Use the button command for the opening hand. Rebuilding the

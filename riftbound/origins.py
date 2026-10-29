@@ -526,7 +526,26 @@ class OriginsRules:
         if reveal is None:
             raise ValueError("no reveal window is active")
         effect = reveal.get("effect")
-        if effect == "sabotage_recycle":
+        if effect == "reinforce":
+            owner = reveal["owner"]
+            row = state["players"][owner]
+            selected_set = set(selected)
+            remaining = [uid for uid in reveal["cards"] if uid not in selected_set]
+            self._recycle_cards_to_main(state, owner, remaining, source="main", rng=rng)
+            if selected:
+                card = selected[0]
+                if card in row["main"]:
+                    row["main"].remove(card)
+                row["banishment"].append(card)
+                if self.cards[state["cards"][card]["code"]]["type"] == "unit":
+                    self._new_unit(state, state["cards"][card]["code"], owner,
+                                   f"base:{owner}", card=card, exhausted=True)
+                    row["played"] += 1
+            item = reveal.get("item")
+            if item is not None:
+                item["reveal_done"] = True
+                state["chain"].append(item)
+        elif effect == "sabotage_recycle":
             self._recycle_cards_to_main(state, reveal["owner"], selected,
                                         source="hand", rng=rng)
             item = reveal.get("item")
@@ -1117,7 +1136,7 @@ class OriginsRules:
                     result.append(Action.make("play_field_targeted", card=card,
                                               fields=list(range(len(state["fields"]))),
                                               x_choice=code == "OGN-268", payment=payment))
-            if code in {"OGN-022", "OGN-047", "OGN-083", "OGN-114", "OGN-122", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-071", "OGN-156", "OGN-170", "OGN-179", "OGN-183", "OGN-187", "OGN-237", "OGN-198", "OGN-248", "OGN-264", "OGN-268", "OGN-201", "OGN-221", "OGN-224", "OGN-233"}:
+            if code in {"OGN-022", "OGN-047", "OGN-062", "OGN-083", "OGN-114", "OGN-122", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-071", "OGN-156", "OGN-170", "OGN-179", "OGN-183", "OGN-187", "OGN-237", "OGN-198", "OGN-248", "OGN-264", "OGN-268", "OGN-201", "OGN-221", "OGN-224", "OGN-233"}:
                 targets = [[]]
             elif code == "OGN-008":
                 targets = [[u["id"]] for u in state["units"] if self._is_field(state, u["location"])]
@@ -2324,6 +2343,14 @@ class OriginsRules:
         returned = []
         killed_by_hidden_blade = None
         state.setdefault("dreaming_tree_used", [False] * len(state["fields"]))
+        if code == "OGN-062" and not item.get("reveal_done"):
+            top = list(state["players"][owner]["main"][:5])
+            unit_choices = [uid for uid in top
+                            if self.cards[state["cards"][uid]["code"]]["type"] == "unit"]
+            self._open_reveal(state, owner=owner, cards=top, mode="select",
+                              chooser=owner, minimum=0, maximum=1,
+                              effect="reinforce", item=item, choices=unit_choices, rng=rng)
+            return False
         if code == "OGN-071" and not item.get("choice_done"):
             state["chain"].append(item)
             state["decision"] = {"kind": "choice", "player": 1 - owner,

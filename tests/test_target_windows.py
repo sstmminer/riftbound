@@ -191,6 +191,26 @@ class TargetWindowMigrationTests(unittest.TestCase):
                                           if a.kind == "end_turn"), random.Random(9))
         self.assertEqual(self.state["turn_player"], 0)
 
+    def test_reinforce_reveals_top_five_and_plays_selected_unit(self):
+        card = self.spare("OGN-062")
+        self.state["players"][0]["power"] = ["calm"] * 2
+        unit_card = self.state["players"][0]["main"][0]
+        self.state["cards"][unit_card]["code"] = "OGN-003"
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.assertEqual(self.state["phase"], "reveal")
+        choose = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "choose_revealed" and unit_card in a.arguments)
+        self.rules.apply(self.state, choose, random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "confirm_revealed"), random.Random(9))
+        self.assertTrue(any(u.get("card") == unit_card for u in self.state["units"]))
+
     def test_twisted_fate_recycles_top_rune_and_targets_fury_damage(self):
         source = self.rules._new_unit(self.state, "OGN-200", 0, 0, exhausted=False)
         target = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)

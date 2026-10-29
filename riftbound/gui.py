@@ -959,6 +959,9 @@ class OriginsGUI(tk.Tk):
             "choose_target": "选择目标 / Choose target",
             "choose_chain_target": "选择结算链目标 / Choose chain target",
             "choose_field": "选择战场 / Choose battlefield",
+            "choose_card": "选择手牌 / Choose card",
+            "choose_divine": "审判：选择保留牌 / Divine Judgment: keep card",
+            "confirm_divine": "确认审判选择 / Confirm Divine Judgment",
             "confirm_targets": "确认目标 / Confirm targets",
             "cancel_play": "取消打出 / Cancel play",
             "predict": "洞察 / Vision：" + ("回收牌顶" if args.get("recycle") else "保留牌顶"),
@@ -1545,6 +1548,10 @@ class OriginsGUI(tk.Tk):
             prompt = "选择战场：点击战场区域"
         elif kind == "chain_target":
             prompt = "选择要无效化的结算链项目：点击右侧结算链中的卡牌"
+        elif kind == "divine":
+            prompt = "Divine Judgment：每个区域最多保留两张；点击卡牌切换保留状态"
+        elif kind == "hand_card":
+            prompt = "选择要从手牌免费打出的 Hidden 牌"
         elif decision.get("accelerate"):
             domains = "/".join(decision["accelerate"].get("domains", []))
             prompt = (f"加速：可先横置/回收符文支付 1 法力 + {domains} 符能，"

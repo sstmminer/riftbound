@@ -72,6 +72,62 @@ class GearBatchTests(unittest.TestCase):
         self.assertFalse(self.state["players"][0]["gear"])
         self.assertIn(gear, self.state["players"][0]["trash"])
 
+    def test_unlicensed_armory_arms_optional_death_replacement(self):
+        gear_card = self.play("OGN-023")
+        target = self.rules._new_unit(self.state, "OGN-219", 0, "base:0", card=None, exhausted=False)
+        self.state["phase"], self.state["actor"] = "main", 0
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "gear_targeted" and gear_card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(4))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and target["id"] in a.arguments), random.Random(4))
+        self.assertEqual(target["death_replacement"]["kind"], "armory")
+        target["damage"] = self.rules.might(self.state, target)
+        self.rules._cleanup(self.state, random.Random(4))
+        self.assertEqual(self.state["phase"], "optional")
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "optional_effect" and '"accept":true' in a.arguments), random.Random(4))
+        self.assertIn(target, self.state["units"])
+        self.assertEqual(target["location"], "base:0")
+        self.assertTrue(target["exhausted"])
+        self.assertEqual(target["damage"], 0)
+
+    def test_zhonyas_hourglass_replaces_lethal_unit(self):
+        self.play("OGN-077")
+        target = self.rules._new_unit(self.state, "OGN-219", 0, "base:0", card=None, exhausted=False)
+        target["damage"] = self.rules.might(self.state, target)
+        self.rules._cleanup(self.state, random.Random(4))
+        self.assertIn(target, self.state["units"])
+        self.assertEqual(target["location"], "base:0")
+        self.assertTrue(target["exhausted"])
+        self.assertFalse(self.state["players"][0]["gear"])
+
+    def test_baited_hook_opens_top_five_selection(self):
+        gear_card = self.play("OGN-242")
+        target = self.rules._new_unit(self.state, "OGN-219", 0, "base:0", card=None, exhausted=False)
+        self.state["phase"], self.state["actor"] = "main", 0
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "gear_targeted" and gear_card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(4))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and target["id"] in a.arguments), random.Random(4))
+        self.assertEqual(self.state["phase"], "reveal")
+        reveal = self.state["reveal"]
+        self.assertLessEqual(len(reveal["cards"]), 5)
+        self.assertEqual(reveal["effect"], "baited_hook")
+
+    def test_dazzling_aurora_plays_first_topdeck_unit(self):
+        self.play("OGN-160")
+        row = self.state["players"][0]
+        first, second = row["main"][:2]
+        self.state["cards"][first]["code"] = "OGN-024"
+        self.state["cards"][second]["code"] = "OGN-219"
+        before = len(self.state["units"])
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "end_turn"), random.Random(4))
+        self.assertEqual(len(self.state["units"]), before + 1)
+        self.assertEqual(self.state["units"][-1]["card"], second)
+
 
 if __name__ == "__main__":
     unittest.main()

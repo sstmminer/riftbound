@@ -66,8 +66,8 @@ class OriginsTests(unittest.TestCase):
     def test_starter_is_constructed_legal_and_unknown_effect_rejected(self):
         deck = starter_deck()
         self.assertEqual(len(deck["main"]), 40)
-        deck["main"][0] = "OGN-041"
-        with self.assertRaises(RulesUnavailable):
+        deck["main"][0] = "OGN-999"
+        with self.assertRaises(ValueError):
             OriginsRules([deck, starter_deck()])
 
     def test_daughter_cluster_deck_is_constructed_legal(self):

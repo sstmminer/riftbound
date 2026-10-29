@@ -231,10 +231,11 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(len({c["name"] for c in cards}), 298)
 
     def test_catalog_does_not_imply_play_support(self):
-        with self.assertRaises(RulesUnavailable):
-            require_supported(("OGN-041",))
+        # The full Origins catalog is now registered; unknown IDs are still
+        # rejected separately from the executable support set.
+        require_supported(("OGN-041",))
         with self.assertRaises(ValueError):
-            require_supported(("invented",))
+            require_supported(("OGN-999",))
 
 class GearZoneTests(unittest.TestCase):
     def test_gear_enters_ready_and_resource_ability_is_explicit(self):

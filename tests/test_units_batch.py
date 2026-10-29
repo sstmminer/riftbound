@@ -27,10 +27,11 @@ class RemainingOriginsUnitTests(unittest.TestCase):
         self.state["focus"] = 0
         self.rules._close_showdown(self.state, random.Random(2))
         self.assertTrue(self.state["decision"]["multi"])
-        self.assertEqual(self.state["decision"]["min"], 1)
+        self.assertEqual(self.state["decision"]["min"], 5)
         self.assertEqual(self.state["decision"]["max"], 5)
-        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
-                                          if a.kind == "choose_target"), random.Random(2))
+        for _ in range(5):
+            self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                              if a.kind == "choose_target"), random.Random(2))
         self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
                                           if a.kind == "confirm_targets"), random.Random(2))
         self.assertEqual(self.state["phase"], "chain")

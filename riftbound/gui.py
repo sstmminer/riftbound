@@ -215,7 +215,7 @@ class OriginsGUI(tk.Tk):
 
     def _image_card(self, parent, code, *, uid=None, zone=None, owner=None, factor=3,
                     private=False, compact_label=None, click=True, exhausted=False,
-                    selected=False, pack=True, show_label=True):
+                    selected=False, pack=True, show_label=True, field=None):
         if uid is not None and uid in self.selected_decision_targets:
             selected = True
         wrapper = tk.Frame(parent, bg="#f4c542" if selected else "#24364d",
@@ -238,9 +238,15 @@ class OriginsGUI(tk.Tk):
                      font=("TkDefaultFont", 8), wraplength=110).pack(fill="x")
         button.bind("<Enter>", lambda _event, c=code: self._arm_preview(button, c))
         button.bind("<Leave>", lambda _event: self._cancel_preview())
-        if uid is not None and click:
+        if click:
             decision = self.env.observe(0).get("decision") if self.env.current_player == 0 else None
-            if decision and self.env.observe(0)["phase"] == "decision":
+            if decision and decision.get("kind") == "field" and field is not None:
+                def select_decision_field(event, index=field):
+                    self._decision_field_click(index)
+                    return "break"
+                button.bind("<Button-1>", select_decision_field)
+                wrapper.bind("<Button-1>", select_decision_field)
+            elif uid is not None and decision and self.env.observe(0)["phase"] == "decision":
                 # Stop the image-button event before it can bubble into the
                 # wrapper handler.  Both bindings are kept so clicking the
                 # card label or its image uses the same target path, but one
@@ -250,14 +256,14 @@ class OriginsGUI(tk.Tk):
                     return "break"
                 button.bind("<Button-1>", select_decision_target)
                 wrapper.bind("<Button-1>", select_decision_target)
-            elif (zone == "hand" and self.env.current_player == 0
+            elif uid is not None and (zone == "hand" and self.env.current_player == 0
                   and self.env.observe(0)["phase"] == "mulligan"):
                 # Use the button command for the opening hand. Rebuilding the
                 # fan during a ButtonPress binding can destroy the widget
                 # before Tk delivers ButtonRelease, which made the first
                 # launch appear unresponsive until Restart.
                 button.configure(command=lambda u=uid: self.mulligan_click(u))
-            else:
+            elif uid is not None:
                 if zone == "gear":
                     button.bind("<Button-1>", lambda event, u=uid: self.card_menu(event, u))
                 else:
@@ -494,7 +500,7 @@ class OriginsGUI(tk.Tk):
                 return
             if zone == "hand" and self.env.current_player == 0:
                 direct = next((a for a in self.env.legal_actions()
-                               if a.kind in {"play_spell_targeted", "play_unit_targeted"}
+                               if a.kind in {"play_spell_targeted", "play_field_targeted", "play_unit_targeted"}
                                and json.loads(a.arguments).get("card") == uid), None)
                 if direct is not None:
                     self.perform(direct)
@@ -640,8 +646,17 @@ class OriginsGUI(tk.Tk):
         actions = []
         for action in self.env.legal_actions():
             args = json.loads(action.arguments)
-            if uid in {args.get("card"), args.get("unit"), args.get("target")}:
+            if uid in {args.get("card"), args.get("unit"), args.get("target"), args.get("gear")}:
                 actions.append(action)
+        targeted = [action for action in actions if action.kind in {
+            "play_spell_targeted", "play_field_targeted", "gear_targeted",
+            "unit_ability_targeted", "legend_targeted"}]
+        if targeted:
+            legacy = {
+                "play_spell", "gear_target", "unit_caitlyn", "unit_malzahar",
+                "legend_buff", "legend_ganking", "legend_teemo",
+            }
+            actions = [action for action in actions if action.kind not in legacy]
         if not actions:
             menu.add_command(label="当前没有合法操作", state="disabled")
         else:
@@ -681,6 +696,22 @@ class OriginsGUI(tk.Tk):
             return True
         self.selected_decision_targets.clear()
         self.perform(matching[0])
+        return True
+
+    def _decision_field_click(self, field):
+        """Handle a battlefield click for effects that choose a battlefield."""
+        obs = self.env.observe(0)
+        decision = obs.get("decision")
+        if (self.env.current_player != 0 or obs["phase"] != "decision"
+                or not decision or decision.get("kind") != "field"):
+            return False
+        action = next((action for action in self.env.legal_actions()
+                       if action.kind == "choose_field"
+                       and json.loads(action.arguments).get("field") == field), None)
+        if action is None:
+            self.set_notice("这个战场不是当前效果的合法目标。")
+            return True
+        self.perform(action)
         return True
 
     def commit_decision_targets(self):
@@ -898,8 +929,13 @@ class OriginsGUI(tk.Tk):
             "optional_effect": "可选效果 / Optional effect",
             "order_optional": "选择可选效果顺序 / Order optional effects",
             "play_spell_targeted": "施放法术并选择目标 / Cast and choose targets",
+            "play_field_targeted": "施放法术并选择战场 / Cast and choose battlefield",
             "play_unit_targeted": "打出单位并选择技能目标 / Play and choose ability target",
+            "gear_targeted": "装备能力并选择目标 / Gear ability and choose target",
+            "unit_ability_targeted": "单位技能并选择目标 / Unit ability and choose target",
+            "legend_targeted": "传奇能力并选择目标 / Legend ability and choose target",
             "choose_target": "选择目标 / Choose target",
+            "choose_field": "选择战场 / Choose battlefield",
             "confirm_targets": "确认目标 / Confirm targets",
             "cancel_play": "取消打出 / Cancel play",
             "predict": "洞察 / Vision：" + ("回收牌顶" if args.get("recycle") else "保留牌顶"),
@@ -912,6 +948,11 @@ class OriginsGUI(tk.Tk):
                     "accelerate": "加速：支付额外费用并活跃 / Accelerate: pay and enter ready",
                     "skip": "跳过加速：横置入场 / Skip Accelerate: enter exhausted"}.get(
                 args.get("option"), text)
+            option = args.get("option")
+            if isinstance(option, int):
+                text = f"选择战场 {option + 1} / Choose battlefield {option + 1}"
+            elif isinstance(option, str) and option.startswith("base:"):
+                text = f"移动到基地 {option.split(':', 1)[1]} / Move to base"
         if action.kind in {"exhaust_rune", "recycle_rune"}:
             text += " · " + self._rune_name(args.get("rune"))
         if action.kind == "play_unit":
@@ -1224,12 +1265,14 @@ class OriginsGUI(tk.Tk):
                                   bg="#263a54", fg="#e9f1fc", padx=4, pady=3)
             frame.grid(row=0, column=index, sticky="nsew", padx=3, pady=2)
             frame._field_index = index
+            if obs["phase"] == "decision" and obs["to_act"] == 0 and obs.get("decision", {}).get("kind") == "field":
+                frame.bind("<Button-1>", lambda _event, i=index: self._decision_field_click(i))
             field_card_zone = tk.Frame(frame, bg="#263a54", width=82)
             field_card_zone.pack(side="left", fill="y", padx=(0, 4))
             field_card_center = tk.Frame(field_card_zone, bg="#263a54")
             field_card_center.pack(expand=True)
             self._image_card(field_card_center, field["code"], factor=4,
-                             compact_label="战场卡", click=False)
+                             compact_label="战场卡", click=True, field=index)
             units = tk.Frame(frame, bg="#263a54")
             units.pack(side="left", fill="both", expand=True)
             units.grid_rowconfigure(0, weight=1)
@@ -1247,14 +1290,15 @@ class OriginsGUI(tk.Tk):
                 self._image_card(row, unit["code"], uid=unit["id"], owner=unit["owner"],
                                  zone="field", factor=5,
                                  compact_label=self._unit_status_label(unit, pending=pending),
-                                 exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
+                                 exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units,
+                                 field=index)
             for owner, hidden_row in enumerate(obs["players"]):
                 hidden_cards = [h for h in hidden_row.get("hidden", []) if h["field"] == index]
                 target_row = player_row if owner == 0 else opponent_row
                 for hidden in hidden_cards:
                     self._image_card(target_row, hidden["code"], uid=hidden["id"], owner=owner,
                                      zone="hidden", factor=5, compact_label="Hidden · 背面",
-                                     click=True)
+                                     click=True, field=index)
     def render_player(self, obs):
         body = self._clear("player")
         body.grid_rowconfigure(0, weight=0, minsize=165)
@@ -1348,16 +1392,33 @@ class OriginsGUI(tk.Tk):
             if self._opponent_job is None:
                 self._opponent_job = self.after(300, self.opponent_step)
             return
+        targeted_kinds = {"gear_targeted", "unit_ability_targeted", "legend_targeted"}
+        targeted_present = {
+            (action.kind, json.loads(action.arguments).get("unit"),
+             json.loads(action.arguments).get("gear"),
+             json.loads(action.arguments).get("ability"))
+            for action in legal if action.kind in targeted_kinds
+        }
         mulligans = [a for a in legal if a.kind == "mulligan"]
         if mulligans:
             ttk.Button(self.actions, text=f"调度 / Mulligan ({len(self.selected_mulligan)})",
                        command=self.commit_mulligan).pack(side="left", padx=2)
         for action in legal:
+            args = json.loads(action.arguments)
+            if action.kind in {"unit_caitlyn", "unit_malzahar"}:
+                marker = ("unit_ability_targeted", args.get("unit"), None,
+                          "caitlyn" if action.kind == "unit_caitlyn" else "malzahar")
+                if marker in targeted_present:
+                    continue
+            if action.kind in {"legend_buff", "legend_ganking", "legend_teemo"}:
+                ability = {"legend_buff": "buff", "legend_ganking": "ganking", "legend_teemo": "teemo"}[action.kind]
+                if any(entry[0] == "legend_targeted" and entry[3] == ability for entry in targeted_present):
+                    continue
             if action.kind in {"end_turn", "pass", "legend_energy", "legend_spell_power",
                                "legend_recruit", "legend_channel", "unit_buff", "legend_buff",
                                "legend_move", "legend_ganking",
-                               "commit_move", "cancel_move", "order_triggers",
-                               "play_spell_targeted", "play_unit_targeted"}:
+                               "legend_targeted", "commit_move", "cancel_move", "order_triggers",
+                               "play_spell_targeted", "play_field_targeted", "play_unit_targeted"}:
                 ttk.Button(self.actions, text=self.action_text(action),
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
         prompt = "左键选择/多选单位，再拖到基地/战场移动；右键查看其他操作"
@@ -1440,6 +1501,8 @@ class OriginsGUI(tk.Tk):
             prompt = "洞察：选择保留或回收牌库顶牌"
         elif kind == "unit_target":
             prompt = "选择技能目标：点击场上或基地中的合法单位"
+        elif kind == "field":
+            prompt = "选择战场：点击战场区域"
         elif decision.get("accelerate"):
             domains = "/".join(decision["accelerate"].get("domains", []))
             prompt = (f"加速：可先横置/回收符文支付 1 法力 + {domains} 符能，"

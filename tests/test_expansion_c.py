@@ -157,6 +157,23 @@ class ExpansionBatchCTests(unittest.TestCase):
         self.rules.apply(self.state, action, random.Random(9))
         self.assertNotIn(victim, self.state["units"])
 
+    def test_targeted_gear_ability_uses_card_click_window(self):
+        gear_card = self.spare("OGN-090")
+        self.state["players"][0]["hand"].remove(gear_card)
+        gear = {"id": gear_card, "card": gear_card, "code": "OGN-090",
+                "owner": 0, "location": "base:0", "exhausted": False}
+        self.state["players"][0]["gear"].append(gear)
+        target = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "gear_targeted" and gear_card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.assertEqual(self.state["phase"], "decision")
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and target["id"] in a.arguments),
+                         random.Random(9))
+        self.assertEqual(target["temporary"], -1)
+        self.assertTrue(gear["exhausted"])
+
     def test_adapatron_conquer_can_kill_gear_for_buff(self):
         source = self.rules._new_unit(self.state, "OGN-056", 0, 0, exhausted=False)
         gear_card = self.state["players"][0]["main"].pop()

@@ -46,7 +46,10 @@ class OriginsGUI(tk.Tk):
         self._mulligan_press_uid = None
         self.selected_units = set()
         self.selected_mulligan = set()
-        self.selected_decision_targets = set()
+        # Ordered target clicks are kept locally until the player confirms.
+        # A list is required for effects such as Falling Star and Icathian
+        # Rain where the same unit may be chosen more than once.
+        self.selected_decision_targets = []
         self.labels = {}
         self._photo_cache = {}
         self._high_photo_cache = {}
@@ -54,6 +57,7 @@ class OriginsGUI(tk.Tk):
         self._preview = None
         self._decision_signature = None
         self._reveal_window = None
+        self._target_window = None
         self._opponent_job = None
         self._winner_announced = False
         self._build()
@@ -412,6 +416,7 @@ class OriginsGUI(tk.Tk):
         self.selected_units.clear()
         self.selected_mulligan.clear()
         self.selected_decision_targets.clear()
+        self._close_target_window()
         self._decision_signature = None
         self._winner_announced = False
         self._log_seq = 0
@@ -651,14 +656,20 @@ class OriginsGUI(tk.Tk):
             self.set_notice("这张牌不是当前效果的合法目标。")
             return True
         if decision.get("multi"):
-            if uid in self.selected_decision_targets:
+            maximum = decision.get("max", decision.get("count", 1))
+            if decision.get("allow_repeat"):
+                if len(self.selected_decision_targets) >= maximum:
+                    self.set_notice(f"最多选择 {maximum} 次目标。")
+                    return True
+                # Keep every click, including repeated clicks on one unit.
+                self.selected_decision_targets.append(uid)
+            elif uid in self.selected_decision_targets:
                 self.selected_decision_targets.remove(uid)
             else:
-                maximum = decision.get("max", decision.get("count", 1))
                 if len(self.selected_decision_targets) >= maximum:
                     self.set_notice(f"最多选择 {maximum} 个目标。")
                     return True
-                self.selected_decision_targets.add(uid)
+                self.selected_decision_targets.append(uid)
             self.render()
             return True
         self.selected_decision_targets.clear()
@@ -671,7 +682,7 @@ class OriginsGUI(tk.Tk):
         decision = obs.get("decision")
         if not decision or not decision.get("multi"):
             return
-        chosen = set(self.selected_decision_targets)
+        chosen = list(self.selected_decision_targets)
         minimum = decision.get("min", decision.get("count", 1))
         if len(chosen) < minimum:
             self.set_notice(f"至少选择 {minimum} 个目标后才能确认。")
@@ -691,7 +702,7 @@ class OriginsGUI(tk.Tk):
                 raise InvalidAction("目标确认动作不可用")
             self.env.step(confirm)
             self.selected_decision_targets.clear()
-            self.log_add("玩家 0：确认多目标选择 " + "、".join(sorted(chosen)))
+            self.log_add("玩家 0：按顺序确认目标 " + "、".join(self._target_label(uid) for uid in chosen))
             self.render()
         except (InvalidAction, ValueError, StopIteration) as error:
             self.set_notice(f"目标确认失败：{error}")
@@ -703,6 +714,91 @@ class OriginsGUI(tk.Tk):
         self.selected_decision_targets.clear()
         self.set_notice("已取消当前目标选择。")
         self.render()
+
+    def _target_label(self, uid):
+        """Return a readable label for a selected target UID."""
+        obs = self.env.observe(0)
+        unit = next((unit for unit in obs.get("units", []) if unit["id"] == uid), None)
+        if unit is not None:
+            return self._card_name(unit["code"])
+        for row in obs.get("players", []):
+            gear = next((gear for gear in row.get("gear", []) if gear.get("id") == uid), None)
+            if gear is not None:
+                return self._card_name(gear["code"])
+        return str(uid)
+
+    def _target_code(self, uid):
+        obs = self.env.observe(0)
+        unit = next((unit for unit in obs.get("units", []) if unit["id"] == uid), None)
+        if unit is not None:
+            return unit["code"]
+        for row in obs.get("players", []):
+            gear = next((gear for gear in row.get("gear", []) if gear.get("id") == uid), None)
+            if gear is not None:
+                return gear["code"]
+        return BACK_CODE
+
+    def _close_target_window(self):
+        if self._target_window is not None:
+            try:
+                if self._target_window.winfo_exists():
+                    self._target_window.destroy()
+            except tk.TclError:
+                pass
+        self._target_window = None
+
+    def _remove_decision_target(self, index):
+        if 0 <= index < len(self.selected_decision_targets):
+            self.selected_decision_targets.pop(index)
+            self.render()
+
+    def _remove_decision_target_event(self, event, index):
+        """Remove one entry from the temporary target sequence window."""
+        self._remove_decision_target(index)
+        return "break"
+
+    def _render_target_window(self, decision):
+        """Show the ordered, not-yet-committed target sequence."""
+        if not decision.get("multi") or self.env.current_player != 0:
+            self._close_target_window()
+            return
+        if self._target_window is None or not self._target_window.winfo_exists():
+            popup = tk.Toplevel(self)
+            popup.title("目标分配 / Target sequence")
+            popup.transient(self)
+            popup.protocol("WM_DELETE_WINDOW", self._close_target_window)
+            self._target_window = popup
+        else:
+            popup = self._target_window
+            for child in popup.winfo_children():
+                child.destroy()
+        popup.configure(bg="#101b2b")
+        tk.Label(popup, text=("按顺序点击目标；重复点击代表重复分配。"
+                              if decision.get("allow_repeat") else "点击目标加入分配序列。"),
+                 bg="#101b2b", fg="#f3d58b", padx=8, pady=6).pack(fill="x")
+        body = tk.Frame(popup, bg="#101b2b")
+        body.pack(fill="both", expand=True, padx=6, pady=4)
+        for index, uid in enumerate(self.selected_decision_targets):
+            item = tk.Frame(body, bg="#24364d", padx=3, pady=3)
+            item.pack(side="left", padx=3, anchor="n")
+            wrapper = self._image_card(item, self._target_code(uid), factor=5,
+                                       compact_label=f"{index + 1}. {self._target_label(uid)}",
+                                       click=False, pack=True)
+            wrapper.bind("<Button-1>", lambda event, i=index: self._remove_decision_target_event(event, i))
+            for child in wrapper.winfo_children():
+                child.bind("<Button-1>", lambda event, i=index: self._remove_decision_target_event(event, i), add="+")
+        if not self.selected_decision_targets:
+            tk.Label(body, text="尚未选择目标", bg="#101b2b", fg="#9fb4ce",
+                     padx=12, pady=16).pack()
+        controls = tk.Frame(popup, bg="#101b2b")
+        controls.pack(fill="x", padx=6, pady=(2, 6))
+        ttk.Button(controls, text="清空重选 / Clear",
+                   command=self.cancel_decision_targets).pack(side="left")
+        tk.Label(controls, text=f"已选 {len(self.selected_decision_targets)}/{decision.get('max', 0)}",
+                 bg="#101b2b", fg="#dbe8f7").pack(side="right", padx=6)
+        popup.update_idletasks()
+        width = max(420, min(1200, 180 * max(2, len(self.selected_decision_targets))))
+        popup.geometry(f"{width}x260")
 
     def _rune_name(self, uid):
         for row in self.env.observe(0)["players"]:
@@ -1003,6 +1099,7 @@ class OriginsGUI(tk.Tk):
             self.selected_mulligan.clear()
         if obs["phase"] != "decision" or obs["to_act"] != 0:
             self.selected_decision_targets.clear()
+            self._close_target_window()
         turn_text = "玩家 0 行动" if obs["to_act"] == 0 else "对手行动"
         self.status.configure(text=f"回合 {obs['turn']} · {turn_text} · 比分 {obs['points'][0]}–{obs['points'][1]} / {obs['victory']}")
         self.state_bar.configure(text=self._state_summary(obs))
@@ -1351,13 +1448,16 @@ class OriginsGUI(tk.Tk):
         if decision.get("multi"):
             count = len(self.selected_decision_targets)
             maximum = decision.get("max", decision.get("count", 1))
-            tk.Label(self.actions, text=f"已选 {count}/{maximum}",
+            sequence = "；重复点击按顺序分配" if decision.get("allow_repeat") else ""
+            tk.Label(self.actions, text=f"已选 {count}/{maximum}{sequence}",
                      bg="#101b2b", fg="#dbe8f7").pack(side="left", padx=4)
             ttk.Button(self.actions, text="确认目标 / Confirm",
                        command=self.commit_decision_targets).pack(side="left", padx=2)
             ttk.Button(self.actions, text="取消 / Cancel",
                        command=self.cancel_decision_targets).pack(side="left", padx=2)
+            self._render_target_window(decision)
         else:
+            self._close_target_window()
             # Keep a text fallback for targets whose card is not visible in the
             # current private view; normal interaction remains card clicking.
             for action in legal:

@@ -60,6 +60,10 @@ GUI 也把对手 Base 放回对手手牌与身份区一侧；我方 Base 保留�
 随后加入 Rune Prison、Discipline、Cannon Barrage、Flurry of Blades 和 Primal
 Strength，复用目标选择、Stun、反应时机和战场范围伤害窗口。
 
+Falling Star（OGN-029）和 Icathian Rain（OGN-248）现在都使用统一的卡牌点击目标窗口。
+Falling Star 可按顺序点击同一单位两次，Icathian Rain 可点击六次；点击序列会在临时窗口中
+显示编号，确认前可删除单项或清空重选。引擎保留点击顺序并在确认后按该顺序逐次结算伤害。
+
 本轮继续加入 Sky Splitter、En Garde、Find Your Center、Confront、Morbid Return
 和 Grand Strategem。Confront 的后续单位 Ready 状态会在回合开始时清除；Morbid
 Return 在结算链中选择弃牌区单位，目标选择不会提前泄漏给对手。

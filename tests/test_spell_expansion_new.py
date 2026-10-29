@@ -86,6 +86,26 @@ class SpellExpansionNewTests(unittest.TestCase):
         self.drain()
         self.assertEqual(target["damage"], 12)
 
+    def test_falling_star_uses_ordered_two_click_target_window(self):
+        card = self.spare("OGN-029")
+        self.state["players"][0]["power"] = ["fury"] * 4
+        target = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell_targeted" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        for _ in range(2):
+            self.rules.apply(
+                self.state,
+                next(a for a in self.rules.legal_actions(self.state)
+                     if a.kind == "choose_target" and target["id"] in a.arguments),
+                random.Random(9),
+            )
+        self.assertEqual(self.state["decision"]["selected"], [target["id"], target["id"]])
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "confirm_targets"), random.Random(9))
+        self.drain()
+        self.assertNotIn(target, self.state["units"])
+
     def test_bullet_time_pays_two_rainbow_power_and_hits_all_enemy_units(self):
         card = self.spare("OGN-268")
         self.state["players"][0]["power"] = ["fury", "mind", "body"]

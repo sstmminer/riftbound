@@ -1054,7 +1054,7 @@ class OriginsRules:
             if code == "OGN-008" and not row["hand"]:
                 continue
             data = self.cards[code]
-            targeted_only = code in {"OGN-104", "OGN-183", "OGN-248"}
+            targeted_only = code in {"OGN-029", "OGN-104", "OGN-183", "OGN-248"}
             if code in {"OGN-022", "OGN-047", "OGN-083", "OGN-114", "OGN-123", "OGN-129", "OGN-133", "OGN-134", "OGN-138", "OGN-144", "OGN-145", "OGN-153", "OGN-071", "OGN-156", "OGN-170", "OGN-179", "OGN-183", "OGN-187", "OGN-237", "OGN-198", "OGN-248", "OGN-264", "OGN-268", "OGN-201", "OGN-221", "OGN-224", "OGN-233"}:
                 targets = [[]]
             elif code == "OGN-008":
@@ -1188,21 +1188,27 @@ class OriginsRules:
                             # fully-expanded actions.  Existing agents remain
                             # compatible while interactive clients can select and
                             # confirm targets one at a time.
-                            if code in {"OGN-104", "OGN-105", "OGN-183", "OGN-206", "OGN-248"} and not targeted_added:
+                            if code in {"OGN-029", "OGN-104", "OGN-105", "OGN-183", "OGN-206", "OGN-248"} and not targeted_added:
                                 candidates = ([u["id"] for u in self._units(state, player)]
                                               if code == "OGN-104" else
                                               list(row["main"][:3])
                                               if code == "OGN-183" else
+                                              [u["id"] for u in state["units"]]
+                                              if code == "OGN-029" else
                                               [u["id"] for u in state["units"]
                                                if self._is_field(state, u["location"])]
-                                              if code in {"OGN-105", "OGN-248"} else
+                                               if code in {"OGN-105", "OGN-248"} else
                                               [u["id"] for u in self._units(state, player)])
+                                target_count = (6 if code == "OGN-248" else
+                                                2 if code in {"OGN-029", "OGN-206"} else
+                                                1 if code in {"OGN-104", "OGN-183"} else
+                                                0)
                                 result.append(Action.make(
                                     "play_spell_targeted", card=card,
                                     target_candidates=candidates,
-                                    target_min=6 if code == "OGN-248" else (1 if code in {"OGN-104", "OGN-183"} else (0 if code == "OGN-105" else 2)),
-                                    target_max=6 if code == "OGN-248" else (1 if code in {"OGN-104", "OGN-183"} else 2),
-                                    allow_repeat=code == "OGN-248",
+                                    target_min=target_count if code != "OGN-105" else 0,
+                                    target_max=target_count if code not in {"OGN-105", "OGN-206"} else 2,
+                                    allow_repeat=code in {"OGN-029", "OGN-248"},
                                     destination=destination, spend_buff=spend,
                                     payment=payment,
                                     deck_options=list(row["main"][:3]) if code == "OGN-183" else None))
@@ -3243,7 +3249,7 @@ class OriginsRules:
         elif kind == "play_spell_targeted":
             card = args["card"]
             code = state["cards"][card]["code"]
-            if code not in {"OGN-104", "OGN-105", "OGN-183", "OGN-206", "OGN-248"} or card not in row["hand"]:
+            if code not in {"OGN-029", "OGN-104", "OGN-105", "OGN-183", "OGN-206", "OGN-248"} or card not in row["hand"]:
                 raise ValueError("target-selection spell is unavailable")
             data = self.cards[code]
             payment = args.get("payment", [])
@@ -3288,7 +3294,7 @@ class OriginsRules:
             self._enter_chain(state, [item])
             state["decision"] = {"kind": "target", "player": player,
                                   "targets": list(args.get("target_candidates", [])),
-                                  "multi": code in {"OGN-105", "OGN-206", "OGN-248"}, "min": int(args.get("target_min", 1)),
+                                  "multi": code in {"OGN-029", "OGN-105", "OGN-206", "OGN-248"}, "min": int(args.get("target_min", 1)),
                                   "max": int(args.get("target_max", 1)), "selected": [],
                                   "allow_repeat": bool(args.get("allow_repeat", False)),
                                   "item": item, "play_targeted": True,

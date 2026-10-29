@@ -3097,21 +3097,9 @@ class OriginsRules:
                 decision = state["decision"]
                 if args["target"] not in decision["targets"]:
                     raise ValueError("invalid target choice")
-                if decision.get("counter_retarget") and not decision.get("multi"):
-                    item = decision["item"]
-                    item["targets"] = [args["target"]]
-                    state["decision"] = None
-                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
-                    return
                 if decision.get("dragon_rage_second"):
                     item = decision["item"]
                     item["targets"] = [*item.get("targets", [])[:1], args["target"]]
-                    state["decision"] = None
-                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
-                    return
-                if decision.get("counter_retarget") and not decision.get("multi"):
-                    item = decision["item"]
-                    item["targets"] = [args["target"]]
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                     return
@@ -3150,6 +3138,30 @@ class OriginsRules:
                         "dragon_rage": code == "OGN-258",
                     }
                     state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                    return
+                if decision.get("counter_retarget"):
+                    item = decision["item"]
+                    item["targets"] = [args["target"]]
+                    if decision.get("destination_select"):
+                        target = self._unit(state, args["target"])
+                        if target is None:
+                            raise ValueError("Mystic Reversal target is unavailable")
+                        code = item.get("code")
+                        if code == "OGN-043":
+                            destinations = [f"base:{target['owner']}", *range(len(state["fields"]))]
+                        elif code in {"OGN-173", "OGN-250", "OGN-270"}:
+                            destinations = [f"base:{item['owner']}", *range(len(state["fields"]))]
+                        else:
+                            raise ValueError("unknown Mystic Reversal destination")
+                        destinations = [destination for destination in destinations
+                                        if destination != target["location"]]
+                        state["decision"] = {"kind": "choice", "player": item["owner"],
+                                              "options": destinations, "item": item,
+                                              "destination_choice": True}
+                        state["phase"], state["actor"], state["passes"] = "decision", item["owner"], 0
+                        return
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                     return
                 if decision.get("unit_ability"):
                     item = decision["item"]
@@ -3404,12 +3416,6 @@ class OriginsRules:
                     item["targets"] = selected
                     item["trigger_target_pending"] = False
                     item["trigger_target_finalized"] = True
-                    state["decision"] = None
-                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
-                    return
-                if decision.get("counter_retarget"):
-                    item = decision["item"]
-                    item["targets"] = selected
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                     return

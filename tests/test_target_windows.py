@@ -154,6 +154,28 @@ class TargetWindowMigrationTests(unittest.TestCase):
         self.rules.apply(self.state, destination, random.Random(9))
         self.assertEqual(target["location"], 0)
 
+    def test_dragons_rage_uses_first_target_destination_then_second_target(self):
+        card = self.spare("OGN-258")
+        first = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        second = self.rules._new_unit(self.state, "OGN-003", 1, 1, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell_targeted" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and first["id"] in a.arguments),
+                         random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_option" and '"option":1' in a.arguments),
+                         random.Random(9))
+        self.assertEqual(self.state["phase"], "chain")
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and second["id"] in a.arguments),
+                         random.Random(9))
+
     def test_twisted_fate_recycles_top_rune_and_targets_fury_damage(self):
         source = self.rules._new_unit(self.state, "OGN-200", 0, 0, exhausted=False)
         target = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)

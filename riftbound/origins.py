@@ -30,10 +30,11 @@ SIMPLE_TARGET_SPELLS = frozenset({
     "OGN-229", "OGN-252", "OGN-254", "OGN-262",
 })
 PAIR_TARGET_SPELLS = frozenset({"OGN-108", "OGN-128", "OGN-209", "OGN-220", "OGN-260"})
-DESTINATION_TARGET_SPELLS = frozenset({"OGN-043", "OGN-173", "OGN-250", "OGN-270"})
+DESTINATION_TARGET_SPELLS = frozenset({"OGN-043", "OGN-173", "OGN-250", "OGN-270", "OGN-258"})
 OPTIONAL_TARGET_SPELLS = frozenset({"OGN-048"})
 CONSTRAINED_MULTI_TARGET_SPELLS = frozenset({"OGN-256"})
 FIELD_TARGET_SPELLS = frozenset({"OGN-266"})
+SEQUENTIAL_TARGET_SPELLS = frozenset({"OGN-258"})
 
 
 def card_model(row):
@@ -1192,6 +1193,8 @@ class OriginsRules:
                            for b in [u["id"] for u in state["units"]]]
             elif code == "OGN-206":
                 targets = [list(pair) for pair in combinations([u["id"] for u in self._units(state, player)], 2)]
+            elif code == "OGN-258":
+                targets = [[u["id"]] for u in self._units(state, 1 - player)]
             elif code == "OGN-046":
                 targets = [[u["id"]] for u in self._units(state, player)]
             elif code in {"OGN-014"}:
@@ -1218,7 +1221,7 @@ class OriginsRules:
             targeted_added = False
             for selected in targets:
                 destinations = [None]
-                if code in {"OGN-043", "OGN-173", "OGN-250", "OGN-270"}:
+                if code in {"OGN-043", "OGN-173", "OGN-250", "OGN-270", "OGN-258"}:
                     unit = self._unit(state, selected[0])
                     destinations = [f"base:{unit['owner']}", *range(len(state["fields"]))]
                     destinations = [destination for destination in destinations
@@ -2357,6 +2360,30 @@ class OriginsRules:
         if code == "OGN-268" and item.get("field") is not None:
             for enemy in self._units(state, 1 - owner, item["field"]):
                 self._deal_damage(state, enemy, int(item.get("x", 0)))
+        if code == "OGN-258":
+            first = self._unit(state, item.get("targets", [None])[0]) if item.get("targets") else None
+            if first is None:
+                return True
+            if not item.get("dragon_rage_moved"):
+                destination = item.get("destination")
+                if destination == first["location"]:
+                    return True
+                self._resolve_move(state, [first], destination, owner, rng, from_effect=True)
+                item["dragon_rage_moved"] = True
+                candidates = [u["id"] for u in self._units(state, 1 - owner, destination)
+                              if u["id"] != first["id"]]
+                if not candidates:
+                    return True
+                state["chain"].append(item)
+                state["decision"] = {"kind": "target", "player": owner,
+                                      "targets": candidates, "item": item,
+                                      "dragon_rage_second": True}
+                state["phase"], state["actor"], state["passes"] = "decision", owner, 0
+                return False
+            second = self._unit(state, item.get("targets", [None, None])[1]) if len(item.get("targets", [])) > 1 else None
+            if second is not None:
+                self._deal_damage(state, first, self.might(state, second))
+                self._deal_damage(state, second, self.might(state, first))
         for uid in item["targets"]:
             unit = self._unit(state, uid)
             if unit is None or (code in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085", "OGN-105"}
@@ -2902,6 +2929,12 @@ class OriginsRules:
                 decision = state["decision"]
                 if args["target"] not in decision["targets"]:
                     raise ValueError("invalid target choice")
+                if decision.get("dragon_rage_second"):
+                    item = decision["item"]
+                    item["targets"] = [*item.get("targets", [])[:1], args["target"]]
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                    return
                 if decision.get("destination_select"):
                     item = decision["item"]
                     target = self._unit(state, args["target"])
@@ -2918,6 +2951,10 @@ class OriginsRules:
                         if target["owner"] != player or target["location"] != f"base:{player}":
                             raise ValueError("this spell requires a friendly unit in your base")
                         destinations = list(range(len(state["fields"])))
+                    elif code == "OGN-258":
+                        if target["owner"] == player:
+                            raise ValueError("Dragon's Rage requires an enemy target")
+                        destinations = [f"base:{target['owner']}", *range(len(state["fields"]))]
                     else:
                         raise ValueError("unknown destination target")
                     destinations = [destination for destination in destinations
@@ -2925,10 +2962,12 @@ class OriginsRules:
                     if not destinations:
                         raise ValueError("no legal destination")
                     item["targets"] = [args["target"]]
+                    item["dragon_rage"] = code == "OGN-258"
                     state["decision"] = {
                         "kind": "choice", "player": player,
                         "options": destinations, "item": item,
                         "destination_choice": True,
+                        "dragon_rage": code == "OGN-258",
                     }
                     state["phase"], state["actor"], state["passes"] = "decision", player, 0
                     return
@@ -3648,7 +3687,7 @@ class OriginsRules:
         elif kind == "play_spell_targeted":
             card = args["card"]
             code = state["cards"][card]["code"]
-            if code not in (SIMPLE_TARGET_SPELLS | PAIR_TARGET_SPELLS | DESTINATION_TARGET_SPELLS | OPTIONAL_TARGET_SPELLS | CONSTRAINED_MULTI_TARGET_SPELLS | {"OGN-029", "OGN-104", "OGN-105", "OGN-183", "OGN-206", "OGN-248"}) or card not in row["hand"]:
+            if code not in (SIMPLE_TARGET_SPELLS | PAIR_TARGET_SPELLS | DESTINATION_TARGET_SPELLS | OPTIONAL_TARGET_SPELLS | CONSTRAINED_MULTI_TARGET_SPELLS | SEQUENTIAL_TARGET_SPELLS | {"OGN-029", "OGN-104", "OGN-105", "OGN-183", "OGN-206", "OGN-248"}) or card not in row["hand"]:
                 raise ValueError("target-selection spell is unavailable")
             data = self.cards[code]
             payment = args.get("payment", [])

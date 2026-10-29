@@ -1,6 +1,6 @@
 # 规则覆盖与已知限制（0.3.0）
 
-目标：双人标准构筑，487 的 1v1 Duel 单局。卡牌范围见 [supported-cards.md](supported-cards.md)。目录 298 张不等于可执行 298 张。
+目标：双人标准构筑，487 的 1v1 Duel 单局。卡牌范围见 [supported-cards.md](supported-cards.md)。Origins 第一弹 298 张均已进入显式处理器；规则覆盖状态和已知限制仍以本表为准。
 
 ## 固定来源
 
@@ -24,15 +24,15 @@
 | 战斗 | 142、461–468 | Showdown、攻击/防守修正、先分配后同时造成、致命先于治疗、撤回攻击者、战后控制 |
 | 得分与终局 | 469–474、487 | 征服/据守、每战场每玩家每回合一次、最后一分替代抽牌、领先才胜利 |
 | 抽空牌库 | 414、432 | 回收弃牌、对手得分、继续抽牌、空弃牌重复 Burn Out 即时终局 |
-| 卡牌效果 | 支持表 | 285 张显式处理器，含基础伤害、减益、抽牌、目标选择、Stun、攻击触发、静态单位、基础 Gear 资源和六种基础符文；所有已迁移的单目标、成对目标、重复目标、移动目的地和战场目标效果均通过卡图/战场点击与统一目标窗口处理，Falling Star 与 Icathian Rain 保留有序重复点击；Defy、Wind Wall、Mystic Reversal 会在右侧结算链中点选法术目标；OGN-256 支持同战场总战力约束多选，Bullet Time 支持战场点击后选择 X；Reinforce、Time Warp、Twisted Fate、Dragon's Rage 和 Flame Chompers 已加入统一事件/目标流程；装备目标能力、Caitlyn/Malzahar、传奇目标能力也进入同一 decision 路径；Singularity/Back to Back、Kinkou、Albus 支持点选多目标并显式确认；Wildclaw、Jinx、Karma 进入统一事件链，Burn Out 和 Vision 顶牌回收也会触发 Karma；Sabotage、Dr. Mundo、Forge of the Future 使用公开展示/选择窗口（Sabotage 的展示结束与选择权均在施放者一侧）；Hidden、Karthus Deathknell、Noxian Guillotine、Mushroom Pouch、Swift Scout 已加入；多区域同时选择、延迟死亡替代和复制能力仍需专用实现；未支持卡牌开局前拒绝 |
+| 卡牌效果 | 支持表 | 298 张显式处理器，覆盖基础伤害、减益、抽牌、目标选择、Stun、攻击触发、静态单位、Gear、符文、Hidden、牌库/弃牌区选择、公开展示、反制链和复杂多目标窗口；Falling Star、Icathian Rain、Bullet Time、Mystic Reversal、Dragon's Rage 等保留有序目标/重选窗口；Promising Future、Blind Fury、Dazzling Aurora、Baited Hook 等牌库选择效果进入统一 reveal/play 流程；复杂替代效果、复制能力和部分跨区域选择仍按开发日志中的受限路径处理。 |
 | Gear 基础原语 | 148.1、149、359.2.d | `core.GearZone` 已验证只进控制者 Base 且进入 Ready；具体 Origins Gear 牌区尚未接入 |
 | 隐藏信息 | 107.3、108、128、422、811 | 手牌仅本人可见，牌库顺序双方不可见；Hidden facedown 区支持单卡占位、下回合 0 费打出、控制方正面查看与对手牌背显示；Noxus Saboteur 会阻止对应战场的对手揭示/打出，Bandle Tree 允许第二张，Tideturner 适用异地目标例外 |
 
 通用模块测试使用合成元数据；真实 Origins 卡牌与完整游戏测试在 tests/test_origins.py。三张无主动效果的战场分别调整胜利分数、单位力量、Ganking，相关效果同时作用于双方。
 
-## 当前不支持
+## 当前限制
 
-其余 Origins 卡牌、其他系列、多局 Match、多人模式、Hidden/装备/Deathknell/法术反制/控制权改变等不在注册卡池内的交互。代码不尝试根据自然语言猜测效果，也不静默跳过未知关键词。
+Origins 第一弹卡牌编号已全部注册；其他系列、多局 Match、多人模式仍不支持。部分复杂牌面在统一窗口中采用受限路径或需要继续细化，例如同时跨多个区域选择、复制完整能力、少数延迟替代效果和自动免费打出后的后续目标交互。代码不根据自然语言猜测效果，也不静默跳过未知关键词。
 
 测试通过只证明已执行的场景及不变量，没有官方裁判或另一套独立引擎的差分认证。当前训练文件用于有限卡池实验，不代表完整 Riftbound。Greedy 与 Random 只是基准策略，不代表竞技水平。
 

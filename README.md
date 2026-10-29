@@ -1,6 +1,6 @@
 # Riftbound Origins 自动对战模拟器
 
-Python 3.12+，支持双人自动对战、自博弈样本和确定性回放。**0.3.0 可运行一个明确限定的 Origins 卡池；尚不支持完整 Origins。**
+Python 3.12+，支持双人自动对战、自博弈样本和确定性回放。**0.3.0 已纳入 Origins 第一弹 298 张基础卡牌；完整规则覆盖与训练基准仍在持续完善。**
 
 规则依据：用户提供的 RUP5（2026-10-09）。卡牌、标签及已知勘误来自本仓库 `archive-download` 分支的固定官方来源归档（a330ca8）。运行时完全离线，无需模型、API 密钥、GPU 或额外下载卡图；当前支持牌的缩略卡图已随模拟器打包，源码树还包含完整高清悬浮图。
 
@@ -9,7 +9,7 @@ Python 3.12+，支持双人自动对战、自博弈样本和确定性回放。**
 - **图形界面**：运行 `python -m riftbound gui`，支持卡图、符文区、点击、右键菜单、拖拽、动态战场、底部结算/目标/可选效果窗口和高清悬浮预览；`--variant vision` 可直接演示 Vision。
 - **复杂机制试验卡组**：运行 `python -m riftbound gui --variant complex`。另外提供 `repeat`（重复目标）、`replay`（弃牌区重播）、`cost`（额外费用与主动技能）、`resources`（资源/Gear/Order）和 `reveal`（Hidden/展示目标）测试套牌。
 - **下载、安装和测试攻略**：[docs/quickstart-zh.md](docs/quickstart-zh.md)
-- **277 张可执行卡牌**：[docs/supported-cards.md](docs/supported-cards.md)
+- **298 张可执行卡牌**：[docs/supported-cards.md](docs/supported-cards.md)
 - **规则覆盖与限制**：[docs/rules-coverage.md](docs/rules-coverage.md)
 - **扩展开发日志与交接记录**：[docs/development-log.md](docs/development-log.md)
 
@@ -39,7 +39,7 @@ Windows 命令见下载测试攻略。输出目录必须不存在或为空；重
 - GUI 会在单位卡下方显示当前战力、临时增减、伤害、Buff、眩晕、Assault、Shield 和临时关键词状态。
 - 随机和贪心基准策略；可选导出按玩家视角标记的 JSONL 决策记录。
 
-所有效果由显式处理器执行，不使用 LLM 判牌，不执行卡面中的代码。目录里存在某张牌不意味着能够执行它；自定义套牌必须通过支持范围和构筑合法性检查。
+所有效果由显式处理器执行，不使用 LLM 判牌，不执行卡面中的代码。目录中的 298 张牌均已进入显式卡牌处理器和构筑校验；仍有少数复杂替代效果采用专用交互或受限路径，详见规则覆盖与开发日志。
 
 ## Python 接口
 

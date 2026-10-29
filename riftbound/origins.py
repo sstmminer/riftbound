@@ -116,6 +116,7 @@ class OriginsRules:
         registry.register("karthus_deathknell", self._effect_karthus_deathknell)
         registry.register("solari_target", self._effect_solari_target)
         registry.register("ready_self", self._effect_ready_self)
+        registry.register("twisted_fate", self._effect_twisted_fate)
         registry.register("draw_one", self._effect_draw_one)
         registry.register("channel_one", self._effect_channel_one)
         registry.register("reaver_recall_target", self._effect_reaver_recall_target)
@@ -2131,6 +2132,40 @@ class OriginsRules:
             source["exhausted"] = False
         return True
 
+    def _effect_twisted_fate(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if item.get("target") is not None and item.get("domain") in {"fury", "order"}:
+            target = self._unit(state, item["target"])
+            if target is not None:
+                if item["domain"] == "fury":
+                    self._deal_damage(state, target, 2)
+                    for enemy in self._units(state, 1 - item["owner"], item.get("field")):
+                        if enemy["id"] != target["id"]:
+                            self._deal_damage(state, enemy, 1)
+                else:
+                    target["stunned"] = True
+            return True
+        if source is None or not state["players"][item["owner"]]["rune_deck"]:
+            return True
+        row = state["players"][item["owner"]]
+        rune = row["rune_deck"].pop(0)
+        row["rune_deck"].append({**rune, "exhausted": False})
+        domain = self.cards[rune["code"]]["domains"][0]
+        field = source["location"]
+        enemies = [unit["id"] for unit in self._units(state, 1 - item["owner"], field)]
+        if domain == "mind" or not enemies:
+            if domain == "mind":
+                self._draw(state, item["owner"], 1, rng)
+            return True
+        item["domain"], item["field"] = domain, field
+        state["chain"].append(item)
+        state["decision"] = {"kind": "target", "player": item["owner"],
+                              "targets": enemies,
+                              "item": item,
+                              "twisted_fate": True}
+        state["phase"], state["actor"], state["passes"] = "decision", item["owner"], 0
+        return False
+
     def _effect_buff_two(self, state, item, rng):
         source = item.get("source")
         if item.get("target") is None:
@@ -2946,6 +2981,12 @@ class OriginsRules:
                         "destination_choice": True,
                     }
                     state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                    return
+                if decision.get("twisted_fate"):
+                    item = decision["item"]
+                    item["target"] = args["target"]
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                     return
                 if decision.get("legend_action"):
                     item = decision["item"]
@@ -4116,6 +4157,10 @@ class OriginsRules:
                 {"effect": "yasuo_attack_target", "source": unit["id"],
                  "owner": unit["owner"]}
                 for unit in attackers if unit["code"] == "OGN-076"
+            ] + [
+                {"effect": "twisted_fate", "source": unit["id"],
+                 "owner": unit["owner"]}
+                for unit in attackers if unit["code"] == "OGN-200"
             ]
             battle["designation_triggers_added"] = True
             if ahri_triggers:

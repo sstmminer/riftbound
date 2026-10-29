@@ -154,6 +154,22 @@ class TargetWindowMigrationTests(unittest.TestCase):
         self.rules.apply(self.state, destination, random.Random(9))
         self.assertEqual(target["location"], 0)
 
+    def test_twisted_fate_recycles_top_rune_and_targets_fury_damage(self):
+        source = self.rules._new_unit(self.state, "OGN-200", 0, 0, exhausted=False)
+        target = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        self.state["players"][0]["rune_deck"][0]["code"] = "OGN-007"
+        item = {"effect": "twisted_fate", "owner": 0, "source": source["id"]}
+        self.state["chain_return"] = "main"
+        self.assertFalse(self.rules._effect_twisted_fate(self.state, item, random.Random(9)))
+        choose = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "choose_target" and target["id"] in a.arguments)
+        self.rules.apply(self.state, choose, random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(9))
+        self.assertEqual(target["damage"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

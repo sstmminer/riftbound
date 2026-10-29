@@ -246,7 +246,10 @@ class OriginsTests(unittest.TestCase):
     def test_contiguous_rune_actions_can_be_rolled_back(self):
         state = self.scenario()
         row = state["players"][0]
-        row["runes"] = [row["rune_deck"].pop(0), row["rune_deck"].pop(0)]
+        fury_runes = [rune for rune in row["rune_deck"] if rune["code"] == "OGN-007"][:2]
+        self.assertEqual(len(fury_runes), 2)
+        row["runes"] = fury_runes
+        row["rune_deck"] = [rune for rune in row["rune_deck"] if rune not in fury_runes]
         row["energy"], row["power"] = 0, []
         first, second = (rune["id"] for rune in row["runes"])
         self.act(state, "exhaust_rune", rune=first)
@@ -495,11 +498,44 @@ class OriginsTests(unittest.TestCase):
     def test_accelerate_cost_and_enter_ready(self):
         state = self.scenario()
         uid = self.hand(state, "OGN-010")
-        before = state["players"][0]["energy"]
-        self.act(state, "play_unit", card=uid, accelerate=True, location="base:0")
+        # Accelerate is offered after the unit has entered exhausted.  Start
+        # with only enough resources for the printed cost so the test also
+        # verifies that rune actions remain available while the prompt is
+        # open.
+        row = state["players"][0]
+        row["energy"], row["power"] = 2, []
+        fury_runes = [rune for rune in row["rune_deck"] if rune["code"] == "OGN-007"][:2]
+        self.assertEqual(len(fury_runes), 2)
+        row["runes"] = fury_runes
+        row["rune_deck"] = [rune for rune in row["rune_deck"] if rune not in fury_runes]
+        for rune in row["runes"]:
+            rune["exhausted"] = False
+        self.act(state, "play_unit", card=uid, location="base:0")
+        self.assertEqual(state["phase"], "decision")
+        self.assertEqual(state["decision"]["kind"], "choice")
+        self.assertEqual(state["decision"]["options"], ["accelerate", "skip"])
+        self.assertTrue(state["units"][-1]["exhausted"])
+        # Pay the additional cost interactively: exhaust a rune for energy and
+        # recycle a second rune for its domain power while the choice is open.
+        self.act(state, "exhaust_rune", rune=row["runes"][0]["id"])
+        self.act(state, "recycle_rune", rune=row["runes"][1]["id"])
+        self.assertEqual(row["energy"], 1)
+        self.assertIn("fury", row["power"])
+        before = row["energy"]
+        self.act(state, "choose_option", option="accelerate")
         self.assertFalse(state["units"][-1]["exhausted"])
-        self.assertEqual(state["players"][0]["energy"], before-3)
-        self.assertEqual(len(state["players"][0]["power"]), 3)
+        self.assertEqual(row["energy"], before - 1)
+        self.assertNotIn("fury", row["power"])
+
+    def test_accelerate_can_be_declined_after_unit_enters(self):
+        state = self.scenario()
+        uid = self.hand(state, "OGN-010")
+        self.act(state, "play_unit", card=uid, location="base:0")
+        self.assertEqual(state["phase"], "decision")
+        self.assertTrue(state["units"][-1]["exhausted"])
+        self.act(state, "choose_option", option="skip")
+        self.assertFalse(state.get("decision"))
+        self.assertTrue(state["units"][-1]["exhausted"])
 
     def test_magma_wurm_only_other_units_enter_ready(self):
         state = self.scenario()
@@ -846,7 +882,9 @@ class OriginsTests(unittest.TestCase):
         uid = self.hand(state, "OGN-219")
         state["cards"][uid]["code"] = "OGN-039"
         before = state["players"][0]["energy"]
-        self.act(state, "play_unit", card=uid, accelerate=True, location="base:0")
+        self.act(state, "play_unit", card=uid, location="base:0")
+        self.assertEqual(state["phase"], "decision")
+        self.act(state, "choose_option", option="accelerate")
         self.assertFalse(state["units"][-1]["exhausted"])
         self.assertEqual(state["players"][0]["energy"], before - 5)
 

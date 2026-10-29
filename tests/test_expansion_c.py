@@ -140,6 +140,13 @@ class ExpansionBatchCTests(unittest.TestCase):
                       if a.kind == "play_unit" and kraken in a.arguments
                       and buffed["id"] in a.arguments and '"spend_buffs"' in a.arguments)
         self.rules.apply(self.state, action, random.Random(9))
+        if self.state["phase"] == "decision":
+            self.rules.apply(
+                self.state,
+                next(a for a in self.rules.legal_actions(self.state)
+                     if a.kind == "choose_option" and '"option":"skip"' in a.arguments),
+                random.Random(9),
+            )
         self.assertEqual(buffed["buff"], 0)
         victim = self.rules._new_unit(self.state, "OGN-003", 0, "base:0", exhausted=False)
         ledros = self.spare("OGN-231")

@@ -805,7 +805,9 @@ class OriginsGUI(tk.Tk):
         }
         text = names.get(action.kind, action.kind)
         if action.kind == "choose_option":
-            text = {"draw": "抽一张牌 / Draw 1", "channel": "横置引导一枚符文 / Channel rune"}.get(
+            text = {"draw": "抽一张牌 / Draw 1", "channel": "横置引导一枚符文 / Channel rune",
+                    "accelerate": "加速：支付额外费用并活跃 / Accelerate: pay and enter ready",
+                    "skip": "跳过加速：横置入场 / Skip Accelerate: enter exhausted"}.get(
                 args.get("option"), text)
         if action.kind in {"exhaust_rune", "recycle_rune"}:
             text += " · " + self._rune_name(args.get("rune"))
@@ -1334,6 +1336,10 @@ class OriginsGUI(tk.Tk):
             prompt = "洞察：选择保留或回收牌库顶牌"
         elif kind == "unit_target":
             prompt = "选择技能目标：点击场上或基地中的合法单位"
+        elif decision.get("accelerate"):
+            domains = "/".join(decision["accelerate"].get("domains", []))
+            prompt = (f"加速：可先横置/回收符文支付 1 法力 + {domains} 符能，"
+                      "然后确认单位活跃入场；也可跳过")
         else:
             prompt = f"等待选择：{kind}"
         tk.Label(self.actions, text=prompt, bg="#101b2b", fg="#f3d58b").pack(side="left", padx=4)

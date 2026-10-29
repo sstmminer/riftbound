@@ -25,29 +25,6 @@ class GreedyPolicy:
             return next(a for a, args in options
                         if a.kind == "optional_effect" and args.get("accept"))
         if phase == "decision":
-            if obs["decision"].get("accelerate"):
-                # Accelerate opens a narrow play-time payment window.  Use
-                # available rune Add-resource reactions before accepting the
-                # replacement; never fall through to the hand-card chooser,
-                # because these actions intentionally have no ``card`` arg.
-                row = obs["players"][player]
-                domains = set(obs["decision"]["accelerate"].get("domains", []))
-                if row["energy"] < 1:
-                    rune_action = next((a for a, args in options
-                                        if a.kind == "exhaust_rune"), None)
-                    if rune_action is not None:
-                        return rune_action
-                if not any(power in domains for power in row.get("power", [])):
-                    rune_action = next((a for a, args in options
-                                        if a.kind == "recycle_rune"
-                                        and self.cards.get(next((r["code"] for r in row.get("runes", [])
-                                                                  if r["id"] == args.get("rune")), ""),
-                                                           {}).get("domains", [None])[0] in domains), None)
-                    if rune_action is not None:
-                        return rune_action
-                return next((a for a, args in options
-                             if a.kind == "choose_option" and args.get("option") == "accelerate"),
-                            next(a for a, _ in options if a.kind == "choose_option"))
             if obs["decision"]["kind"] == "predict":
                 return next(a for a, args in options if not args["recycle"])
             if obs["decision"]["kind"] == "choice":
@@ -66,12 +43,13 @@ class GreedyPolicy:
                         if exhaust:
                             return exhaust[0]
                     if not matching_power:
+                        matching_runes = {
+                            rune["id"] for rune in row.get("runes", [])
+                            if domains.intersection(self.cards.get(rune.get("code"), {}).get("domains", []))
+                        }
                         recycle = [a for a, args in options
                                     if a.kind == "recycle_rune"
-                                    and (args.get("rune") in {
-                                        rune["id"] for rune in row.get("runes", [])
-                                        if rune.get("code") in domains
-                                    })]
+                                    and args.get("rune") in matching_runes]
                         if recycle:
                             return recycle[0]
                     accelerate = [a for a, args in options

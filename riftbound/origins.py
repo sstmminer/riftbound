@@ -1253,15 +1253,19 @@ class OriginsRules:
             kill_options = ([list(combo) for count in range(len(self._units(state, player)) + 1)
                             for combo in combinations([unit["id"] for unit in self._units(state, player)], count)]
                            if code == "OGN-231" else [[]])
-            for accelerate in ([False, True] if code in ACCELERATE else [False]):
+            # Accelerate is offered in a post-play payment window.  The
+            # initial action therefore always pays only the printed unit cost;
+            # the pending decision may later add one energy and one matching
+            # domain power before the unit-entry continuation is finalized.
+            for accelerate in [False]:
                 for additional_cost in extra_costs:
                     for sacrifice in sacrifices:
                         for discard_card in discard_cards:
                             for spend_buffs in buff_spends:
                                 for kill_units in kill_options:
-                                    total_energy = max(0, energy - (2 if discard_card else 0)) + int(accelerate)
+                                    total_energy = max(0, energy - (2 if discard_card else 0))
                                     total_energy += int(additional_cost)
-                                    total_power = max(0, data["power_cost"] - len(spend_buffs) - len(kill_units)) + int(accelerate)
+                                    total_power = max(0, data["power_cost"] - len(spend_buffs) - len(kill_units))
                                     for payment in self._payments(state, player, total_energy, data["domains"], total_power):
                                         for location in permitted:
                                             enter_targets = [None]
@@ -1387,8 +1391,28 @@ class OriginsRules:
         if phase == "decision":
             decision = state["decision"]
             if decision["kind"] == "choice":
-                return tuple(Action.make("choose_option", option=option)
-                             for option in decision.get("options", []))
+                actions = [Action.make("choose_option", option=option)
+                           for option in decision.get("options", [])]
+                # Accelerate is paid during the play transaction.  Basic rune
+                # Add-resource reactions remain available in this narrow
+                # window so the player can exhaust/recycle runes before
+                # confirming the additional cost; no other main-phase action
+                # is exposed while the unit entry is pending.
+                if decision.get("accelerate"):
+                    row = state["players"][player]
+                    domains = set(decision["accelerate"].get("domains", []))
+                    can_energy = row["energy"] >= 1 or any(not rune["exhausted"] for rune in row["runes"])
+                    can_power = any(power in domains or power == "any" for power in row["power"]) or any(
+                        domains.intersection(self.cards[rune["code"]]["domains"])
+                        for rune in row["runes"])
+                    if not (can_energy and can_power):
+                        actions = [action for action in actions
+                                   if json.loads(action.arguments).get("option") != "accelerate"]
+                    for rune in row["runes"]:
+                        if not rune["exhausted"]:
+                            actions.append(Action.make("exhaust_rune", rune=rune["id"]))
+                        actions.append(Action.make("recycle_rune", rune=rune["id"]))
+                return tuple(actions)
             if decision["kind"] == "predict":
                 return (Action.make("predict", recycle=False), Action.make("predict", recycle=True))
             if decision["kind"] == "target":
@@ -1587,6 +1611,44 @@ class OriginsRules:
     def _pay(self, row, energy, slots):
         row["energy"] -= energy
         row["power"] = [power for index, power in enumerate(row["power"]) if index not in slots]
+
+    def _finish_unit_play(self, state, pending, rng):
+        """Finish a unit play after any Accelerate payment decision.
+
+        Accelerate is a replacement effect during play (RUP5 805.2/805.6),
+        so the unit is represented on the board while its payment window is
+        open, but no later play triggers or showdown are processed until that
+        window closes.  Keeping this continuation in one helper ensures the
+        normal unit-entry path is identical for accelerated and non-accelerated
+        units.
+        """
+        player = pending["player"]
+        location = pending["location"]
+        triggers = pending.get("triggers", [])
+        state["phase"], state["actor"], state["passes"] = "main", player, 0
+        row = state["players"][player]
+        if pending.get("scrapyard_discard") and row["hand"]:
+            state["decision"] = {"kind": "discard", "player": player,
+                                  "remaining": min(2, len(row["hand"])),
+                                  "scrapyard_discard": True,
+                                  "post_triggers": triggers}
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return
+        if pending.get("scrapyard_discard"):
+            self._draw(state, player, 2, rng)
+        if pending.get("replay_optional"):
+            self._queue_optional(state, player, "replay_trash_unit",
+                                 source=pending["unit"], code=pending["code"])
+            self._cleanup(state, rng)
+            return
+        self._cleanup(state, rng)
+        if state["winner"] is not None:
+            return
+        if (self._is_field(state, location)
+                and state["fields"][location]["controller"] != player):
+            state["battle"] = {"field": location, "attacker": player, "combat": False}
+            state["phase"], state["focus"], state["passes"] = "showdown", player, 0
+        self._triggers(state, triggers)
 
     # Effect handlers return False only when they opened a decision window and
     # the chain must remain paused.  All other handlers return True after their
@@ -2515,6 +2577,26 @@ class OriginsRules:
                 if not decision or decision.get("kind") != "choice" or args.get("option") not in decision.get("options", []):
                     raise ValueError("invalid choice option")
                 option = args["option"]
+                if decision.get("accelerate"):
+                    pending = decision["accelerate"]
+                    unit = self._unit(state, pending["unit"])
+                    if unit is None or unit["owner"] != player:
+                        raise ValueError("Accelerate unit is no longer in play")
+                    if option == "accelerate":
+                        row = state["players"][player]
+                        domains = set(pending.get("domains", []))
+                        power_index = next((index for index, power in enumerate(row["power"])
+                                            if power in domains or power == "any"), None)
+                        if row["energy"] < 1 or power_index is None:
+                            raise ValueError("Accelerate requires 1 energy and one matching domain power")
+                        row["energy"] -= 1
+                        row["power"].pop(power_index)
+                        # 805.6: the replacement makes the unit enter ready;
+                        # this is not a separate 'becomes ready' event.
+                        unit["exhausted"] = False
+                    state["decision"] = None
+                    self._finish_unit_play(state, pending, rng)
+                    return
                 if decision.get("udyr_choice"):
                     item = decision["item"]
                     option = args["option"]
@@ -3238,8 +3320,8 @@ class OriginsRules:
                 kill_units = list(args.get("kill_units") or [])
                 energy = 0 if ignore_cost else max(0, data["energy"] - (2 if code == "OGN-012" and was_legion else 0)
                                                     - (2 if discard_card else 0)
-                                                    + int(args.get("accelerate", False)) + int(additional_cost))
-                power_cost = max(0, data["power_cost"] - len(spend_buffs) - len(kill_units)) + int(args.get("accelerate", False))
+                                                    + int(additional_cost))
+                power_cost = max(0, data["power_cost"] - len(spend_buffs) - len(kill_units))
                 self._pay(row, energy, [] if ignore_cost else args["payment"])
                 if not ignore_cost and discard_card is not None:
                     if discard_card not in row["hand"] or discard_card == card:
@@ -3268,7 +3350,7 @@ class OriginsRules:
                         row["trash"].append(sacrificed["card"])
                 zone = row["hand"] if card in row["hand"] else row["champion"]
                 zone.remove(card)
-                ready = (args.get("accelerate", False) or any(u["code"] == "OGN-011" for u in self._units(state, player))
+                ready = (any(u["code"] == "OGN-011" for u in self._units(state, player))
                          or row.get("ready_play", False))
                 ready = ready or code == "OGN-159"
                 if code == "OGN-035":
@@ -3397,6 +3479,25 @@ class OriginsRules:
                                      "source": unit["id"], "owner": player})
                 elif any(other["code"] == "OGN-100" for other in self._units(state, player)):
                     triggers.append({"effect": "vision", "source": unit["id"], "owner": player})
+                if code in ACCELERATE:
+                    # Keep the unit visible in its destination while the
+                    # controller completes the Accelerate payment.  This is a
+                    # play-time decision (RUP5 805.2), so no later trigger or
+                    # showdown is allowed to advance until it is resolved.
+                    state["decision"] = {
+                        "kind": "choice", "player": player,
+                        "options": ["accelerate", "skip"],
+                        "accelerate": {
+                            "unit": unit["id"], "player": player,
+                            "code": code, "location": args["location"],
+                            "domains": list(data["domains"]),
+                            "triggers": copy.deepcopy(triggers),
+                            "scrapyard_discard": code == "OGN-020" and was_legion,
+                            "replay_optional": code in {"OGN-196", "OGN-226"},
+                        },
+                    }
+                    state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                    return
                 if code == "OGN-020" and was_legion and row["hand"]:
                     state["decision"] = {"kind": "discard", "player": player,
                                           "remaining": min(2, len(row["hand"])),

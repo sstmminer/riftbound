@@ -211,6 +211,17 @@ class TargetWindowMigrationTests(unittest.TestCase):
                                           if a.kind == "confirm_revealed"), random.Random(9))
         self.assertTrue(any(u.get("card") == unit_card for u in self.state["units"]))
 
+    def test_flame_chompers_can_play_from_discard_after_discard_event(self):
+        card = self.spare("OGN-006")
+        self.state["players"][0]["hand"].remove(card)
+        self.state["players"][0]["trash"].append(card)
+        self.state["players"][0]["power"] = ["fury"]
+        self.rules._trigger_jinx_discard(self.state, 0)
+        accept = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "optional_effect" and '"accept":true' in a.arguments)
+        self.rules.apply(self.state, accept, random.Random(9))
+        self.assertTrue(any(u.get("card") == card for u in self.state["units"]))
+
     def test_twisted_fate_recycles_top_rune_and_targets_fury_damage(self):
         source = self.rules._new_unit(self.state, "OGN-200", 0, 0, exhausted=False)
         target = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)

@@ -139,6 +139,7 @@ class OriginsRules:
                  "reveal": None,
                  "optional_ordered": False, "pending_showdown": False,
                  "legend_options": [], "rune_undo": [], "winner": None, "next_object": 0}
+        state["flame_chompers_offered"] = []
         state["prevent_spell_ability_damage"] = False
         for player, deck in enumerate(self.decks):
             physical = []
@@ -449,6 +450,13 @@ class OriginsRules:
 
     def _trigger_jinx_discard(self, state, player):
         """Put one mandatory Jinx trigger per discard event on the chain."""
+        row = state["players"][player]
+        offered = state.setdefault("flame_chompers_offered", [])
+        for card in row["trash"]:
+            if (self.cards[state["cards"][card]["code"]]["code"] == "OGN-006"
+                    and card not in offered):
+                offered.append(card)
+                self._queue_optional(state, player, "play_flame_chompers", card=card)
         triggers = [{"effect": "jinx_discard", "source": unit["id"],
                      "owner": player}
                     for unit in self._units(state, player)
@@ -620,6 +628,20 @@ class OriginsRules:
                               chooser=player, minimum=0, maximum=1,
                               effect="replay_trash_unit", choices=candidates, rng=rng)
             return False
+        if effect == "play_flame_chompers":
+            row = state["players"][player]
+            card = item.get("card")
+            if card not in row["trash"]:
+                return True
+            power_index = next((index for index, power in enumerate(row["power"])
+                                if power == "fury"), None)
+            if power_index is None:
+                return True
+            row["power"].pop(power_index)
+            row["trash"].remove(card)
+            self._new_unit(state, "OGN-006", player, f"base:{player}", card=card, exhausted=True)
+            row["played"] += 1
+            return True
         if effect == "adaptatron_conquer":
             source = self._unit(state, item.get("source"))
             gears = [gear["id"] for gear in state["players"][player]["gear"]]

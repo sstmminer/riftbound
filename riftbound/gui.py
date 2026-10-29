@@ -1553,6 +1553,7 @@ class OriginsGUI(tk.Tk):
             "reaver_recall": "选择一个友军移回基地",
             "recall_defender": "将目标单位移回基地",
             "qiyana_conquer": "Qiyana：抽牌或横置引导符文",
+            "play_flame_chompers": "Flame Chompers：支付 Fury 从弃牌区打出",
         }
         name = effect_names.get(optional.get("effect"), optional.get("effect", "可选效果"))
         tk.Label(self.actions, text=f"可选效果（P{optional.get('player')}）：{name}",

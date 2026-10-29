@@ -1057,6 +1057,9 @@ class OriginsRules:
                 result.append(Action.make("legend_targeted", ability="buff", target_candidates=candidates))
             result.extend(Action.make("legend_buff", target=u["id"]) for u in self._units(state, player))
         if row["legend"] == "OGN-259" and state["phase"] == "main" and not row["legend_exhausted"] and row["energy"] >= 2:
+            candidates = [u["id"] for u in self._units(state, player)]
+            if candidates:
+                result.append(Action.make("legend_move_targeted", target_candidates=candidates))
             for unit in self._units(state, player):
                 for destination in (f"base:{player}", *range(len(state["fields"]))):
                     if destination != unit["location"]:
@@ -2706,6 +2709,12 @@ class OriginsRules:
                     return
                 if decision.get("destination_choice"):
                     item = decision["item"]
+                    if item.get("legend_move"):
+                        state["decision"] = None
+                        state["phase"], state["actor"], state["passes"] = "main", player, 0
+                        self.apply(state, Action.make("legend_move", target=item["target"],
+                                                       destination=option), rng)
+                        return
                     item["destination"] = option
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
@@ -2919,6 +2928,24 @@ class OriginsRules:
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "main", player, 0
                     self._cleanup(state, rng)
+                    return
+                if decision.get("legend_move_targeted"):
+                    target = self._unit(state, args["target"])
+                    if target is None or target["owner"] != player:
+                        raise ValueError("Unforgiven requires a friendly target")
+                    destinations = [f"base:{player}", *range(len(state["fields"]))]
+                    destinations = [destination for destination in destinations
+                                    if destination != target["location"]]
+                    if not destinations:
+                        raise ValueError("no legal destination")
+                    state["decision"] = {
+                        "kind": "choice", "player": player,
+                        "options": destinations,
+                        "item": {"owner": player, "target": args["target"],
+                                 "legend_move": True},
+                        "destination_choice": True,
+                    }
+                    state["phase"], state["actor"], state["passes"] = "decision", player, 0
                     return
                 if decision.get("legend_action"):
                     item = decision["item"]
@@ -3488,6 +3515,16 @@ class OriginsRules:
                 "targets": list(args.get("target_candidates", [])),
                 "item": {"owner": player, "ability": ability},
                 "legend_action": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+        elif kind == "legend_move_targeted":
+            if row["legend"] != "OGN-259" or row["legend_exhausted"] or row["energy"] < 2:
+                raise ValueError("Unforgiven ability is unavailable")
+            state["decision"] = {
+                "kind": "target", "player": player,
+                "targets": list(args.get("target_candidates", [])),
+                "item": {"owner": player, "ability": "legend_move"},
+                "legend_move_targeted": True,
             }
             state["phase"], state["actor"], state["passes"] = "decision", player, 0
         elif kind == "legend_buff":

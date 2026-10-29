@@ -74,7 +74,7 @@ Falling Star 可按顺序点击同一单位两次，Icathian Rain 可点击六�
 
 本轮已迁移：OGN-029/248、低风险单目标法术、成对目标法术、目的地移动法术、OGN-090/124/184
 装备能力、Caitlyn/Malzahar 目标技能，以及 Blind Monk、Bounty Hunter、Swift Scout 的目标能力；
-OGN-256 的同战场总战力约束多选、OGN-266/268 的战场点击和 Bullet Time 的 X 选择也已迁移。
+Unforgiven 的目标单位与目的地选择、OGN-256 的同战场总战力约束多选、OGN-266/268 的战场点击和 Bullet Time 的 X 选择也已迁移。
 仍需专用界面的范围包括 Dragon's Rage 的连续移动目标、可选装备/符文/手牌选择和需要同时
 选择多类区域对象的效果；这些效果不得退回为不可审计的长菜单，应继续复用上述窗口原则。
 

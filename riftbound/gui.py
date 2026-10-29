@@ -650,11 +650,11 @@ class OriginsGUI(tk.Tk):
                 actions.append(action)
         targeted = [action for action in actions if action.kind in {
             "play_spell_targeted", "play_field_targeted", "gear_targeted",
-            "unit_ability_targeted", "legend_targeted"}]
+            "unit_ability_targeted", "legend_targeted", "legend_move_targeted"}]
         if targeted:
             legacy = {
                 "play_spell", "gear_target", "unit_caitlyn", "unit_malzahar",
-                "legend_buff", "legend_ganking", "legend_teemo",
+                "legend_buff", "legend_ganking", "legend_teemo", "legend_move",
             }
             actions = [action for action in actions if action.kind not in legacy]
         if not actions:
@@ -934,6 +934,7 @@ class OriginsGUI(tk.Tk):
             "gear_targeted": "装备能力并选择目标 / Gear ability and choose target",
             "unit_ability_targeted": "单位技能并选择目标 / Unit ability and choose target",
             "legend_targeted": "传奇能力并选择目标 / Legend ability and choose target",
+            "legend_move_targeted": "传奇能力并选择移动目标 / Legend move and choose target",
             "choose_target": "选择目标 / Choose target",
             "choose_field": "选择战场 / Choose battlefield",
             "confirm_targets": "确认目标 / Confirm targets",
@@ -1414,10 +1415,12 @@ class OriginsGUI(tk.Tk):
                 ability = {"legend_buff": "buff", "legend_ganking": "ganking", "legend_teemo": "teemo"}[action.kind]
                 if any(entry[0] == "legend_targeted" and entry[3] == ability for entry in targeted_present):
                     continue
+            if action.kind == "legend_move" and any(entry[0] == "legend_move_targeted" for entry in targeted_present):
+                continue
             if action.kind in {"end_turn", "pass", "legend_energy", "legend_spell_power",
                                "legend_recruit", "legend_channel", "unit_buff", "legend_buff",
                                "legend_move", "legend_ganking",
-                               "legend_targeted", "commit_move", "cancel_move", "order_triggers",
+                               "legend_targeted", "legend_move_targeted", "commit_move", "cancel_move", "order_triggers",
                                "play_spell_targeted", "play_field_targeted", "play_unit_targeted"}:
                 ttk.Button(self.actions, text=self.action_text(action),
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)

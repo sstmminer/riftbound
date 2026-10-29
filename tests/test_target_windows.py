@@ -138,6 +138,22 @@ class TargetWindowMigrationTests(unittest.TestCase):
                                           if a.kind == "pass"), random.Random(9))
         self.assertEqual(target["damage"], 2)
 
+    def test_legend_move_uses_target_then_destination_clicks(self):
+        row = self.state["players"][0]
+        row["legend"] = "OGN-259"
+        row["energy"] = 2
+        target = self.rules._new_unit(self.state, "OGN-003", 0, "base:0", exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "legend_move_targeted")
+        self.rules.apply(self.state, action, random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and target["id"] in a.arguments),
+                         random.Random(9))
+        destination = next(a for a in self.rules.legal_actions(self.state)
+                           if a.kind == "choose_option" and '"option":0' in a.arguments)
+        self.rules.apply(self.state, destination, random.Random(9))
+        self.assertEqual(target["location"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

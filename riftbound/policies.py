@@ -25,8 +25,66 @@ class GreedyPolicy:
             return next(a for a, args in options
                         if a.kind == "optional_effect" and args.get("accept"))
         if phase == "decision":
+            if obs["decision"].get("accelerate"):
+                # Accelerate opens a narrow play-time payment window.  Use
+                # available rune Add-resource reactions before accepting the
+                # replacement; never fall through to the hand-card chooser,
+                # because these actions intentionally have no ``card`` arg.
+                row = obs["players"][player]
+                domains = set(obs["decision"]["accelerate"].get("domains", []))
+                if row["energy"] < 1:
+                    rune_action = next((a for a, args in options
+                                        if a.kind == "exhaust_rune"), None)
+                    if rune_action is not None:
+                        return rune_action
+                if not any(power in domains for power in row.get("power", [])):
+                    rune_action = next((a for a, args in options
+                                        if a.kind == "recycle_rune"
+                                        and self.cards.get(next((r["code"] for r in row.get("runes", [])
+                                                                  if r["id"] == args.get("rune")), ""),
+                                                           {}).get("domains", [None])[0] in domains), None)
+                    if rune_action is not None:
+                        return rune_action
+                return next((a for a, args in options
+                             if a.kind == "choose_option" and args.get("option") == "accelerate"),
+                            next(a for a, _ in options if a.kind == "choose_option"))
             if obs["decision"]["kind"] == "predict":
                 return next(a for a, args in options if not args["recycle"])
+            if obs["decision"]["kind"] == "choice":
+                # Accelerate is a play-time payment window.  Resource Add
+                # reactions may be used while it is open, so do not assume
+                # every legal action carries a card argument (the old branch
+                # below is for discard-card choices only).
+                if obs["decision"].get("accelerate"):
+                    pending = obs["decision"]["accelerate"]
+                    row = obs["players"][player]
+                    domains = set(pending.get("domains", []))
+                    matching_power = any(power in domains or power == "any"
+                                         for power in row.get("power", []))
+                    if row.get("energy", 0) < 1:
+                        exhaust = [a for a, _ in options if a.kind == "exhaust_rune"]
+                        if exhaust:
+                            return exhaust[0]
+                    if not matching_power:
+                        recycle = [a for a, args in options
+                                    if a.kind == "recycle_rune"
+                                    and (args.get("rune") in {
+                                        rune["id"] for rune in row.get("runes", [])
+                                        if rune.get("code") in domains
+                                    })]
+                        if recycle:
+                            return recycle[0]
+                    accelerate = [a for a, args in options
+                                  if a.kind == "choose_option" and args.get("option") == "accelerate"]
+                    if accelerate and row.get("energy", 0) >= 1 and matching_power:
+                        return accelerate[0]
+                    skip = [a for a, args in options
+                            if a.kind == "choose_option" and args.get("option") == "skip"]
+                    if skip:
+                        return skip[0]
+                # Other choice windows (for example Udyr) are deterministic
+                # enough for a smoke-test policy; pick the first option.
+                return next(a for a, _ in options if a.kind == "choose_option")
             if obs["decision"]["kind"] in {"target", "unit_target"}:
                 if obs["decision"]["kind"] == "unit_target":
                     return next(a for a, _ in options if a.kind == "choose_target")

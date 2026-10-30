@@ -16,6 +16,7 @@ from .catalog import load_origins, require_supported
 from .core import DOMAINS, Card, Deck, Scoreboard, Unit, channel_count, draw_cards, mulligan, validate_deck
 from .engine import Action, canonical
 from .effects import EffectRegistry
+from .abilities import ORIGINS_ABILITIES
 from .support import ACCELERATE, FIELD_CODES, GEAR_CODES, HIDDEN_CODES, LEGENDS, REACTIONS, RUNES, SPELL_CODES, SPRITE_TOKEN, TOKEN, UNIT_CODES, starter_deck
 
 # Spells with one ordinary unit target and no destination/pairing choice can
@@ -46,6 +47,10 @@ def card_model(row):
 class OriginsRules:
     def __init__(self, decks=None, *, extra_fields=()):
         self.cards = {row["code"]: row for row in load_origins()}
+        # Declarative activated-ability registry. The same table drives ordinary
+        # source discovery and Heimerdinger's exhaust-only copy.
+        self.abilities = ORIGINS_ABILITIES
+        self.ability_registry = self.abilities
         self.effects = self._build_effect_registry()
         self.extra_fields = list(extra_fields)
         if len(self.extra_fields) > 4 or not set(self.extra_fields) <= FIELD_CODES:
@@ -1272,6 +1277,303 @@ class OriginsRules:
                                  ignore_cost=True, hidden_field=hidden["field"])
         self.apply(state, nested, rng)
 
+    def _registry_target_candidates(self, state, player, spec):
+        """Build legal target IDs for a declarative activated ability.
+
+        This is intentionally shared by native and Heimer-copied abilities so
+        future registrations add a target mode instead of another card-code
+        branch.  The resolver still performs final legality checks at apply
+        time because the board can change between action generation and use.
+        """
+        mode = spec.target_mode
+        if mode in {"none", "choice"}:
+            return []
+        if mode == "unit":
+            return [u["id"] for u in state["units"]]
+        if mode in {"unit_at_battlefield", "unit_any_field"}:
+            return [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
+        if mode == "unit_at_battlefield":
+            return [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
+        if mode in {"friendly_unit", "friendly_exhausted_unit"}:
+            return [u["id"] for u in self._units(state, player)
+                    if mode != "friendly_exhausted_unit" or u["exhausted"]]
+        if mode == "friendly_unit_or_gear":
+            return [u["id"] for u in self._units(state, player)] + [g["id"] for g in state["players"][player]["gear"]]
+        if mode in {"friendly_field_unit", "friendly_unit_at_battlefield"}:
+            return [u["id"] for u in self._units(state, player) if self._is_field(state, u["location"])]
+        if mode == "friendly_gear_unit_hidden":
+            row = state["players"][player]
+            return ([u["id"] for u in self._units(state, player)]
+                    + [g["id"] for g in row["gear"]]
+                    + [h["id"] for h in row.get("hidden", [])])
+        if mode == "teemo_in_champion_or_board":
+            row = state["players"][player]
+            return [uid for uid in row["champion"] if self.cards[state["cards"][uid]["code"]]["code"] == "OGN-121"] + [
+                u["id"] for u in self._units(state, player) if u["code"] == "OGN-121"]
+        return []
+
+    def _registry_copy_available(self, state, player, heimer, spec):
+        """Check costs and timing common to all Heimer copied abilities."""
+        if heimer is None or heimer["owner"] != player or heimer["code"] != "OGN-111" or heimer["exhausted"]:
+            return False
+        # Triggered/replacement E abilities are registered for event-driven
+        # resolution, not exposed as free-standing main-phase actions.
+        if spec.timing in {"triggered", "replacement", "static"}:
+            return False
+        row = state["players"][player]
+        if spec.action_kind == "unit_caitlyn" and not self._is_field(state, heimer["location"]):
+            return False
+        if spec.action_kind == "legend_energy" and not row["played"]:
+            return False
+        if spec.action_kind == "legend_channel":
+            if not row["rune_deck"] or not any(option["owner"] == player for option in state.get("legend_options", [])):
+                return False
+        if spec.action_kind in {"legend_recruit", "legend_buff", "legend_teemo"} and row["energy"] < 1:
+            return False
+        if spec.action_kind == "legend_move" and row["energy"] < 2:
+            return False
+        if spec.action_kind == "gear_grab" and (row["energy"] < 1 or len(row["trash"]) < 3):
+            return False
+        if spec.action_kind == "gear_armory_protect" and not row["hand"]:
+            return False
+        if spec.action_kind == "gear_baited_hook" and (row["energy"] < 1 or "order" not in row["power"]):
+            return False
+        if spec.action_kind == "gear_forge_recycle" and not row["trash"]:
+            return False
+        return True
+
+    def _heimer_registry_actions(self, state, player, heimer):
+        """Expose every registered exhaust ability Heimer can currently use."""
+        result = []
+        row = state["players"][player]
+        sources = []
+        for unit in self._units(state, player):
+            if unit["id"] != heimer["id"]:
+                sources.append(("unit", unit["code"], unit["id"]))
+        sources.append(("legend", row["legend"], f"legend:{player}"))
+        sources.extend(("gear", gear["code"], gear["id"]) for gear in row["gear"])
+        seen = set()
+        for source_kind, source_code, origin in sources:
+            for spec in self.abilities.copyable_for_heimer(source_kind, source_code):
+                key = (spec.ability_id, origin)
+                if key in seen or not self._registry_copy_available(state, player, heimer, spec):
+                    continue
+                seen.add(key)
+                candidates = self._registry_target_candidates(state, player, spec)
+                if spec.target_mode not in {"none", "choice"} and not candidates:
+                    continue
+                if spec.target_mode in {"none", "choice"}:
+                    result.append(Action.make("ability_activate", ability_id=spec.ability_id,
+                                              source=heimer["id"], origin=origin,
+                                              copied_from=source_code))
+                else:
+                    result.append(Action.make("ability_targeted", ability_id=spec.ability_id,
+                                              source=heimer["id"], origin=origin,
+                                              copied_from=source_code,
+                                              target_candidates=candidates))
+        return result
+
+    def _registry_source_for(self, state, player, spec, origin):
+        if origin.startswith("legend:"):
+            return {"id": origin, "code": state["players"][player]["legend"], "owner": player,
+                    "kind": "legend", "exhausted": state["players"][player]["legend_exhausted"]}
+        if spec.source_kind == "gear":
+            return next((g for g in state["players"][player]["gear"] if g["id"] == origin), None)
+        return self._unit(state, origin)
+
+    def _resolve_registry_copy(self, state, player, args, rng, target=None):
+        """Resolve a Heimer copied ability through its registered action kind."""
+        spec = self.abilities.get(args["ability_id"])
+        source = self._unit(state, args["source"])
+        if source is None or source["owner"] != player or source["code"] != "OGN-111" or source["exhausted"]:
+            raise ValueError("copied ability source is unavailable")
+        if not spec.requires_exhaust or not spec.copyable:
+            raise ValueError("ability is not copyable by Heimerdinger")
+        action = spec.action_kind
+        row = state["players"][player]
+        # Every copied ability exhausts the activating Heimer exactly once.
+        source["exhausted"] = True
+        if action == "unit_caitlyn":
+            target_unit = self._unit(state, target)
+            if target_unit is None or not self._is_field(state, target_unit["location"]):
+                raise ValueError("Caitlyn copied ability requires a battlefield unit")
+            self._deal_damage(state, target_unit, self.might(state, source))
+            self._cleanup(state, rng)
+        elif action == "unit_malzahar":
+            target_unit = self._unit(state, target)
+            if target_unit is not None:
+                if target_unit["owner"] != player:
+                    raise ValueError("Malzahar copied ability requires a friendly unit")
+                state["units"].remove(target_unit)
+                if target_unit.get("card") is not None:
+                    row["trash"].append(target_unit["card"])
+            else:
+                gear = next((g for g in row["gear"] if g["id"] == target), None)
+                if gear is None:
+                    raise ValueError("Malzahar copied ability target unavailable")
+                row["gear"].remove(gear)
+                row["trash"].append(gear["card"])
+            row["power"].extend(["spell_any", "spell_any"])
+        elif action == "unit_buff":
+            source["buff"] += 1
+        elif action == "legend_energy":
+            row["energy"] += 1
+        elif action == "legend_spell_power":
+            row["power"].append("spell_any")
+        elif action == "legend_recruit":
+            if row["energy"] < 1:
+                raise ValueError("copied recruit requires energy")
+            row["energy"] -= 1
+            self._new_unit(state, TOKEN, player, f"base:{player}")
+        elif action == "legend_channel":
+            if not row["rune_deck"]:
+                raise ValueError("copied channel requires a rune deck")
+            rune = {**row["rune_deck"].pop(0), "exhausted": True}
+            row["runes"].append(rune)
+        elif action == "legend_buff":
+            if row["energy"] < 1:
+                raise ValueError("copied buff requires energy")
+            unit = self._unit(state, target)
+            if unit is None or unit["owner"] != player:
+                raise ValueError("copied buff target unavailable")
+            row["energy"] -= 1
+            self._apply_buff(state, unit)
+        elif action == "legend_ganking":
+            unit = self._unit(state, target)
+            if unit is None or unit["owner"] != player:
+                raise ValueError("copied Ganking target unavailable")
+            unit["temporary_ganking"] = True
+        elif action == "legend_move":
+            if row["energy"] < 2:
+                raise ValueError("copied move requires energy")
+            unit = self._unit(state, target)
+            if unit is None or unit["owner"] != player:
+                raise ValueError("copied move target unavailable")
+            row["energy"] -= 2
+            state["decision"] = {"kind": "choice", "player": player,
+                                  "options": [f"base:{player}", *range(len(state["fields"]))],
+                                  "item": {"registry_copy": True, "ability_id": spec.ability_id,
+                                           "source": source["id"], "target": unit["id"], "owner": player},
+                                  "destination_choice": True}
+            source["registry_pending_exhausted"] = True
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return
+        elif action == "legend_teemo":
+            if row["energy"] < 1:
+                raise ValueError("copied Swift Scout requires energy")
+            if target in row["champion"]:
+                row["champion"].remove(target)
+                row["hand"].append(target)
+            else:
+                unit = self._unit(state, target)
+                if unit is None or unit["owner"] != player or unit["code"] != "OGN-121":
+                    raise ValueError("copied Swift Scout requires Teemo")
+                state["units"].remove(unit)
+                if unit.get("card") is not None:
+                    row["hand"].append(unit["card"])
+            row["energy"] -= 1
+        elif action == "gear_resource":
+            cost = dict(spec.cost)
+            if "energy" in cost:
+                row["energy"] += int(cost["energy"])
+            else:
+                resource = cost.get("resource")
+                if resource is None:
+                    raise ValueError("copied Gear resource has no domain or energy")
+                row["power"].append(resource)
+        elif action == "gear_damage":
+            unit = self._unit(state, target)
+            if unit is None or not self._is_field(state, unit["location"]):
+                raise ValueError("copied Iron Ballista target unavailable")
+            self._deal_damage(state, unit, 2)
+            self._cleanup(state, rng)
+        elif action == "gear_return":
+            row = state["players"][player]
+            unit = self._unit(state, target)
+            if unit is not None:
+                if unit["id"] == source["id"] or unit["owner"] != player:
+                    raise ValueError("copied Pack of Wonders target unavailable")
+                state["units"].remove(unit)
+                if unit.get("card") is not None:
+                    row["hand"].append(unit["card"])
+            else:
+                gear = next((g for g in row["gear"] if g["id"] == target), None)
+                if gear is not None:
+                    row["gear"].remove(gear)
+                    row["hand"].append(gear["card"])
+                else:
+                    hidden = next((h for h in row.get("hidden", []) if h["id"] == target), None)
+                    if hidden is None:
+                        raise ValueError("copied Pack of Wonders target unavailable")
+                    row["hidden"].remove(hidden)
+                    row["hand"].append(hidden["card"])
+        elif action == "gear_debuff":
+            unit = self._unit(state, target)
+            if unit is None:
+                raise ValueError("copied Gear debuff target unavailable")
+            unit["temporary"] -= 1
+        elif action == "gear_buff_exhausted":
+            unit = self._unit(state, target)
+            if unit is None or unit["owner"] != player or not unit["exhausted"]:
+                raise ValueError("copied Gear buff target unavailable")
+            self._apply_buff(state, unit)
+        elif action == "gear_move":
+            unit = self._unit(state, target)
+            if unit is None or unit["owner"] != player or not self._is_field(state, unit["location"]):
+                raise ValueError("copied Gear move target unavailable")
+            self._resolve_move(state, [unit], f"base:{player}", player, rng, from_effect=True)
+        elif action == "gear_ready_next":
+            row["ready_play"] = True
+        elif action == "gear_tome":
+            row["spell_bonus_damage"] = row.get("spell_bonus_damage", 0) + 1
+        elif action == "gear_kill":
+            # A copied self-referencing Gear ability applies to the activating
+            # source (Heimer) and therefore kills it after granting its effect.
+            row["energy"] += 0
+            source["damage"] = self.might(state, source)
+            self._cleanup(state, rng)
+        elif action == "gear_grab":
+            if row["energy"] < 1 or len(row["trash"]) < 3:
+                raise ValueError("copied Garbage Grabber cost unavailable")
+            row["energy"] -= 1
+            self._recycle_cards_to_main(state, player, list(row["trash"][:3]), source="trash", rng=rng)
+            self._draw(state, player, 1, rng)
+        elif action == "gear_armory_protect":
+            if not row["hand"]:
+                raise ValueError("copied Armory requires a discard")
+            discarded = row["hand"].pop(0)
+            row["trash"].append(discarded)
+            target_unit = self._unit(state, target)
+            if target_unit is None or target_unit["owner"] != player:
+                raise ValueError("copied Armory target unavailable")
+            target_unit["death_replacement"] = {"kind": "armory", "turn": state["turn"]}
+        elif action == "gear_baited_hook":
+            if row["energy"] < 1 or "order" not in row["power"]:
+                raise ValueError("copied Baited Hook cost unavailable")
+            target_unit = self._unit(state, target)
+            if target_unit is None or target_unit["owner"] != player:
+                raise ValueError("copied Baited Hook target unavailable")
+            row["energy"] -= 1
+            row["power"].remove("order")
+            killed_might = self.might(state, target_unit)
+            target_unit["damage"] = killed_might
+            self._cleanup(state, rng)
+            top = list(row["main"][:5])
+            choices = [uid for uid in top
+                       if self.cards[state["cards"][uid]["code"]]["type"] == "unit"
+                       and self.cards[state["cards"][uid]["code"]]["might"] <= killed_might + 1]
+            self._open_reveal(state, owner=player, cards=top, mode="select", chooser=player,
+                              minimum=0, maximum=1, effect="baited_hook", choices=choices,
+                              item={"effect": "gear_baited_hook", "owner": player,
+                                    "target": target, "copied_source": source["id"]}, rng=rng)
+        elif action == "gear_forge_recycle":
+            cards = [uid for owner in state["players"] for uid in owner["trash"]]
+            self._open_reveal(state, owner=player, cards=cards, mode="select", chooser=player,
+                              minimum=0, maximum=min(4, len(cards)), effect="forge_recycle", choices=cards, rng=rng)
+        else:
+            raise ValueError(f"copied ability handler is not implemented: {spec.ability_id}")
+        state["passes"] = 0
+
     def _gear_actions(self, state):
         """Play supported gear to the controller's Base and expose simple abilities."""
         player = state["actor"]
@@ -1379,26 +1681,10 @@ class OriginsRules:
                 if options:
                     result.append(Action.make("unit_udyr", unit=unit["id"], options=options))
             if unit["code"] == "OGN-111" and not unit["exhausted"]:
-                # Heimerdinger copies the implemented exhaust abilities.  The
-                # action keeps Heimer as the source so the copied ability is
-                # paid/exhausted exactly once; target windows remain shared.
-                for ability, candidates in (
-                    ("caitlyn", [target["id"] for target in state["units"]
-                                 if self._is_field(state, target["location"])]),
-                    ("malzahar", [target["id"] for target in self._units(state, player)]
-                     + [gear["id"] for gear in row["gear"]]),
-                ):
-                    if candidates:
-                        result.append(Action.make("unit_ability_targeted", ability=ability,
-                                                  unit=unit["id"], target_candidates=candidates))
-                        result.extend(Action.make("unit_" + ability, unit=unit["id"], target=target)
-                                      for target in candidates)
-                result.append(Action.make("unit_buff", unit=unit["id"]))
-                if row["trash"]:
-                    result.append(Action.make("unit_recycle_buff", unit=unit["id"]))
-                if unit["buff"]:
-                    result.append(Action.make("unit_udyr", unit=unit["id"],
-                                              options=["damage", "stun", "ready", "ganking"]))
+                # Heimer's copied abilities are discovered from the declarative
+                # registry.  This deliberately excludes non-E abilities such
+                # as Vi/Udyr and automatically picks up future registrations.
+                result.extend(self._heimer_registry_actions(state, player, unit))
         if row["legend"] == "OGN-253" and not row["legend_exhausted"] and row["played"]:
             result.append(Action.make("legend_energy"))
         if row["legend"] == "OGN-247" and not row["legend_exhausted"]:
@@ -3541,6 +3827,28 @@ class OriginsRules:
                 raise ValueError("Divine Judgment requires two selections per available zone")
             self._finish_divine_choice(state, player, rng)
             return
+        if kind == "ability_activate":
+            spec = self.abilities.get(args.get("ability_id"))
+            if not spec.copyable:
+                raise ValueError("ability is not copyable by Heimerdinger")
+            self._resolve_registry_copy(state, player, args, rng)
+            state["passes"] = 0
+            return
+        if kind == "ability_targeted":
+            spec = self.abilities.get(args.get("ability_id"))
+            if not spec.copyable:
+                raise ValueError("ability is not copyable by Heimerdinger")
+            source = self._unit(state, args.get("source"))
+            if source is None or source["owner"] != player or source["code"] != "OGN-111" or source["exhausted"]:
+                raise ValueError("copied ability source is unavailable")
+            state["decision"] = {"kind": "target", "player": player,
+                                  "targets": list(args.get("target_candidates", [])),
+                                  "item": {"registry_copy": True, "ability_id": spec.ability_id,
+                                           "source": source["id"], "origin": args.get("origin"),
+                                           "copied_from": args.get("copied_from"), "owner": player},
+                                  "registry_ability": True}
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return
         if kind == "choose_field":
             decision = state.get("decision")
             field = args.get("field")
@@ -3588,6 +3896,15 @@ class OriginsRules:
                     return
                 if decision.get("destination_choice"):
                     item = decision["item"]
+                    if item.get("registry_copy"):
+                        target = self._unit(state, item.get("target"))
+                        if target is None:
+                            raise ValueError("copied move target unavailable")
+                        self._resolve_move(state, [target], option, player, rng, from_effect=True)
+                        state["decision"] = None
+                        state["phase"], state["actor"], state["passes"] = "main", player, 0
+                        self._cleanup(state, rng)
+                        return
                     if item.get("legend_move"):
                         state["decision"] = None
                         state["phase"], state["actor"], state["passes"] = "main", player, 0
@@ -3772,6 +4089,13 @@ class OriginsRules:
                 decision = state["decision"]
                 if args["target"] not in decision["targets"]:
                     raise ValueError("invalid target choice")
+                if decision.get("registry_ability"):
+                    item = dict(decision["item"])
+                    state["decision"] = None
+                    self._resolve_registry_copy(state, player, item, rng, target=args["target"])
+                    if state.get("decision") is None and state.get("reveal") is None:
+                        state["phase"], state["actor"], state["passes"] = "main", player, 0
+                    return
                 if decision.get("dragon_rage_second"):
                     item = decision["item"]
                     item["targets"] = [*item.get("targets", [])[:1], args["target"]]

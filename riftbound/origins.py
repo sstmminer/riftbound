@@ -614,7 +614,7 @@ class OriginsRules:
         state["actor"] = state["reveal"]["closer"] if mode == "display" else state["reveal"]["chooser"]
         state["passes"] = 0
 
-    def _free_play_revealed_card(self, state, owner, card, parent, rng, *, ignore_energy=False):
+    def _free_play_revealed_card(self, state, owner, card, parent, rng, *, ignore_energy=False, free_all=False):
         """Play a card selected by Blind Fury or Promising Future.
 
         The card is returned to the controller's hand only for the duration of
@@ -643,8 +643,8 @@ class OriginsRules:
             self.apply(state, Action.make("play_unit", card=card,
                                           location=f"base:{owner}", accelerate=False,
                                           payment=payment, enter_target=None,
-                                          ignore_cost=not ignore_energy,
-                                          ignore_energy=ignore_energy,
+                                          ignore_cost=(not ignore_energy or free_all),
+                                          ignore_energy=ignore_energy or free_all,
                                           free_play_parent=True), rng)
             return
         if data["type"] == "gear":
@@ -657,8 +657,8 @@ class OriginsRules:
                     return
                 payment = choices[0]
             self.apply(state, Action.make("play_gear", card=card, payment=payment,
-                                          ignore_cost=not ignore_energy,
-                                          ignore_energy=ignore_energy), rng)
+                                          ignore_cost=(not ignore_energy or free_all),
+                                          ignore_energy=ignore_energy or free_all), rng)
             return
         # The simple, no-target path covers all direct effects.  Targeted
         # cards use their legacy action shape with a deterministic legal target
@@ -2302,6 +2302,10 @@ class OriginsRules:
             if decision["kind"] == "choice":
                 actions = [Action.make("choose_option", option=option)
                            for option in decision.get("options", [])]
+                if decision.get("nocturne"):
+                    if not self._payments(state, player, 0, DOMAINS, 0, 1):
+                        actions = [a for a in actions
+                                   if json.loads(a.arguments).get("option") != "nocturne_banish"]
                 # Accelerate is paid during the play transaction.  Basic rune
                 # Add-resource reactions remain available in this narrow
                 # window so the player can exhaust/recycle runes before
@@ -2884,7 +2888,20 @@ class OriginsRules:
 
     def _effect_vision(self, state, item, rng):
         owner = item["owner"]
-        if state["players"][owner]["main"]:
+        row = state["players"][owner]
+        if row["main"]:
+            top = row["main"][0]
+            # Nocturne's replacement window is private to the player looking
+            # at the top card.  It must resolve before Vision's ordinary
+            # recycle choice, so the opponent never learns the card identity.
+            if state["cards"][top]["code"] == "OGN-194":
+                state["decision"] = {
+                    "kind": "choice", "player": owner,
+                    "options": ["nocturne_banish", "nocturne_skip"],
+                    "nocturne": {"card": top, "item": item, "owner": owner},
+                }
+                state["phase"], state["actor"] = "decision", owner
+                return False
             state["decision"] = {"kind": "predict", "player": owner, "remaining": 1}
             state["phase"], state["actor"] = "decision", owner
             return False
@@ -4061,6 +4078,26 @@ class OriginsRules:
                 if not decision or decision.get("kind") != "choice" or args.get("option") not in decision.get("options", []):
                     raise ValueError("invalid choice option")
                 option = args["option"]
+                if decision.get("nocturne"):
+                    nocturne = decision["nocturne"]
+                    if option == "nocturne_skip":
+                        state["decision"] = {"kind": "predict", "player": player, "remaining": 1}
+                        return
+                    if option != "nocturne_banish":
+                        raise ValueError("invalid Nocturne choice")
+                    payment = self._payments(state, player, 0, DOMAINS, 0, 1)
+                    if not payment:
+                        raise ValueError("Nocturne requires one rainbow power")
+                    self._pay(row, 0, payment[0])
+                    card = nocturne["card"]
+                    if card not in row["main"]:
+                        raise ValueError("Nocturne is no longer on top of the deck")
+                    row["main"].remove(card)
+                    row["banishment"].append(card)
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", player, 0
+                    self._free_play_revealed_card(state, player, card, nocturne["item"], rng, free_all=True)
+                    return
                 if decision.get("x_choice"):
                     item = decision["item"]
                     x = int(option)

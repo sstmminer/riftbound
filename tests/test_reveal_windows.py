@@ -1,4 +1,5 @@
 import copy
+import json
 import random
 import unittest
 
@@ -120,3 +121,42 @@ class RevealWindowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class NocturneRevealTests(unittest.TestCase):
+    def setUp(self):
+        self.rules = OriginsRules()
+        self.state = self.rules.initial_state(random.Random(7))
+        self.state.update(phase="chain", actor=0, turn_player=0, turn=2)
+        row = self.state["players"][0]
+        card = row["main"].pop()
+        self.state["cards"][card]["code"] = "OGN-194"
+        row["main"].insert(0, card)
+        self.card = card
+        self.item = {"effect": "vision", "owner": 0, "card": None}
+
+    def test_vision_nocturne_can_be_declined_without_revealing_to_opponent(self):
+        self.rules._effect_vision(self.state, self.item, random.Random(1))
+        self.assertEqual(self.state["phase"], "decision")
+        self.assertEqual(self.rules.observe(self.state, 1)["decision"], None)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if json.loads(a.arguments).get("option") == "nocturne_skip")
+        self.rules.apply(self.state, action, random.Random(1))
+        self.assertEqual(self.state["decision"]["kind"], "predict")
+        self.assertEqual(self.state["players"][0]["main"][0], self.card)
+
+    def test_vision_nocturne_banishes_and_plays_for_rainbow_power(self):
+        self.state["players"][0]["power"] = ["body"]
+        self.rules._effect_vision(self.state, self.item, random.Random(1))
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if json.loads(a.arguments).get("option") == "nocturne_banish")
+        self.rules.apply(self.state, action, random.Random(1))
+        self.assertTrue(any(u["code"] == "OGN-194" for u in self.state["units"]))
+        self.assertTrue(any(u.get("card") == self.card for u in self.state["units"]))
+        self.assertEqual(self.state["players"][0]["power"], [])
+        self.rules.validate(self.state)
+
+    def test_vision_nocturne_banish_choice_unavailable_without_power(self):
+        self.rules._effect_vision(self.state, self.item, random.Random(1))
+        options = {json.loads(a.arguments).get("option") for a in self.rules.legal_actions(self.state)}
+        self.assertNotIn("nocturne_banish", options)
+        self.assertIn("nocturne_skip", options)

@@ -97,6 +97,8 @@ class OriginsRules:
         registry.register("gear_debuff", self._effect_gear_debuff)
         registry.register("gear_buff_exhausted", self._effect_gear_buff_exhausted)
         registry.register("gear_move", self._effect_gear_move)
+        registry.register("gear_damage", self._effect_gear_damage)
+        registry.register("gear_return", self._effect_gear_return)
         registry.register("gear_armory_protect", self._effect_gear_armory_protect)
         registry.register("gear_baited_hook", self._effect_gear_baited_hook)
         registry.register("peak", self._effect_peak)
@@ -282,6 +284,18 @@ class OriginsRules:
         bonus = state["players"][unit["owner"]].get("buff_bonus", 0)
         if bonus:
             unit["temporary"] += bonus
+        # Mistfall's E is an optional response to a friendly unit being buffed.
+        # Heimer receives that E through the same registry and is offered the
+        # same payment/ready decision when a copied source is available.
+        owner = unit["owner"]
+        row = state["players"][owner]
+        if (self._heimer_has_copy(state, owner, "gear", "OGN-152")
+                and any(power == "body" or power == "any" for power in row["power"])):
+            for heimer in self._units(state, owner):
+                if heimer["code"] == "OGN-111" and not heimer["exhausted"]:
+                    self._queue_optional(state, owner, "heimer_mistfall_ready",
+                                         source=heimer["id"], target=unit["id"])
+                    break
 
     def _radiant_stun_trigger(self, state, player):
         if state["players"][player]["legend"] != "OGN-261":
@@ -376,6 +390,19 @@ class OriginsRules:
                         unit["exhausted"] = True
                         replaced = True
                         continue
+                # The Boss's E replacement can also be copied by a ready
+                # Heimer when the player's legend is The Boss.  It is queued
+                # as an optional decision so the normal replacement timing is
+                # preserved and a declined choice lets lethal cleanup proceed.
+                if (unit.get("death_replacement") is None and unit.get("buff")
+                        and any(power in DOMAINS or power == "any"
+                                for power in state["players"][unit["owner"]]["power"])
+                        and state["players"][unit["owner"]]["legend"] == "OGN-269"
+                        and self._heimer_has_copy(state, unit["owner"], "legend", "OGN-269")):
+                    unit["death_replacement"] = {"kind": "heimer_boss", "turn": state["turn"],
+                                                   "prompted": True}
+                    self._queue_optional(state, unit["owner"], "heimer_boss_save", target=unit["id"])
+                    return
                 replacement = unit.get("death_replacement")
                 if replacement and replacement.get("turn") == state.get("turn"):
                     if replacement.get("kind") == "armory":
@@ -408,11 +435,25 @@ class OriginsRules:
                 if unit.get("stunned"):
                     for player in (0, 1):
                         if player != unit["owner"]:
-                            shrine = next((g for g in state["players"][player]["gear"]
-                                           if g["code"] == "OGN-072" and not g["exhausted"]), None)
-                            if shrine is not None:
-                                shrine["exhausted"] = True
+                            shrine_sources = self._registry_event_sources(
+                                state, player, "gear.solari_shrine_draw")
+                            if shrine_sources:
+                                shrine = shrine_sources[0]
+                                if shrine["copied"]:
+                                    self._unit(state, shrine["id"])["exhausted"] = True
+                                else:
+                                    next(g for g in state["players"][player]["gear"]
+                                         if g["id"] == shrine["id"])["exhausted"] = True
                                 self._draw(state, player, 1, rng if rng is not None else random.Random(0))
+                            # A ready Heimer may copy Solari Shrine's E ability.
+                            # The source Gear remains in its own zone; only the
+                            # activating Heimer becomes exhausted.
+                            for heimer in self._units(state, player):
+                                if (heimer["code"] == "OGN-111" and not heimer["exhausted"]
+                                        and self._heimer_has_copy(state, player, "gear", "OGN-072")):
+                                    heimer["exhausted"] = True
+                                    self._draw(state, player, 1, rng if rng is not None else random.Random(0))
+                                    break
                 # Karthus doubles Deathknell effects controlled by its owner
                 # while it is present for the simultaneous-death check.
                 multiplier = 2 if any(other["owner"] == unit["owner"]
@@ -856,6 +897,42 @@ class OriginsRules:
     def _resolve_optional(self, state, item, rng):
         player = item["player"]
         effect = item["effect"]
+        if effect == "heimer_mistfall_ready":
+            target = self._unit(state, item.get("target"))
+            source = self._unit(state, item.get("source"))
+            row = state["players"][player]
+            if target is None or source is None or source["code"] != "OGN-111" or source["exhausted"]:
+                return True
+            power_index = next((index for index, power in enumerate(row["power"])
+                                if power in {"body", "any"}), None)
+            if power_index is None:
+                return True
+            row["power"].pop(power_index)
+            source["exhausted"] = True
+            target["exhausted"] = False
+            return True
+        if effect == "heimer_boss_save":
+            target = self._unit(state, item.get("target"))
+            row = state["players"][player]
+            if target is None or target.get("buff", 0) <= 0:
+                return True
+            power_index = next((index for index, power in enumerate(row["power"])
+                                if power in DOMAINS or power == "any"), None)
+            replacement = target.get("death_replacement")
+            target.pop("death_replacement", None)
+            if power_index is None:
+                return True
+            source = next((unit for unit in self._units(state, player)
+                           if unit["code"] == "OGN-111" and not unit["exhausted"]), None)
+            if source is None:
+                return True
+            row["power"].pop(power_index)
+            source["exhausted"] = True
+            target["buff"] = 0
+            target["damage"] = 0
+            target["location"] = f"base:{player}"
+            target["exhausted"] = True
+            return True
         if effect == "armory_save":
             target = self._unit(state, item.get("target"))
             row = state["players"][player]
@@ -1277,6 +1354,23 @@ class OriginsRules:
                                  ignore_cost=True, hidden_field=hidden["field"])
         self.apply(state, nested, rng)
 
+    def _heimer_has_copy(self, state, player, source_kind, card_code):
+        """Whether a ready Heimer has a registered exhaust ability from a source."""
+        if not self.abilities.copyable_for_heimer(source_kind, card_code):
+            return False
+        if source_kind == "unit":
+            source_present = any(unit["code"] == card_code
+                                 for unit in self._units(state, player))
+        elif source_kind == "gear":
+            source_present = any(gear["code"] == card_code
+                                 for gear in state["players"][player]["gear"])
+        elif source_kind == "legend":
+            source_present = state["players"][player]["legend"] == card_code
+        else:
+            source_present = False
+        return source_present and any(unit["code"] == "OGN-111" and not unit["exhausted"]
+                                      for unit in self._units(state, player))
+
     def _registry_target_candidates(self, state, player, spec):
         """Build legal target IDs for a declarative activated ability.
 
@@ -1380,6 +1474,24 @@ class OriginsRules:
         if spec.source_kind == "gear":
             return next((g for g in state["players"][player]["gear"] if g["id"] == origin), None)
         return self._unit(state, origin)
+
+    def _registry_event_sources(self, state, player, ability_id):
+        """Return ready native or Heimer sources for a triggered E ability."""
+        spec = self.abilities.get(ability_id)
+        row = state["players"][player]
+        sources = []
+        if spec.source_kind == "gear":
+            for gear in row["gear"]:
+                if gear["code"] in spec.source_codes and not gear["exhausted"]:
+                    sources.append({"id": gear["id"], "kind": "gear", "copied": False})
+        elif spec.source_kind == "legend":
+            if row["legend"] in spec.source_codes and not row["legend_exhausted"]:
+                sources.append({"id": f"legend:{player}", "kind": "legend", "copied": False})
+        if spec.copyable:
+            for unit in self._units(state, player):
+                if unit["code"] == "OGN-111" and not unit["exhausted"]:
+                    sources.append({"id": unit["id"], "kind": "unit", "copied": True})
+        return sources
 
     def _resolve_registry_copy(self, state, player, args, rng, target=None):
         """Resolve a Heimer copied ability through its registered action kind."""
@@ -1597,6 +1709,26 @@ class OriginsRules:
                 result.append(Action.make("gear_resource", gear=gear["id"], domain=gear_resource[gear["code"]]))
             elif gear["code"] == "OGN-098":
                 result.append(Action.make("gear_resource", gear=gear["id"], energy=1))
+            elif gear["code"] == "OGN-017":
+                candidates = [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
+                if candidates:
+                    result.append(Action.make("gear_targeted", gear=gear["id"], effect="gear_damage",
+                                              target_candidates=candidates))
+                result.extend(Action.make("gear_target", gear=gear["id"], effect="gear_damage", target=u["id"])
+                               for u in state["units"] if self._is_field(state, u["location"]))
+            elif gear["code"] == "OGN-181":
+                candidates = ([u["id"] for u in self._units(state, player)]
+                              + [g["id"] for g in row["gear"] if g["id"] != gear["id"]]
+                              + [h["id"] for h in row.get("hidden", [])])
+                if candidates:
+                    result.append(Action.make("gear_targeted", gear=gear["id"], effect="gear_return",
+                                              target_candidates=candidates))
+                result.extend(Action.make("gear_target", gear=gear["id"], effect="gear_return", target=u["id"])
+                              for u in self._units(state, player))
+                result.extend(Action.make("gear_target", gear=gear["id"], effect="gear_return", target=g["id"])
+                              for g in row["gear"] if g["id"] != gear["id"])
+                result.extend(Action.make("gear_target", gear=gear["id"], effect="gear_return", target=h["id"])
+                              for h in row.get("hidden", []))
             elif gear["code"] == "OGN-090":
                 candidates = [u["id"] for u in self._units(state)]
                 if candidates:
@@ -2594,6 +2726,39 @@ class OriginsRules:
         gear["exhausted"] = True
         return gear
 
+    def _effect_gear_damage(self, state, item, rng):
+        if self._consume_gear(state, item) is None:
+            return True
+        target = self._unit(state, item.get("target"))
+        if target is not None and self._is_field(state, target["location"]):
+            self._deal_damage(state, target, 2)
+            self._cleanup(state, rng)
+        return True
+
+    def _effect_gear_return(self, state, item, rng):
+        if self._consume_gear(state, item) is None:
+            return True
+        owner = item["owner"]
+        row = state["players"][owner]
+        target = self._unit(state, item.get("target"))
+        if target is not None:
+            if target["owner"] != owner:
+                return True
+            state["units"].remove(target)
+            if target.get("card") is not None:
+                row["hand"].append(target["card"])
+            return True
+        gear = next((g for g in row["gear"] if g["id"] == item.get("target")), None)
+        if gear is not None and gear["id"] != item.get("gear"):
+            row["gear"].remove(gear)
+            row["hand"].append(gear["card"])
+            return True
+        hidden = next((h for h in row.get("hidden", []) if h["id"] == item.get("target")), None)
+        if hidden is not None:
+            row["hidden"].remove(hidden)
+            row["hand"].append(hidden["card"])
+        return True
+
     def _effect_gear_debuff(self, state, item, rng):
         if self._consume_gear(state, item) is None:
             return True
@@ -2643,13 +2808,19 @@ class OriginsRules:
         owner = item["owner"]
         row = state["players"][owner]
         gear = next((g for g in row["gear"] if g["id"] == item.get("gear")), None)
-        if gear is None or gear["exhausted"] or target is None or target["owner"] != owner:
+        copied_source = item.get("copied_source")
+        if copied_source is not None:
+            gear = self._unit(state, copied_source)
+        if gear is None or (copied_source is None and gear["exhausted"]) \
+                or target is None or target["owner"] != owner:
             return True
         if row["energy"] < 1:
             return True
         order_index = next((i for i, power in enumerate(row["power"]) if power == "order"), None)
         if order_index is None:
             return True
+        # A native Gear action exhausts the Gear object.  A copied action has
+        # already exhausted Heimer as its activating source.
         gear["exhausted"] = True
         row["energy"] -= 1
         row["power"].pop(order_index)
@@ -4588,7 +4759,8 @@ class OriginsRules:
             gear = next((g for g in row["gear"] if g["id"] == args["gear"]), None)
             if (gear is None or gear["exhausted"]
                     or args.get("effect") not in {"gear_debuff", "gear_buff_exhausted", "gear_move",
-                                                   "gear_armory_protect", "gear_baited_hook"}):
+                                                   "gear_armory_protect", "gear_baited_hook",
+                                                   "gear_damage", "gear_return"}):
                 raise ValueError("gear target ability is unavailable")
             state["decision"] = {
                 "kind": "target", "player": player,

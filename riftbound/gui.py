@@ -956,6 +956,8 @@ class OriginsGUI(tk.Tk):
             "unit_ability_targeted": "单位技能并选择目标 / Unit ability and choose target",
             "legend_targeted": "传奇能力并选择目标 / Legend ability and choose target",
             "legend_move_targeted": "传奇能力并选择移动目标 / Legend move and choose target",
+            "ability_activate": "Heimer：发动复制的横置能力 / Heimer: copied exhaust ability",
+            "ability_targeted": "Heimer：发动复制能力并选择目标 / Heimer: copied ability and choose target",
             "choose_target": "选择目标 / Choose target",
             "choose_chain_target": "选择结算链目标 / Choose chain target",
             "choose_field": "选择战场 / Choose battlefield",
@@ -1461,7 +1463,8 @@ class OriginsGUI(tk.Tk):
                                "legend_recruit", "legend_channel", "unit_buff", "legend_buff",
                                "legend_move", "legend_ganking",
                                "legend_targeted", "legend_move_targeted", "commit_move", "cancel_move", "order_triggers",
-                               "play_spell_targeted", "play_field_targeted", "play_counter", "play_unit_targeted"}:
+                               "play_spell_targeted", "play_field_targeted", "play_counter", "play_unit_targeted",
+                               "ability_activate", "ability_targeted"}:
                 ttk.Button(self.actions, text=self.action_text(action),
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
         prompt = "左键选择/多选单位，再拖到基地/战场移动；右键查看其他操作"

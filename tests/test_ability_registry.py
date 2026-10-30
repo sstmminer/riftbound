@@ -126,6 +126,40 @@ class AbilityRegistryTests(unittest.TestCase):
         self.assertEqual(enemy["temporary"], -1)
         self.assertTrue(heimer["exhausted"])
 
+    def test_heimer_copies_iron_ballista_and_energy_conduit(self):
+        rules = OriginsRules()
+        state = rules.initial_state(random.Random(29))
+        state.update(phase="main", actor=0, turn_player=0, turn=3)
+        state["players"][0]["energy"] = 4
+        state["players"][0]["power"] = ["fury"] * 4
+        heimer = rules._new_unit(state, "OGN-111", 0, 0, exhausted=False)
+        enemy = rules._new_unit(state, "OGN-003", 1, 0, exhausted=False)
+        state["players"][0]["gear"].extend([
+            {"id": "gear:017", "card": None, "code": "OGN-017", "owner": 0,
+             "location": "base:0", "exhausted": False},
+            {"id": "gear:098", "card": None, "code": "OGN-098", "owner": 0,
+             "location": "base:0", "exhausted": False},
+        ])
+        actions = [a for a in rules.legal_actions(state)
+                   if a.kind in {"ability_activate", "ability_targeted"}
+                   and json.loads(a.arguments).get("source") == heimer["id"]]
+        ballista = next(a for a in actions if json.loads(a.arguments)["ability_id"] == "gear.iron_ballista_damage")
+        rules.apply(state, ballista, random.Random(31))
+        rules.apply(state, next(a for a in rules.legal_actions(state)
+                                if a.kind == "choose_target" and enemy["id"] in a.arguments), random.Random(31))
+        self.assertEqual(enemy["damage"], 2)
+        self.assertTrue(heimer["exhausted"])
+
+        # A new ready Heimer can use another registered E ability; Energy
+        # Conduit adds energy rather than accidentally appending a null domain.
+        heimer["exhausted"] = False
+        before = state["players"][0]["energy"]
+        conduit = next(a for a in rules.legal_actions(state)
+                       if a.kind == "ability_activate"
+                       and json.loads(a.arguments).get("ability_id") == "gear.energy_conduit_resource")
+        rules.apply(state, conduit, random.Random(31))
+        self.assertEqual(state["players"][0]["energy"], before + 1)
+
 
 if __name__ == "__main__":
     unittest.main()

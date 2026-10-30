@@ -437,23 +437,12 @@ class OriginsRules:
                         if player != unit["owner"]:
                             shrine_sources = self._registry_event_sources(
                                 state, player, "gear.solari_shrine_draw")
+                            for shrine in shrine_sources:
+                                self._queue_optional(
+                                    state, player, "solari_shrine_draw",
+                                    source=shrine["id"], copied=shrine["copied"])
                             if shrine_sources:
-                                shrine = shrine_sources[0]
-                                if shrine["copied"]:
-                                    self._unit(state, shrine["id"])["exhausted"] = True
-                                else:
-                                    next(g for g in state["players"][player]["gear"]
-                                         if g["id"] == shrine["id"])["exhausted"] = True
-                                self._draw(state, player, 1, rng if rng is not None else random.Random(0))
-                            # A ready Heimer may copy Solari Shrine's E ability.
-                            # The source Gear remains in its own zone; only the
-                            # activating Heimer becomes exhausted.
-                            for heimer in self._units(state, player):
-                                if (heimer["code"] == "OGN-111" and not heimer["exhausted"]
-                                        and self._heimer_has_copy(state, player, "gear", "OGN-072")):
-                                    heimer["exhausted"] = True
-                                    self._draw(state, player, 1, rng if rng is not None else random.Random(0))
-                                    break
+                                return
                 # Karthus doubles Deathknell effects controlled by its owner
                 # while it is present for the simultaneous-death check.
                 multiplier = 2 if any(other["owner"] == unit["owner"]
@@ -897,6 +886,22 @@ class OriginsRules:
     def _resolve_optional(self, state, item, rng):
         player = item["player"]
         effect = item["effect"]
+        if effect == "solari_shrine_draw":
+            source = item.get("source")
+            if item.get("copied"):
+                heimer = self._unit(state, source)
+                if heimer is None or heimer["code"] != "OGN-111" or heimer["exhausted"]:
+                    return True
+                heimer["exhausted"] = True
+            else:
+                gear = next((gear for gear in state["players"][player]["gear"]
+                             if gear["id"] == source and gear["code"] == "OGN-072"
+                             and not gear["exhausted"]), None)
+                if gear is None:
+                    return True
+                gear["exhausted"] = True
+            self._draw(state, player, 1, rng)
+            return True
         if effect == "heimer_mistfall_ready":
             target = self._unit(state, item.get("target"))
             source = self._unit(state, item.get("source"))
@@ -918,14 +923,13 @@ class OriginsRules:
                 return True
             power_index = next((index for index, power in enumerate(row["power"])
                                 if power in DOMAINS or power == "any"), None)
-            replacement = target.get("death_replacement")
-            target.pop("death_replacement", None)
             if power_index is None:
                 return True
             source = next((unit for unit in self._units(state, player)
                            if unit["code"] == "OGN-111" and not unit["exhausted"]), None)
             if source is None:
                 return True
+            target.pop("death_replacement", None)
             row["power"].pop(power_index)
             source["exhausted"] = True
             target["buff"] = 0
@@ -1480,14 +1484,17 @@ class OriginsRules:
         spec = self.abilities.get(ability_id)
         row = state["players"][player]
         sources = []
+        source_present = False
         if spec.source_kind == "gear":
+            source_present = any(gear["code"] in spec.source_codes for gear in row["gear"])
             for gear in row["gear"]:
                 if gear["code"] in spec.source_codes and not gear["exhausted"]:
                     sources.append({"id": gear["id"], "kind": "gear", "copied": False})
         elif spec.source_kind == "legend":
+            source_present = row["legend"] in spec.source_codes
             if row["legend"] in spec.source_codes and not row["legend_exhausted"]:
                 sources.append({"id": f"legend:{player}", "kind": "legend", "copied": False})
-        if spec.copyable:
+        if spec.copyable and source_present:
             for unit in self._units(state, player):
                 if unit["code"] == "OGN-111" and not unit["exhausted"]:
                     sources.append({"id": unit["id"], "kind": "unit", "copied": True})

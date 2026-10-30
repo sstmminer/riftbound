@@ -203,6 +203,10 @@ def origins_ability_registry() -> AbilityRegistry:
                target_mode="none", cost={"energy": 1}),
         _spec("legend.bounty_hunter_ganking", "legend", ["OGN-267"], "legend_ganking",
                target_mode="friendly_unit"),
+        _spec("legend.the_boss_save", "legend", ["OGN-269"], "legend_boss_save",
+               timing="replacement", target_mode="friendly_buffed_unit",
+               cost={"power": "any", "spend_buff": True},
+               notes="Optional death replacement; source exhausts and spends target Buff."),
     ])
 
     # Gear abilities.  The registry captures every E ability from the current
@@ -216,6 +220,9 @@ def origins_ability_registry() -> AbilityRegistry:
                target_mode="friendly_unit", cost={"discard": 1}),
         _spec("gear.ravenborn_tome_bonus", "gear", ["OGN-032"], "gear_tome",
                target_mode="none"),
+        _spec("gear.solari_shrine_draw", "gear", ["OGN-072"], "gear_shrine_draw",
+               timing="triggered", target_mode="none",
+               notes="Optional exhaust after killing a stunned enemy."),
         _spec("gear.seal_of_rage_resource", "gear", ["OGN-040"], "gear_resource",
                timing="reaction", cost={"resource": "fury"}),
         _spec("gear.seal_of_focus_resource", "gear", ["OGN-081"], "gear_resource",
@@ -228,6 +235,9 @@ def origins_ability_registry() -> AbilityRegistry:
                target_mode="none", cost={"energy": 1, "recycle": 3}),
         _spec("gear.arena_bar_buff", "gear", ["OGN-124"], "gear_buff_exhausted",
                target_mode="friendly_exhausted_unit"),
+        _spec("gear.mistfall_ready", "gear", ["OGN-152"], "gear_mistfall_ready",
+               timing="triggered", target_mode="friendly_unit",
+               cost={"power": "body"}, notes="Optional response to buffing a friendly unit."),
         _spec("gear.seal_of_insight_resource", "gear", ["OGN-120"], "gear_resource",
                timing="reaction", cost={"resource": "mind"}),
         _spec("gear.seal_of_strength_resource", "gear", ["OGN-163"], "gear_resource",

@@ -76,8 +76,10 @@ GUI 也把对手 Base 放回对手手牌与身份区一侧；我方 Base 保留�
 随后加入 Rune Prison、Discipline、Cannon Barrage、Flurry of Blades 和 Primal
 Strength，复用目标选择、Stun、反应时机和战场范围伤害窗口。
 
-Falling Star（OGN-029）和 Icathian Rain（OGN-248）曾先接入统一卡牌点击目标窗口；后续审计确认
-它们仍需迁移为法术完成后创建 Reflexive Trigger 的官方时序。
+Falling Star（OGN-029）和 Icathian Rain（OGN-248）曾先接入统一卡牌点击目标窗口。后续的
+Origins FAQ 一度把它们解释为 Reflexive Trigger，但 2026-01-14 的官方 [Spiritforged FAQ](https://riftbound.leagueoflegends.com/en-us/news/rules-and-releases/riftbound-spiritforged-faq/)
+明确撤回该解释，说明这是错误的设计方向，并将两张牌改回普通法术：施放时一次性选择全部目标，
+对手可在伤害结算前响应，之后按选择顺序逐次结算。当前实现按后续 FAQ 执行。
 Falling Star 可按顺序点击同一单位两次，Icathian Rain 可点击六次；点击序列会在临时窗口中
 显示编号，确认前可删除单项或清空重选。引擎保留点击顺序并在确认后按该顺序逐次结算伤害。
 
@@ -267,7 +269,7 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 - 对照 [RUP5 Core Rules](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf) 355.11、355.11.b、355.11.b.1、359.3.e.2–e.8，以及 [Origins FAQ](https://riftbound.leagueoflegends.com/en-us/news/rules-and-releases/riftbound-origins-faq) 的 Fox-Fire 条目，确认 OGN-256 属于“目标组整体合法性”特例。反应结算后若原目标组总 Might 超过 4，必须从原目标中选择满足条件的**最大数量**合法子集；不能加入未选单位；原目标一起移动到另一座战场时仍可作为同组目标，进入基地、手牌或弃牌区则不可用；没有合法非空子集时不执行。
 - OGN-256 现在在结算时枚举当前原目标的合法分组，只有在原组失效时打开不重新让过优先权的多选窗口，并强制最大目标数。Hidden 版本保留隐藏战场的目标限制。新增反应增益、禁止补选新单位、全员超限、目标移动、目标一起移动到新战场和 Hidden 多选回归测试。
 - 同步重检了容易受反应影响的普通目标：Gust 结算时重新检查 Might≤3；Get Excited、Rebuke、Fading Memories、Hidden Blade 等“at a battlefield”目标离场后不再执行；Singularity 可以合法选择基地单位；Facebreaker 的友军/敌军同场配对失效时不再单独眩晕剩余单位；Back to Back、Challenge、Last Breath、Zenith Blade、Shakedown、Meditation 等路径重新检查控制者、准备状态和战场限制。
-- 仍需单独迁移的高优先机制是 Falling Comet（FAQ 中的 Falling Star）与 Icathian Rain：当前牌池仍沿用旧的目标窗口，而官方 FAQ 已将它们解释为无目标法术结算后创建 Reflexive Trigger。迁移方案是先完成法术本体，再逐个创建统一目标触发；这项工作未在本轮混入 Fox-Fire 修复，避免把两种时点模型混在一起。
+- Falling Star 与 Icathian Rain 的规则状态已按后续 Spiritforged FAQ 定稿：两张牌不是 Reflexive Trigger，当前保留施放时的多目标选择窗口；Deflect 按官方规则 735.1.c 对每次选中分别计费。后续若有新的官方 errata，应以更晚的官方卡牌文本覆盖本记录。
 - GUI 目标交互审计：普通目标、Hidden 目标、装备/单位技能目标、战场目标和结算链目标均通过左键选择；多目标使用统一的临时目标序列窗口并要求“确认目标”，可取消重选，重复分配按顺序记录。决策窗口期间右键不会再偷偷改变目标，也不会打开复杂组合菜单；Hidden 和装备能力可用左键启动，符文在目标窗口中也优先作为目标处理。右键保留给非决策状态下的区域操作和资源菜单。
 - Accelerate 时序按 RUP5 355.1.a、357.1.a、357.2、430.2/430.3、445.2.c、805.1/805.2/805.6 修正：这是打出单位过程中的 Pay Costs 临时窗口，不是普通优先权窗口。只有带 Reaction 的 Add-resource 能力可以在此时立即结算；Hand of Noxus、Seal/Energy Conduit 和 Heimer 复制的资源能力现在可用，Daughter of the Void 因“仅用于打出法术”不会出现。普通 Reaction 法术不能在这里响应；支付完成后由 Accelerate 的延迟替代效果使单位直接以就绪状态进入，之后才恢复正常优先权。GUI 底部不再列出横置/回收符文按钮，符文区直接操作，底部只保留加速/跳过和资源能力按钮。根据 RUP5 350.1、420.4.b、812.1.c，支付中的当前单位仍是 Pending，不能满足 Hand of Noxus 的 Legion；只有本回合更早已 Finalized 的另一张牌才会开放该能力。
 

@@ -4812,6 +4812,22 @@ class OriginsRules:
 
     def _effect_spell(self, state, item, rng):
         code, owner = item["code"], item["owner"]
+        # The Dreaming Tree trigger is generated when the spell's target was
+        # chosen, before the spell resolves.  Resolve-time checks are too
+        # late: a damage spell can kill the chosen friendly unit and would
+        # otherwise erase the event that already happened.  The item is
+        # revisited by a few multi-step spells, so mark the event once.
+        if not item.get("dreaming_tree_checked"):
+            item["dreaming_tree_checked"] = True
+            state.setdefault("dreaming_tree_used", [False] * len(state["fields"]))
+            for uid in item.get("targets", []):
+                target = self._unit(state, uid)
+                if (target is not None and target["owner"] == owner
+                        and self._is_field(state, target["location"])
+                        and state["fields"][target["location"]]["code"] == "OGN-292"
+                        and not state["dreaming_tree_used"][target["location"]]):
+                    state["dreaming_tree_used"][target["location"]] = True
+                    self._draw(state, owner, 1, rng)
         if code == "OGN-115" and item.get("future_queue"):
             play_owner = item["future_queue"].pop(0)
             card = item["future_cards"].get(play_owner)
@@ -5301,13 +5317,6 @@ class OriginsRules:
             for unit in self._units(state):
                 if self._is_field(state, unit["location"]):
                     self._deal_damage(state, unit, 1)
-        for uid in item["targets"]:
-            target = self._unit(state, uid)
-            if (target is not None and target["owner"] == owner and self._is_field(state, target["location"])
-                    and state["fields"][target["location"]]["code"] == "OGN-292"
-                    and not state["dreaming_tree_used"][target["location"]]):
-                state["dreaming_tree_used"][target["location"]] = True
-                self._draw(state, owner, 1, rng)
         target_ids = set(item["targets"])
         self._cleanup(state, rng)
         killed = any(uid not in {u["id"] for u in state["units"]} for uid in target_ids)

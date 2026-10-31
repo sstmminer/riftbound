@@ -1,0 +1,136 @@
+[
+  {
+    "id": "move_ready_unit_exhausts_and_enters_showdown",
+    "units": [
+      {"id": "u1", "owner": 0, "location": "base:0", "might": 3}
+    ],
+    "actions": [
+      {"kind": "move", "units": ["u1"], "destination": 0, "actor": 0}
+    ],
+    "expected": {
+      "state": {
+        "phase": "main",
+        "actor": 0,
+        "passes": 0,
+        "units": {"u1": {"id": "u1", "owner": 0, "card_owner": 0,
+          "card": null, "location": 0, "might": 3, "damage": 0,
+          "exhausted": true}},
+        "events": [
+          {"kind": "move", "unit": "u1", "origin": "base:0",
+           "destination": 0, "actor": 0}
+        ]
+      }
+    }
+  },
+  {
+    "id": "exhausted_unit_cannot_move",
+    "units": [
+      {"id": "u1", "owner": 0, "location": "base:0", "exhausted": true}
+    ],
+    "actions": [
+      {"kind": "move", "units": ["u1"], "destination": 0, "actor": 0}
+    ],
+    "expected": {"errors": ["units are not jointly movable to destination"]}
+  },
+  {
+    "id": "lethal_damage_moves_card_to_physical_owner_trash",
+    "cards": [{"id": "c1", "owner": 0, "zone": "hand"}],
+    "units": [
+      {"id": "u1", "owner": 1, "card_owner": 0, "card": "c1",
+       "location": 0, "might": 3}
+    ],
+    "actions": [{"kind": "damage", "unit": "u1", "amount": 3}],
+    "expected": {
+      "state": {
+        "units": {},
+        "players": [
+          {"main": [], "hand": [], "trash": ["c1"], "energy": 0},
+          {"main": [], "hand": [], "trash": [], "energy": 0}
+        ],
+        "events": [
+          {"kind": "damage", "unit": "u1", "amount": 3, "total": 3},
+          {"kind": "death", "unit": "u1", "card": "c1", "card_owner": 0}
+        ]
+      }
+    }
+  },
+  {
+    "id": "control_change_preserves_physical_owner",
+    "cards": [{"id": "c1", "owner": 0, "zone": "hand"}],
+    "units": [
+      {"id": "u1", "owner": 0, "card_owner": 0, "card": "c1",
+       "location": 0, "might": 2}
+    ],
+    "actions": [
+      {"kind": "control", "unit": "u1", "owner": 1},
+      {"kind": "damage", "unit": "u1", "amount": 2}
+    ],
+    "expected": {
+      "state": {
+        "units": {},
+        "players": [
+          {"main": [], "hand": [], "trash": ["c1"], "energy": 0},
+          {"main": [], "hand": [], "trash": [], "energy": 0}
+        ],
+        "events": [
+          {"kind": "control", "unit": "u1", "old_owner": 0,
+           "new_owner": 1, "card_owner": 0},
+          {"kind": "damage", "unit": "u1", "amount": 2, "total": 2},
+          {"kind": "death", "unit": "u1", "card": "c1", "card_owner": 0}
+        ]
+      }
+    }
+  },
+  {
+    "id": "recycle_is_explicit_zone_event",
+    "cards": [{"id": "c1", "owner": 0, "zone": "trash"}],
+    "actions": [{"kind": "recycle", "player": 0, "cards": ["c1"]}],
+    "expected": {
+      "state": {
+        "players": [
+          {"main": ["c1"], "hand": [], "trash": [], "energy": 0},
+          {"main": [], "hand": [], "trash": [], "energy": 0}
+        ],
+        "events": [{"kind": "recycle", "player": 0, "cards": ["c1"]}]
+      }
+    }
+  },
+  {
+    "id": "chain_resolves_after_two_priority_passes",
+    "actions": [
+      {"kind": "chain_push", "effect": "test_spell", "owner": 0},
+      {"kind": "pass", "player": 0},
+      {"kind": "pass", "player": 1}
+    ],
+    "expected": {
+      "state": {
+        "phase": "main", "actor": 0, "passes": 0, "chain": [],
+        "events": [
+          {"kind": "chain_push", "effect": "test_spell", "owner": 0},
+          {"kind": "pass", "player": 0},
+          {"kind": "pass", "player": 1},
+          {"kind": "chain_resolve", "effect": "test_spell", "owner": 0}
+        ]
+      }
+    }
+  },
+  {
+    "id": "optional_effect_requires_explicit_choice",
+    "actions": [
+      {"kind": "optional_queue", "effect": "draw", "player": 0,
+       "source": "test_field"},
+      {"kind": "optional_choice", "id": "o1", "accept": false}
+    ],
+    "expected": {
+      "state": {
+        "phase": "main", "actor": 0, "optional": [],
+        "events": [
+          {"kind": "optional_queue", "id": "o1", "effect": "draw",
+           "player": 0, "source": "test_field"},
+          {"kind": "optional_choice", "id": "o1", "accept": false,
+           "effect": "draw"}
+        ]
+      }
+    }
+  }
+]

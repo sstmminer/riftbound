@@ -64,6 +64,11 @@ class OriginsGUI(tk.Tk):
         self._target_window = None
         self._opponent_job = None
         self._winner_announced = False
+        # The first opponent-first mulligan can produce a public log entry
+        # before Restart is ever pressed.  Initialize this counter before the
+        # initial render/idle callback so that opening automation cannot fail
+        # with AttributeError and leave the human mulligan controls dormant.
+        self._log_seq = 0
         self._build()
         self.render()
         # Drive an opponent-first opening mulligan immediately.  Without an
@@ -72,9 +77,31 @@ class OriginsGUI(tk.Tk):
         self.after_idle(self._drive_initial_turn)
 
     def _drive_initial_turn(self):
-        if (self._opponent_job is None and not self.env.done
-                and self.env.current_player != 0):
-            self._opponent_job = self.after(1, self.opponent_step)
+        # ``render_actions`` may have installed a slower timer while the
+        # initial table was being built.  Replace that timer with the
+        # immediate opening driver so an opponent-first mulligan cannot leave
+        # the human hand waiting until Restart or another event.
+        if self.env.done or self.env.current_player == 0:
+            return
+        if self._opponent_job is not None:
+            try:
+                self.after_cancel(self._opponent_job)
+            except tk.TclError:
+                pass
+            self._opponent_job = None
+        self._schedule_opponent_step(delay=1)
+
+    def _schedule_opponent_step(self, *, delay=300):
+        """Schedule at most one automatic opponent action.
+
+        Rendering is called from several paths (card callbacks, reveal
+        windows, Restart).  Keeping the timer guard in one helper prevents a
+        stale first-turn callback from competing with the newly rendered
+        mulligan controls.
+        """
+        if self.env.done or self.env.current_player == 0 or self._opponent_job is not None:
+            return
+        self._opponent_job = self.after(delay, self.opponent_step)
 
     # ---------- window and layout ----------
 
@@ -220,7 +247,8 @@ class OriginsGUI(tk.Tk):
     def _image_card(self, parent, code, *, uid=None, zone=None, owner=None, factor=3,
                     private=False, compact_label=None, click=True, exhausted=False,
                     selected=False, pack=True, show_label=True, field=None):
-        if uid is not None and uid in self.selected_decision_targets:
+        if uid is not None and (uid in self.selected_decision_targets
+                                or uid in self._decision_selected_ids()):
             selected = True
         wrapper = tk.Frame(parent, bg="#f4c542" if selected else "#24364d",
                            padx=4 if selected else 2, pady=4 if selected else 2)
@@ -382,6 +410,24 @@ class OriginsGUI(tk.Tk):
                 row.pack(fill="x", anchor="nw")
             render_item(row, item)
 
+    @staticmethod
+    def _fan_step(available, card_width, count, *, minimum=18):
+        """Return the horizontal step for an overlapped card row.
+
+        A card row must remain usable when its parent is narrower than the
+        card art.  The first card keeps its full width and each following card
+        receives at least ``minimum`` pixels of exposed strip, so a dense row
+        remains clickable instead of being clipped or becoming one giant
+        invisible widget.  Keeping this arithmetic separate also makes the
+        sizing rule testable without opening a Tk window.
+        """
+        available = max(float(available), 1.0)
+        card_width = max(float(card_width), 1.0)
+        count = int(count)
+        if count <= 1:
+            return card_width
+        return min(card_width, max(float(minimum), (available - card_width) / (count - 1)))
+
     def _fan(self, parent, items, render_item, *, per_row=10, row_height=132):
         """Lay cards over each other inside a fixed-size region.
 
@@ -391,17 +437,22 @@ class OriginsGUI(tk.Tk):
         parent.update_idletasks()
         available = max(parent.winfo_width(), parent.winfo_reqwidth(), 1)
         items = list(items)
-        for start in range(0, len(items), per_row):
-            row_items = items[start:start + per_row]
-            wrappers = [render_item(parent, item) for item in row_items]
-            if not wrappers:
-                continue
-            self.update_idletasks()
-            card_width = max(wrapper.winfo_reqwidth() for wrapper in wrappers)
-            count = len(wrappers)
-            step = card_width if count == 1 else min(card_width, max(18, (available - card_width) / (count - 1)))
+        if not items:
+            return
+        per_row = max(1, int(per_row))
+        # Render once so the actual card width is known before deciding how
+        # many cards fit on a row.  This matters for small windows: forcing a
+        # long one-row fan would place later cards outside the clipped frame.
+        wrappers_all = [render_item(parent, item) for item in items]
+        self.update_idletasks()
+        card_width = max(wrapper.winfo_reqwidth() for wrapper in wrappers_all)
+        max_fit = max(1, int((available - card_width) / 18) + 1)
+        row_size = min(per_row, max_fit)
+        for start in range(0, len(wrappers_all), row_size):
+            wrappers = wrappers_all[start:start + row_size]
+            step = self._fan_step(available, card_width, len(wrappers))
             for index, wrapper in enumerate(wrappers):
-                wrapper.place(x=int(index * step), y=(start // per_row) * row_height)
+                wrapper.place(x=int(index * step), y=(start // row_size) * row_height)
 
     def set_hint(self, text):
         self.hint.configure(text=text, fg="#9fb4ce")
@@ -458,6 +509,14 @@ class OriginsGUI(tk.Tk):
             except tk.TclError:
                 pass
             self._opponent_job = None
+        if self._aurora_batch_job is not None:
+            try:
+                self.after_cancel(self._aurora_batch_job)
+            except tk.TclError:
+                pass
+            self._aurora_batch_job = None
+        self._aurora_batch_cards.clear()
+        self._cancel_preview()
         selected = self.variant_box.get() or self.variant
         self.variant = selected if selected in {"starter", "vision", "daughter", "complex", "repeat", "replay", "cost", "resources", "reveal"} else "starter"
         self.rules = OriginsRules(self._decks(), extra_fields=self.extra_fields)
@@ -473,6 +532,10 @@ class OriginsGUI(tk.Tk):
         self.log_clear()
         self.log_add(f"已用种子 {self.seed} 重新开始。")
         self.render()
+        # Restart must use the same deterministic first-turn driver as the
+        # constructor.  Otherwise an opponent-first opening can again wait on
+        # the slower render timer and appear fixed only after another click.
+        self.after_idle(self._drive_initial_turn)
 
     def _decks(self):
         deck = (vision_deck() if self.variant == "vision" else
@@ -662,6 +725,21 @@ class OriginsGUI(tk.Tk):
             self.render()
 
     def mulligan_click(self, uid):
+        if self.env.done or self.env.current_player != 0:
+            self.selected_mulligan.discard(uid)
+            self.set_notice("当前不是玩家 0 的调度阶段。")
+            self.render()
+            return False
+        obs = self.env.observe(0)
+        if obs.get("phase") != "mulligan":
+            self.selected_mulligan.discard(uid)
+            self.set_notice("调度阶段已经结束。")
+            self.render()
+            return False
+        if uid not in {card["id"] for card in obs.get("hand", [])}:
+            self.set_notice("这张牌已经不在当前手牌中。")
+            self.render()
+            return False
         if uid in self.selected_mulligan:
             self.selected_mulligan.remove(uid)
             self.set_notice("已取消调度这张牌。")
@@ -672,6 +750,7 @@ class OriginsGUI(tk.Tk):
             self.selected_mulligan.add(uid)
             self.set_notice(f"已选择调度 {len(self.selected_mulligan)} 张牌。")
         self.render()
+        return True
 
     def commit_mulligan(self):
         if self.env.current_player != 0 or self.env.observe(0)["phase"] != "mulligan":
@@ -743,12 +822,36 @@ class OriginsGUI(tk.Tk):
                 if len(self.selected_decision_targets) >= maximum:
                     self.set_notice(f"最多选择 {maximum} 个目标。")
                     return True
+                proposed = self.selected_decision_targets + [uid]
+                if decision.get("target_pairs") and not self._target_sequence_extendable(decision, proposed):
+                    self.set_notice("这个目标不能与已选目标组成合法组合，已阻止本次选择。")
+                    return True
                 self.selected_decision_targets.append(uid)
             self.render()
             return True
         self.selected_decision_targets.clear()
         self.perform(matching[0])
         return True
+
+    @staticmethod
+    def _target_sequence_extendable(decision, selected):
+        """Return whether a clicked multi-target prefix can still resolve.
+
+        Hidden cards such as Facebreaker expose a flat candidate list but a
+        constrained set of legal pairs.  Waiting until Confirm to discover an
+        invalid second click is confusing and can make the player lose the
+        intended target sequence.  Mirror the engine's ordered/unordered pair
+        rule locally so the newest invalid click is rejected immediately.
+        """
+        pairs = decision.get("target_pairs") or []
+        if not pairs:
+            return True
+        if decision.get("ordered_pairs"):
+            return any(list(pair[:len(selected)]) == list(selected)
+                       and len(selected) <= len(pair) for pair in pairs)
+        selected_set = set(selected)
+        return any(selected_set <= set(pair) and len(selected) <= len(pair)
+                   for pair in pairs)
 
     def _decision_field_click(self, field):
         """Handle a battlefield click for effects that choose a battlefield."""
@@ -835,7 +938,32 @@ class OriginsGUI(tk.Tk):
             gear = next((gear for gear in row.get("gear", []) if gear.get("id") == uid), None)
             if gear is not None:
                 return self._card_name(gear["code"])
+            for zone in ("hand", "champion", "trash", "banishment"):
+                card = next((card for card in row.get(zone, []) if card.get("id") == uid), None)
+                if card is not None:
+                    return self._card_name(card["code"])
+            rune = next((rune for rune in row.get("runes", []) if rune.get("id") == uid), None)
+            if rune is not None:
+                return self._card_name(rune["code"])
         return str(uid)
+
+    def _decision_selected_ids(self):
+        """Return cards currently selected inside a rules decision.
+
+        Multi-target spells keep an uncommitted local click sequence, while
+        Divine Judgment stores its per-zone toggles in the engine decision.
+        Exposing both through one helper keeps the gold selection treatment
+        consistent across hand, board, gear, champion, and rune cards.
+        """
+        selected = set(getattr(self, "selected_decision_targets", ()))
+        try:
+            decision = self.env.observe(0).get("decision") or {}
+        except (AttributeError, TypeError):
+            return selected
+        if decision.get("kind") == "divine":
+            for values in (decision.get("selected") or {}).values():
+                selected.update(values or [])
+        return selected
 
     def _decision_source_label(self, decision):
         """Describe the card/ability that owns the current choice window."""
@@ -848,6 +976,17 @@ class OriginsGUI(tk.Tk):
             code = self.env._state.get("cards", {}).get(item["card"], {}).get("code")
         if code is not None:
             return self._card_name(code)
+        source_uid = item.get("source")
+        if source_uid is not None:
+            # Triggered abilities often carry only the source object id. The
+            # private GUI state can resolve it to a card name, so the player
+            # sees which unit/gear opened the target window.
+            try:
+                source_code = self.env._state.get("cards", {}).get(source_uid, {}).get("code")
+            except AttributeError:
+                source_code = None
+            if source_code is not None:
+                return self._card_name(source_code) + " 技能"
         ability_names = {
             "caitlyn": "Caitlyn 技能", "malzahar": "Malzahar 技能",
             "ganking": "Ganking 技能", "buff": "增益技能",
@@ -888,6 +1027,25 @@ class OriginsGUI(tk.Tk):
             return f"{source}：选择战场（{len(decision.get('fields', []))} 个合法战场）"
         if kind == "chain_target":
             return f"{source}：选择要无效化的结算链项目（点击右侧结算链卡牌）"
+        if kind == "divine":
+            required = decision.get("required") or {}
+            choices = decision.get("choices") or {}
+            selected = decision.get("selected") or {}
+            zone_names = {"units": "单位", "gear": "装备", "runes": "符文", "hand": "手牌"}
+            parts = []
+            for zone in ("units", "gear", "runes", "hand"):
+                if zone not in choices:
+                    continue
+                parts.append(f"{zone_names[zone]} {len(selected.get(zone, []))}/{required.get(zone, 0)}")
+            return f"{source}：每个区域选择最多两张保留牌（" + "；".join(parts) + "；点击卡牌切换高亮）"
+        if kind == "choice" and decision.get("nocturne_reveal"):
+            card = decision["nocturne_reveal"].get("card")
+            try:
+                code = self.env._state.get("cards", {}).get(card, {}).get("code", "Nocturne")
+            except AttributeError:
+                code = "Nocturne"
+            card_name = self._card_name(code)
+            return f"{source}：牌库顶出现 {card_name}，请选择放逐并继续，或跳过替代效果"
         return None
 
     def _target_code(self, uid):
@@ -971,11 +1129,16 @@ class OriginsGUI(tk.Tk):
         return uid
 
     def _rune_card(self, parent, rune, *, player, pack=True, show_label=True):
-        wrapper = tk.Frame(parent, bg="#24364d", padx=1, pady=1)
+        selected = rune["id"] in self._decision_selected_ids()
+        wrapper = tk.Frame(parent, bg="#f4c542" if selected else "#24364d",
+                           padx=3 if selected else 1, pady=3 if selected else 1)
         if pack:
             wrapper.pack(side="left", padx=2, pady=2)
         button = tk.Button(wrapper, image=self._photo(rune["code"], 5, horizontal=rune["exhausted"]), relief="raised", bd=2,
-                           bg="#111111", cursor="hand2")
+                           bg="#111111", cursor="hand2",
+                           highlightthickness=3 if selected else 1,
+                           highlightbackground="#f4c542" if selected else "#111111",
+                           highlightcolor="#f4c542" if selected else "#111111")
         button.pack()
         button.bind("<Enter>", lambda _event, c=rune["code"]: self._arm_preview(button, c))
         button.bind("<Leave>", lambda _event: self._cancel_preview())
@@ -1000,6 +1163,16 @@ class OriginsGUI(tk.Tk):
         return wrapper
 
     def rune_click(self, uid):
+        obs = self.env.observe(0) if self.env.current_player == 0 else None
+        if obs is not None:
+            phase = obs.get("phase")
+            decision = obs.get("decision") or {}
+            if phase == "decision" and decision and not decision.get("accelerate"):
+                self.set_notice("当前正在选择目标，请左键点选合法目标；符文操作暂不可用。")
+                return
+            if phase in {"optional", "reveal", "chain", "showdown", "damage", "move_select"}:
+                self.set_notice("当前结算阶段不能直接操作符文。")
+                return
         for action in self.env.legal_actions():
             args = json.loads(action.arguments)
             if action.kind == "exhaust_rune" and args.get("rune") == uid:
@@ -1103,7 +1276,10 @@ class OriginsGUI(tk.Tk):
             else:
                 text = {"draw": "抽一张牌 / Draw 1", "channel": "横置引导一枚符文 / Channel rune",
                     "accelerate": "加速：支付额外费用并活跃 / Accelerate: pay and enter ready",
-                    "skip": "跳过加速：横置入场 / Skip Accelerate: enter exhausted"}.get(
+                    "skip": "跳过加速：横置入场 / Skip Accelerate: enter exhausted",
+                    "nocturne_banish": "放逐 Nocturne 并继续翻牌 / Banish Nocturne and continue",
+                    "nocturne_skip": "跳过替代效果，保留 Nocturne / Skip replacement",
+                    "nocturne_play": "支付 1 符能打出 Nocturne / Pay 1 Power to play Nocturne"}.get(
                     args.get("option"), text)
             option = args.get("option")
             if isinstance(option, int):
@@ -1155,6 +1331,8 @@ class OriginsGUI(tk.Tk):
                 def chain_log_text(item):
                     text = self._chain_item_text(item)
                     targets = list(item.get("targets") or [])
+                    if item.get("target") is not None and item.get("target") not in targets:
+                        targets.append(item["target"])
                     if targets:
                         text += "［目标：" + "、".join(self._target_label(uid) for uid in targets) + "］"
                     if item.get("destination") is not None:
@@ -1271,6 +1449,21 @@ class OriginsGUI(tk.Tk):
             tk.Label(body, text="当前没有待结算项目", bg="#1b2a3e", fg="#9fb4ce",
                      justify="left", wraplength=180).pack(pady=10)
             return
+        # The chain can grow well beyond the eight cards that fit in the
+        # narrow side panel during nested reactions. Keep every item
+        # reachable with a vertical scrollbar instead of silently clipping
+        # the lower targets from the click surface.
+        canvas = tk.Canvas(body, bg="#1b2a3e", highlightthickness=0, width=185)
+        scrollbar = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg="#1b2a3e")
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        rows = (len(items) + 1) // 2
+        inner.configure(width=185, height=max(390, rows * 96 + 8))
+        canvas.configure(scrollregion=(0, 0, 185, max(390, rows * 96 + 8)),
+                         yscrollcommand=scrollbar.set)
+        canvas.bind("<MouseWheel>", lambda event: canvas.yview_scroll(int(-event.delta / 120), "units"))
         decision = obs.get("decision") or {}
         chain_targets = set(decision.get("targets", [])) if decision.get("kind") == "chain_target" else set()
         for index, (chain_target, item, pending) in enumerate(items):
@@ -1279,10 +1472,10 @@ class OriginsGUI(tk.Tk):
             if not code:
                 code = BACK_CODE
             selectable = chain_target in chain_targets
-            card = tk.Frame(body, bg="#f4c542" if selectable else "#31445f", padx=2, pady=2)
-            x = 4 + (index % 2) * 98
-            y = 4 + (index // 2) * 88
-            card.place(x=x, y=y, width=92, height=84)
+            card = tk.Frame(inner, bg="#f4c542" if selectable else "#31445f", padx=2, pady=2)
+            x = 4 + (index % 2) * 90
+            y = 4 + (index // 2) * 96
+            card.place(x=x, y=y, width=86, height=92)
             self._image_card(card, code, factor=7, compact_label="", click=False,
                              pack=True, show_label=False)
             label = "法术" if effect == "spell" else "技能虚影"
@@ -1446,18 +1639,25 @@ class OriginsGUI(tk.Tk):
         self._status_box(body, obs, 1, column=4)
         base_zone = self._subzone(body, "对手基地 / Opponent Base", height=165)
         base_zone.grid(row=1, column=0, columnspan=5, sticky="ew", padx=4, pady=(3, 0))
-        base = tk.Frame(base_zone, bg="#263a54")
-        base.pack(fill="both", expand=True)
-        for unit in [u for u in obs["units"] if u["location"] == "base:1"]:
-            self._image_card(base, unit["code"], uid=unit["id"], owner=unit["owner"],
-                             zone="base", factor=4,
-                             compact_label=self._unit_status_label(unit),
-                             exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
-        for gear in obs["players"][1].get("gear", []):
-            self._image_card(base, gear["code"], uid=gear["id"], owner=1, zone="gear", factor=4,
-                             compact_label="装备 · " + ("横置" if gear["exhausted"] else "就绪")
-                             + (" · 临时" if gear.get("temporary") else ""),
-                             exhausted=gear["exhausted"])
+        base_cards = [("unit", unit, 0) for unit in obs["units"] if unit["location"] == "base:1"]
+        base_cards.extend(("gear", gear, 0) for gear in obs["players"][1].get("gear", []))
+
+        def render_opponent_base(parent, entry):
+            kind, card, _pending = entry
+            if kind == "unit":
+                return self._image_card(
+                    parent, card["code"], uid=card["id"], owner=card["owner"], zone="base",
+                    factor=4, compact_label=self._unit_status_label(card),
+                    exhausted=card["exhausted"], selected=card["id"] in self.selected_units,
+                    pack=False)
+            return self._image_card(
+                parent, card["code"], uid=card["id"], owner=1, zone="gear", factor=4,
+                compact_label="装备 · " + ("横置" if card["exhausted"] else "就绪")
+                + (" · 临时" if card.get("temporary") else ""),
+                exhausted=card["exhausted"], pack=False)
+
+        self._fan(base_zone, base_cards, render_opponent_base,
+                  per_row=max(1, len(base_cards)), row_height=130)
 
     def _identity(self, parent, obs, player, *, compact=False):
         row = obs["players"][player]
@@ -1521,28 +1721,51 @@ class OriginsGUI(tk.Tk):
             units.pack(side="left", fill="both", expand=True)
             units.grid_rowconfigure(0, weight=1)
             units.grid_rowconfigure(1, weight=1)
+            units.grid_columnconfigure(0, weight=1)
             opponent_row = tk.Frame(units, bg="#263a54")
-            opponent_row.grid(row=0, column=0, sticky="new")
+            opponent_row.grid(row=0, column=0, sticky="nsew")
             player_row = tk.Frame(units, bg="#263a54")
-            player_row.grid(row=1, column=0, sticky="sew")
+            player_row.grid(row=1, column=0, sticky="nsew")
+
+            # Battlefield rows used to pack cards side by side.  A full board
+            # (or a field with several Hidden cards) then pushed cards past
+            # the frame edge, making some cards unclickable.  Keep one fixed
+            # row per controller and use the same exposed-strip fan as hands
+            # and runes.  The row width is independent of card count, while
+            # every card remains selectable even when cards overlap.
+            opponent_cards = []
+            player_cards = []
             for unit in [u for u in obs["units"] if u["location"] == index]:
                 pending = 0
                 if obs["battle"] and obs["battle"].get("damage"):
                     pending = sum(assignment.get(unit["id"], 0)
                                   for assignment in obs["battle"]["damage"]["assignments"])
-                row = player_row if unit["owner"] == 0 else opponent_row
-                self._image_card(row, unit["code"], uid=unit["id"], owner=unit["owner"],
-                                 zone="field", factor=5,
-                                 compact_label=self._unit_status_label(unit, pending=pending),
-                                 exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units,
-                                 field=index)
+                entry = ("unit", unit, pending)
+                (player_cards if unit["owner"] == 0 else opponent_cards).append(entry)
             for owner, hidden_row in enumerate(obs["players"]):
                 hidden_cards = [h for h in hidden_row.get("hidden", []) if h["field"] == index]
-                target_row = player_row if owner == 0 else opponent_row
-                for hidden in hidden_cards:
-                    self._image_card(target_row, hidden["code"], uid=hidden["id"], owner=owner,
-                                     zone="hidden", factor=5, compact_label="Hidden · 背面",
-                                     click=True, field=index)
+                (player_cards if owner == 0 else opponent_cards).extend(
+                    ("hidden", hidden, 0) for hidden in hidden_cards
+                )
+
+            def render_field_card(parent, entry):
+                kind, card, pending = entry
+                if kind == "unit":
+                    return self._image_card(
+                        parent, card["code"], uid=card["id"], owner=card["owner"],
+                        zone="field", factor=5,
+                        compact_label=self._unit_status_label(card, pending=pending),
+                        exhausted=card["exhausted"], selected=card["id"] in self.selected_units,
+                        pack=False, field=index)
+                return self._image_card(
+                    parent, card["code"], uid=card["id"], owner=card["owner"],
+                    zone="hidden", factor=5, compact_label="Hidden · 背面",
+                    click=True, pack=False, field=index)
+
+            self._fan(opponent_row, opponent_cards, render_field_card,
+                      per_row=max(1, len(opponent_cards)), row_height=145)
+            self._fan(player_row, player_cards, render_field_card,
+                      per_row=max(1, len(player_cards)), row_height=145)
     def render_player(self, obs):
         body = self._clear("player")
         body.grid_rowconfigure(0, weight=0, minsize=165)
@@ -1586,16 +1809,25 @@ class OriginsGUI(tk.Tk):
         # use it directly so there is no redundant nested "P0 基地" panel.
         base = bases
         base._base_player = 0
-        for unit in [u for u in obs["units"] if u["location"] == "base:0"]:
-            self._image_card(base, unit["code"], uid=unit["id"], owner=unit["owner"],
-                             zone="base", factor=4,
-                             compact_label=self._unit_status_label(unit),
-                             exhausted=unit["exhausted"], selected=unit["id"] in self.selected_units)
-        for gear in obs["players"][0].get("gear", []):
-            self._image_card(base, gear["code"], uid=gear["id"], owner=0, zone="gear", factor=4,
-                             compact_label="装备 · " + ("横置" if gear["exhausted"] else "就绪")
-                             + (" · 临时" if gear.get("temporary") else ""),
-                             exhausted=gear["exhausted"])
+        base_cards = [("unit", unit, 0) for unit in obs["units"] if unit["location"] == "base:0"]
+        base_cards.extend(("gear", gear, 0) for gear in obs["players"][0].get("gear", []))
+
+        def render_player_base(parent, entry):
+            kind, card, _pending = entry
+            if kind == "unit":
+                return self._image_card(
+                    parent, card["code"], uid=card["id"], owner=card["owner"], zone="base",
+                    factor=4, compact_label=self._unit_status_label(card),
+                    exhausted=card["exhausted"], selected=card["id"] in self.selected_units,
+                    pack=False)
+            return self._image_card(
+                parent, card["code"], uid=card["id"], owner=0, zone="gear", factor=4,
+                compact_label="装备 · " + ("横置" if card["exhausted"] else "就绪")
+                + (" · 临时" if card.get("temporary") else ""),
+                exhausted=card["exhausted"], pack=False)
+
+        self._fan(base, base_cards, render_player_base,
+                  per_row=max(1, len(base_cards)), row_height=130)
         piles = self._subzone(body, "牌堆 / Player Piles", width=250)
         piles.grid(row=1, column=4, sticky="nsew", padx=4)
         self._stack(piles, obs["players"][0]["trash"], owner=0,
@@ -1620,24 +1852,28 @@ class OriginsGUI(tk.Tk):
             return
         legal = self.env.legal_actions()
         obs = self.env.observe(0)
+        # A Nocturne replacement choice temporarily keeps the public reveal
+        # object alive while the engine is in phase=decision. Render the
+        # decision first, otherwise the reveal bar hides the only legal
+        # choose_option actions and the player cannot continue the effect.
+        decision = obs.get("decision")
+        if decision and self.env.current_player == 0:
+            self._render_decision_bar(decision, legal)
+            return
         reveal = obs.get("reveal")
         if reveal:
             self._render_reveal_bar(reveal, legal)
             if self.env.current_player != 0 and self._opponent_job is None:
-                self._opponent_job = self.after(300, self.opponent_step)
+                self._schedule_opponent_step()
             return
         optional = obs.get("optional") or []
         if optional and self.env.current_player == 0:
             self._render_optional_bar(optional[0], legal)
             return
-        decision = obs.get("decision")
-        if decision and self.env.current_player == 0:
-            self._render_decision_bar(decision, legal)
-            return
         if self.env.current_player != 0:
             tk.Label(self.actions, text="对手正在自动决策…", bg="#101b2b", fg="#c7d7eb").pack(side="left")
             if self._opponent_job is None:
-                self._opponent_job = self.after(300, self.opponent_step)
+                self._schedule_opponent_step()
             return
         targeted_kinds = {"gear_targeted", "unit_ability_targeted", "legend_targeted"}
         targeted_present = {
@@ -1693,12 +1929,24 @@ class OriginsGUI(tk.Tk):
         tk.Label(self.actions, text=text, bg="#101b2b", fg="#f3d58b").pack(side="left", padx=4)
         closer = reveal.get("end_player", reveal.get("closer", reveal.get("opponent")))
         can_close = closer is None or closer == self.env.current_player
+        close_label = self._reveal_close_label(reveal)
         for action in legal:
             if action.kind in {"end_reveal", "confirm_revealed"} and (action.kind != "end_reveal" or can_close):
-                label = ("施放者结束展示 / Caster ends reveal"
+                label = (close_label
                          if action.kind == "end_reveal" else self.action_text(action))
                 ttk.Button(self.actions, text=label,
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
+
+    @staticmethod
+    def _reveal_close_label(reveal):
+        """Name the player who is actually allowed to close a display."""
+        owner = reveal.get("owner")
+        closer = reveal.get("end_player", reveal.get("closer", reveal.get("opponent")))
+        if closer is None:
+            return "结束展示 / End reveal"
+        if owner is not None and closer == 1 - owner:
+            return f"P{closer}：展示方 P{owner} 的对手结束展示 / End reveal"
+        return f"P{closer}：结束展示 / End reveal"
 
     def _render_reveal_window(self, obs):
         reveal = obs.get("reveal")
@@ -1744,7 +1992,7 @@ class OriginsGUI(tk.Tk):
         if reveal.get("kind") == "display":
             end = next((a for a in legal if a.kind == "end_reveal"), None)
             if end is not None and can_close:
-                ttk.Button(popup, text="施放者结束展示 / Caster ends reveal",
+                ttk.Button(popup, text=self._reveal_close_label(reveal),
                            command=lambda a=end: self.perform(a)).pack(pady=6)
         elif reveal.get("kind") == "select":
             confirm = next((a for a in legal if a.kind == "confirm_revealed"), None)
@@ -1912,6 +2160,10 @@ class OriginsGUI(tk.Tk):
             self.render()
         except Exception as error:
             self.log_add(f"对手操作错误：{error}")
+            # Recover the action bar after an automatic callback fails. A
+            # stale timer must not leave the human looking at a frozen
+            # "opponent deciding" state until another manual click.
+            self.render()
 
     def show_decision_dialog(self):
         if self.env.done or self.env.current_player != 0 or self.env.observe(0)["phase"] != "decision":

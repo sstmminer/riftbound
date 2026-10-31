@@ -1,1 +1,1 @@
-c01c5dec735adbc1e74d93f3774da6c5b13b1cf4fe0ec816ac2f3ae6b4092802  riftbound-simulator-0.3.0.zip
+d2c5b0926c69a213f863e7ae207ca960ce91e437b8d9af0ee549dcf034be9e1b  riftbound-simulator-0.3.0.zip

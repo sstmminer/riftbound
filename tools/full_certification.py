@@ -30,6 +30,7 @@ from riftbound.support import (
     UNIT_CODES, SUPPORTED,
 )
 from tools.stable_baseline import build_report
+from tools.differential_certification import certify as certify_reference_core
 from tools.contract_invariants import violations
 
 
@@ -52,7 +53,7 @@ KNOWN_BLOCKERS = (
     {
         "id": "independent_rules_oracle",
         "scope": "all Origins",
-        "description": "No independent second rules engine or official judge oracle for full differential certification.",
+        "description": "Independent core oracle and seven core production adapters pass; full Origins differential coverage and an official judge oracle are still absent.",
     },
     {
         "id": "cross_region_control_and_nested_play",
@@ -211,6 +212,7 @@ def build_certification(*, seeds: int, max_steps: int, policies: tuple[str, ...]
     catalog = catalog_audit()
     registry = registry_audit()
     contract = contract_audit(seeds=seeds, steps=min(max_steps, 100))
+    reference = certify_reference_core()
     runtime = build_report(seeds=seeds, max_steps=max_steps, policies=policies,
                            run_tests=run_tests)
     blockers = [dict(item, status="open") for item in KNOWN_BLOCKERS]
@@ -220,6 +222,8 @@ def build_certification(*, seeds: int, max_steps: int, policies: tuple[str, ...]
         "catalog_partition": catalog["partition_complete"],
         "ability_registry": registry["integrity"],
         "contract_invariants": contract["passed"],
+        "reference_core": reference["passed"],
+        "reference_production_differential": reference["production_differential_passed"],
         "runtime_gate": runtime["gate"]["passed"],
         "known_blockers_closed": not blockers,
         "card_behavior_blockers_closed": not card_blockers,
@@ -231,6 +235,7 @@ def build_certification(*, seeds: int, max_steps: int, policies: tuple[str, ...]
         "catalog": catalog,
         "ability_registry": registry,
         "contract_invariants": contract,
+        "reference_core": reference,
         "runtime": runtime,
         "known_blockers": blockers,
         "card_behavior_blockers": card_blockers,

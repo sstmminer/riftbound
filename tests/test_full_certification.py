@@ -24,6 +24,8 @@ class FullCertificationTests(unittest.TestCase):
         self.assertTrue(report["checks"]["catalog_partition"])
         self.assertTrue(report["checks"]["ability_registry"])
         self.assertTrue(report["checks"]["contract_invariants"])
+        self.assertTrue(report["checks"]["reference_core"])
+        self.assertTrue(report["checks"]["reference_production_differential"])
         self.assertFalse(report["checks"]["known_blockers_closed"])
         self.assertTrue(report["checks"]["card_behavior_blockers_closed"])
         self.assertFalse(report["checks"]["certified"])

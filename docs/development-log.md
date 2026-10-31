@@ -355,7 +355,7 @@ Promising Future、Blind Fury、The Harrowing、Baited Hook 和反制效果提�
 
 新增 `tools/full_certification.py` 作为可归档认证入口，统一检查 298 张目录与支持表分区、
 AbilityRegistry、独立状态契约、固定种子终局/死锁/截断/Replay，以及明确的规则差分阻塞项。
-当前全量测试为 388 项；单种子贪心/随机对局均终局，0 死锁、0 截断、0 Replay mismatch，
+当前全量测试为 398 项；单种子贪心/随机对局均终局，0 死锁、0 截断、0 Replay mismatch，
 独立契约随机轨迹也通过。七张优先卡（Spirit's Refuge、Wraith、Pirate's Haven、Miss Fortune、
 Undercover Agent、Mindsplitter、Vanguard Helm）已有聚焦回归场景，card-level blocker 已关闭；负向、
 嵌套和替代效果场景仍作为持续覆盖项补充。
@@ -364,3 +364,12 @@ Undercover Agent、Mindsplitter、Vanguard Helm）已有聚焦回归场景，car
 控制权/嵌套免费打出、递归复制与部分替代效果的完整统一路径，以及部分战场可选效果矩阵。独立契约
 检查只能证明状态守恒和决策形状，不替代官方裁判差分。每次认证命令的 JSON 输出应随提交归档，不能
 用“298 张均在 SUPPORTED”替代裁判级认证。
+
+随后补入独立核心参考裁判器：7 个黄金场景覆盖移动、非法移动、伤害/死亡、物理所有者、控制权、
+回收、结算链优先权和可选效果；7/7 正式引擎适配全部通过。该参考模型不导入正式引擎，生产适配器
+位于 `tools/differential_certification.py`，因此可以发现“正式引擎和 Replay 同时稳定但规则错误”的
+一部分问题。它仍只覆盖核心规则，不足以关闭全 Origins 差分阻塞。
+
+同时触发排序按 RUP5 190.6–190.6.d、383.3.d–383.3.e 统一为回合玩家起始、按回合顺序逐玩家排序；
+开始阶段多个战场的 Hold 可选效果先统一收集，再通过同一选择队列处理。Navori Fighting Pit 打开目标
+窗口时，其他战场的延迟可选效果会在目标确认后继续进入队列。

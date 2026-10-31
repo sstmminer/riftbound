@@ -114,7 +114,9 @@ def run_production_fixture(fixture: dict) -> dict:
         "move_ready_unit_exhausts_and_enters_showdown": "move",
         "exhausted_unit_cannot_move": "illegal_move",
         "lethal_damage_moves_card_to_physical_owner_trash": "damage",
+        "control_change_preserves_physical_owner": "control",
         "recycle_is_explicit_zone_event": "recycle",
+        "chain_resolves_after_two_priority_passes": "chain",
         "optional_effect_requires_explicit_choice": "optional",
     }
     adapter = supported.get(fixture_id)
@@ -162,6 +164,35 @@ def run_production_fixture(fixture: dict) -> dict:
             }
             actual["players"][0]["trash"] = ["c1"] if any(
                 actual_card in state["players"][0]["trash"] for _ in (0,)) else []
+        elif adapter == "control":
+            from riftbound.origins import OriginsRules
+
+            row = state["players"][0]
+            actual_card = row["hand"].pop()
+            unit = rules._new_unit(state, "OGN-006", 0, 0,
+                                   card=actual_card, exhausted=False)
+            # Possession is the production path for a control change. It also
+            # recalls the unit, so the adapter checks both controller and
+            # physical owner before applying lethal damage.
+            rules._effect_spell(state, {"code": "OGN-203", "owner": 1,
+                                         "targets": [unit["id"]], "card": None},
+                                random.Random(7006))
+            precondition_failures = []
+            if unit["owner"] != 1 or unit["card_owner"] != 0 or unit["location"] != "base:1":
+                precondition_failures.append(
+                    "Possession did not preserve controller/card_owner/recall")
+            rules._deal_damage(state, unit, 3)
+            rules._cleanup(state, random.Random(7007))
+            actual = {
+                "units": {},
+                "players": [{"main": [], "hand": [], "trash": [], "energy": 0},
+                            {"main": [], "hand": [], "trash": [], "energy": 0}],
+            }
+            actual["players"][0]["trash"] = ["c1"] if actual_card in state["players"][0]["trash"] else []
+            if precondition_failures:
+                return {"status": "supported", "adapter": adapter,
+                        "passed": False, "actual": actual,
+                        "failures": precondition_failures}
         elif adapter == "recycle":
             row = state["players"][0]
             actual_card = row["hand"].pop()
@@ -171,6 +202,19 @@ def run_production_fixture(fixture: dict) -> dict:
             actual = {"players": [{"main": ["c1"], "hand": [], "trash": [], "energy": 0},
                                    {"main": [], "hand": [], "trash": [], "energy": 0}]}
             actual["players"][0]["main"] = ["c1"] if actual_card in state["players"][0]["main"] else []
+        elif adapter == "chain":
+            from riftbound.engine import Action
+
+            state["chain"] = [{"effect": "spell", "owner": 0,
+                               "code": "OGN-009", "card": None,
+                               "targets": []}]
+            state["phase"], state["actor"], state["passes"] = "chain", 0, 0
+            state["chain_return"] = "main"
+            state["chain_from_spell"] = True
+            rules.apply(state, Action.make("pass"), random.Random(7008))
+            rules.apply(state, Action.make("pass"), random.Random(7009))
+            actual = {"phase": state["phase"], "actor": state["actor"],
+                      "passes": state["passes"], "chain": state["chain"]}
         else:  # optional
             from riftbound.engine import Action
 

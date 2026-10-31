@@ -4655,6 +4655,9 @@ class OriginsRules:
                     row = state["players"][owner]
                     if option == "nocturne_leave":
                         if decision["nocturne_play"].get("aurora_stop"):
+                            reveal = state.get("reveal")
+                            if reveal is not None and reveal.get("item") is not None:
+                                reveal["item"]["advance_gear"] = True
                             self._finish_reveal(state, [], rng)
                             return
                         self._resume_reveal_after_nocturne(state)
@@ -4673,6 +4676,7 @@ class OriginsRules:
                         reveal = state.get("reveal")
                         parent = reveal.get("item") if reveal is not None else {
                             "effect": "dazzling_aurora_continue", "owner": owner}
+                        parent["advance_gear"] = True
                         state["decision"] = None
                         state["reveal"] = None
                         self._free_play_revealed_card(

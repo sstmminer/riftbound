@@ -837,6 +837,59 @@ class OriginsGUI(tk.Tk):
                 return self._card_name(gear["code"])
         return str(uid)
 
+    def _decision_source_label(self, decision):
+        """Describe the card/ability that owns the current choice window."""
+        item = decision.get("item") or decision.get("free_play") or decision.get("free_play_field") or {}
+        code = item.get("code")
+        if code is None and item.get("card") is not None:
+            # Card ids are private state; the public observation intentionally
+            # omits the id→code table.  The local GUI may use its own engine
+            # state to label the player's pending free/replay card.
+            code = self.env._state.get("cards", {}).get(item["card"], {}).get("code")
+        if code is not None:
+            return self._card_name(code)
+        ability_names = {
+            "caitlyn": "Caitlyn 技能", "malzahar": "Malzahar 技能",
+            "ganking": "Ganking 技能", "buff": "增益技能",
+        }
+        if item.get("ability") in ability_names:
+            return ability_names[item["ability"]]
+        if decision.get("registry_ability"):
+            return str(item.get("ability_id", "复制技能"))
+        return "当前效果"
+
+    def _decision_prompt(self, decision):
+        """Build a precise, user-facing description of a pending choice."""
+        kind = decision.get("kind", "choice")
+        source = self._decision_source_label(decision)
+        if kind == "target":
+            candidates = list(decision.get("targets", []))
+            if decision.get("destination_select"):
+                text = f"{source}：先选择移动/操作目标，再选择目的地"
+            elif decision.get("target_pairs"):
+                text = f"{source}：选择符合成对条件的目标"
+            elif decision.get("same_location"):
+                text = f"{source}：选择同一战场上的目标"
+            elif decision.get("multi"):
+                minimum, maximum = decision.get("min", 0), decision.get("max", 0)
+                if decision.get("allow_repeat"):
+                    text = f"{source}：按顺序选择 {minimum}–{maximum} 次目标，可重复点击同一单位"
+                else:
+                    text = f"{source}：选择 {minimum}–{maximum} 个目标"
+            else:
+                text = f"{source}：选择 1 个合法目标"
+            text += f"（当前提供 {len(candidates)} 个合法目标）"
+            if candidates and len(candidates) <= 10:
+                text += "：" + "、".join(self._target_label(uid) for uid in candidates)
+            return text
+        if kind == "unit_target":
+            return f"{source}：选择技能目标（{len(decision.get('targets', []))} 个合法目标）"
+        if kind == "field":
+            return f"{source}：选择战场（{len(decision.get('fields', []))} 个合法战场）"
+        if kind == "chain_target":
+            return f"{source}：选择要无效化的结算链项目（点击右侧结算链卡牌）"
+        return None
+
     def _target_code(self, uid):
         obs = self.env.observe(0)
         unit = next((unit for unit in obs.get("units", []) if unit["id"] == uid), None)
@@ -1099,7 +1152,15 @@ class OriginsGUI(tk.Tk):
         old_chain, new_chain = chain_signature(before.get("chain", [])), chain_signature(after.get("chain", []))
         if old_chain != new_chain:
             if after.get("chain"):
-                self.log_add("结算链：" + " → ".join(self._chain_item_text(item)
+                def chain_log_text(item):
+                    text = self._chain_item_text(item)
+                    targets = list(item.get("targets") or [])
+                    if targets:
+                        text += "［目标：" + "、".join(self._target_label(uid) for uid in targets) + "］"
+                    if item.get("destination") is not None:
+                        text += f"［目的地：{item['destination']}］"
+                    return text
+                self.log_add("结算链：" + " → ".join(chain_log_text(item)
                                                    for item in reversed(after["chain"])))
             else:
                 self.log_add("结算链已清空。")
@@ -1110,8 +1171,9 @@ class OriginsGUI(tk.Tk):
         if before.get("decision") != after.get("decision") and after.get("decision"):
             decision = after["decision"]
             targets = decision.get("targets", [])
-            self.log_add(f"等待 P{decision.get('player')} 选择 {decision.get('kind')}"
-                         + (f"（{len(targets)} 个合法目标）" if targets else ""))
+            prompt = self._decision_prompt(decision)
+            self.log_add(f"等待 P{decision.get('player')}：{prompt or decision.get('kind')}"
+                         + (f"；{len(targets)} 个合法目标" if targets and not prompt else ""))
         if before.get("reveal") != after.get("reveal"):
             reveal = after.get("reveal") or before.get("reveal")
             if reveal:
@@ -1176,6 +1238,17 @@ class OriginsGUI(tk.Tk):
             "kill_target": "击杀目标", "stun_target": "Stun 目标",
             "buff_eight": "+8 增益",
             "ahri_debuff": "Ahri：目标 -2 战力",
+            "karma_recycle": "Karma：回收触发",
+            "jinx_discard": "Jinx：弃牌触发",
+            "dazzling_aurora_continue": "Dazzling Aurora：继续翻牌",
+            "kaisa_replay_spell": "Kai’Sa：重播法术",
+            "promising_future": "Promising Future：免费打出",
+            "blind_fury": "Blind Fury：免费打出",
+            "harrowing_finish": "The Harrowing：完成打出",
+            "baited_hook_finish": "Baited Hook：完成打出",
+            "counter": "反制法术",
+            "return_unit": "回手效果",
+            "move_field_unit": "移动效果",
         }
         return f"P{item.get('owner')} {names.get(effect, effect)}"
 
@@ -1249,7 +1322,8 @@ class OriginsGUI(tk.Tk):
             parts.append(text)
         decision = obs.get("decision")
         if decision:
-            parts.append(f"等待 P{decision['player']} 完成 {decision['kind']} 选择")
+            prompt = self._decision_prompt(decision)
+            parts.append(f"等待 P{decision['player']}：{prompt or decision['kind']}")
         optional = obs.get("optional") or []
         if optional:
             parts.append("可选效果队列：" + " → ".join(
@@ -1690,8 +1764,9 @@ class OriginsGUI(tk.Tk):
     def _render_decision_bar(self, decision, legal):
         """Render target/choice instructions in the persistent bottom bar."""
         kind = decision.get("kind", "choice")
-        if kind == "target":
-            prompt = "选择目标：点击场上或基地中的合法卡牌"
+        precise_prompt = self._decision_prompt(decision)
+        if precise_prompt:
+            prompt = precise_prompt
         elif kind == "discard":
             prompt = "选择要弃置的牌：点击手牌中的目标"
         elif kind == "predict":

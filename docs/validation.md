@@ -2,7 +2,8 @@
 
 版本：0.3.0。日期：2026-10-31（Asia/Shanghai）。环境：Linux，Python 3.12.14。Windows/macOS 尚未在本机执行；仓库配置了 Windows/Linux 的 Python 3.12 CI，远端执行状态需以 GitHub Actions 为准。
 
-- `python -m unittest discover -s tests -q`：341 项通过。
+- `python -m unittest discover -s tests -q`：348 项通过。
+- `python -m unittest tests.test_cross_region_interactions tests.test_gui_decision_prompts tests.test_ownership_audit tests.test_spell_expansion_new tests.test_next_cards tests.test_gear_batch tests.test_battlefield_next tests.test_engine tests.test_mystic_rechoices tests.test_reveal_windows -q`：84 项跨区域、嵌套结算、回收触发、战场可选效果、目标窗口和 GUI 日志专项测试通过。
 - `PYTHONPATH=. python tools/check_batch.py --seeds 3`：6 局真实支持卡池对局（贪心、随机各 3 局），6 局正常终局，0 截断，6 份逐步回放校验通过。
 - 批量测试实际执行了单位/法术出牌、资源支付、同时触发排序、分组移动、响应让过和伤害分配等动作；机器可读结果见 [batch-validation.json](batch-validation.json)。
 - CLI 的状态、支持表、套牌生成/校验、样本导出、输出防覆盖、截断识别、回放与篡改拒绝均有测试。
@@ -12,4 +13,4 @@
 
 这些结果验证当前有限卡池及场景，不构成全 Origins 规则覆盖、独立裁判认证或训练策略质量证明。合成框架测试和真实 Origins 对局测试在不同测试文件中明确区分。
 
-分发验证：构建 wheel 后，在独立虚拟环境从本地 wheel 无索引安装，在仓库目录之外运行状态、完整一局和回放校验均通过；解压后应再次运行 341 项测试。
+分发验证：构建 wheel 后，在独立虚拟环境从本地 wheel 无索引安装，在仓库目录之外运行状态、完整一局和回放校验均通过；解压后应再次运行 348 项测试。

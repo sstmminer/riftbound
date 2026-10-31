@@ -231,6 +231,21 @@ Dragon's Rage 等目标法术在免费重播时仍然通过同一点击/确认�
 安全退出，以及普通/免费目标规格的领域与战场限制。后续新增目标法术应先登记到
 `_spell_target_spec`，不要在某个免费效果中另写自动目标路径。
 
+### 跨区域互动与 GUI 审计（2026-11-01）
+
+按“Recruit 三种版本作用相同”的约定，不再把 Recruit DE/NX/ZN 的代码差异作为测试阻塞。
+新增 `tests/test_cross_region_interactions.py`，用固定随机种子逐步检查 Possession 控制权改变后
+实体牌主、嵌套免费法术的父结算链与目标/支付窗口、Karma 回收触发、Jinx 弃牌触发，以及战场
+可选效果的合法目标集合。每个场景同时读取控制方和对手的公开观察，确认目标决策不会泄漏给对手，
+而结算链和当前阶段仍然可见。
+
+GUI 增加统一的决策描述：目标窗口会显示来源牌/技能、目标数量、重复点击或成对/同战场/目的地
+限制和合法目标数量；结算链日志会显示已确认目标与目的地，并为 Karma、Jinx、Aurora、Kai’Sa、
+Promising Future、Blind Fury、The Harrowing、Baited Hook 和反制效果提供明确标签。底部状态栏
+与日志会同步显示当前阶段、等待玩家和完整结算链。
+
+专项审计命令共通过 84 项测试；完整测试共 348 项通过，另有 6 局批量对局全部终局并完成回放校验。
+
 本轮完成 Origins 第一弹最后 13 张卡牌：Unlicensed Armory（OGN-023）、Blind Fury（OGN-025）、Volibear, Furious（OGN-041）、Zhonya's Hourglass（OGN-077）、Ava Achiever（OGN-107）、Heimerdinger, Inventor（OGN-111）、Kai'Sa, Evolutionary（OGN-112）、Promising Future（OGN-115）、Teemo, Strategist（OGN-121）、Dazzling Aurora（OGN-160）、Nocturne, Horrifying（OGN-194）、Baited Hook（OGN-242）和 Divine Judgment（OGN-244）。
 
 新增流程覆盖死亡替代、装备主动能力、攻击/防守触发、牌库顶牌展示与选择、免费打出、分配伤害和多区域资源选择。每张卡均导入官方标准图、横置图和高清悬浮图；`tools/check_assets.py` 验证 298 张映射完整。

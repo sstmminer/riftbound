@@ -382,7 +382,7 @@ class OriginsRules:
                                  if g["code"] == "OGN-077" and not g["exhausted"]), None)
                     if gear is not None:
                         state["players"][owner]["gear"].remove(gear)
-                        state["players"][owner]["trash"].append(gear["card"])
+                        self._trash_gear_card(state, gear)
                         unit["damage"] = 0
                         unit["location"] = f"base:{owner}"
                         unit["exhausted"] = True
@@ -421,7 +421,7 @@ class OriginsRules:
                                      if g["code"] == "OGN-077" and not g["exhausted"]), None)
                         if gear is not None:
                             state["players"][owner]["gear"].remove(gear)
-                            state["players"][owner]["trash"].append(gear["card"])
+                            self._trash_gear_card(state, gear)
                             unit.pop("death_replacement", None)
                             unit["damage"] = 0
                             unit["location"] = f"base:{owner}"
@@ -433,7 +433,8 @@ class OriginsRules:
             for unit in dead:
                 state["units"].remove(unit)
                 if unit["card"] is not None:
-                    state["players"][unit["owner"]]["trash"].append(unit["card"])
+                    owner_row = state["players"][unit.get("card_owner", unit["owner"])]
+                    owner_row["trash"].append(unit["card"])
                 if unit.get("stunned"):
                     for player in (0, 1):
                         if player != unit["owner"]:
@@ -457,7 +458,7 @@ class OriginsRules:
                 if unit["code"] == "OGN-075":
                     deathknell_channel_two.extend([unit["owner"]] * multiplier)
                 if unit["code"] == "OGN-110" and unit.get("card") is not None:
-                    deathknell_recycle.append((unit["owner"], unit["card"]))
+                    deathknell_recycle.append((self._unit_card_owner(state, unit), unit["card"]))
                 if unit["code"] == "OGN-190" and self._is_field(state, unit["location"]):
                     kogmaw_fields.append(unit["location"])
                 if unit["code"] != TOKEN and any(other["owner"] == unit["owner"]
@@ -612,11 +613,42 @@ class OriginsRules:
             "resume": {"phase": state["phase"], "actor": state["actor"],
                        "passes": state.get("passes", 0)},
         }
+        state["reveal"]["nocturne_queue"] = [uid for uid in cards
+                                                if uid in state["players"][owner]["main"]
+                                                and state["cards"][uid]["code"] == "OGN-194"]
         state["phase"] = "reveal"
         state["actor"] = state["reveal"]["closer"] if mode == "display" else state["reveal"]["chooser"]
         state["passes"] = 0
+        self._open_next_nocturne_replacement(state)
 
-    def _free_play_revealed_card(self, state, owner, card, parent, rng, *, ignore_energy=False, free_all=False):
+    def _open_next_nocturne_replacement(self, state):
+        """Pause a look/reveal before exposing each Nocturne to an opponent."""
+        reveal = state.get("reveal")
+        if not reveal or not reveal.get("nocturne_queue"):
+            return False
+        card = reveal["nocturne_queue"].pop(0)
+        reveal["nocturne_current"] = card
+        owner = reveal["owner"]
+        state["decision"] = {
+            "kind": "choice", "player": owner,
+            "options": ["nocturne_banish", "nocturne_skip"],
+            "nocturne_reveal": {"card": card, "owner": owner},
+        }
+        state["phase"], state["actor"], state["passes"] = "decision", owner, 0
+        return True
+
+    def _resume_reveal_after_nocturne(self, state):
+        reveal = state.get("reveal")
+        if reveal is None:
+            return
+        state["decision"] = None
+        state["phase"] = "reveal"
+        state["actor"] = reveal["closer"] if reveal["kind"] == "display" else reveal["chooser"]
+        state["passes"] = 0
+        self._open_next_nocturne_replacement(state)
+
+    def _free_play_revealed_card(self, state, owner, card, parent, rng, *, ignore_energy=False,
+                                 free_all=False, card_owner=None):
         """Play a card selected by Blind Fury or Promising Future.
 
         The card is returned to the controller's hand only for the duration of
@@ -625,12 +657,52 @@ class OriginsRules:
         triggers continue through the normal Chain.
         """
         row = state["players"][owner]
+        physical_row = state["players"][card_owner] if card_owner is not None else row
         code = state["cards"][card]["code"]
-        if card in row.get("banishment", []):
-            row["banishment"].remove(card)
+        data = self.cards[code]
+
+        # A revealed spell is still a normal spell play.  In particular, its
+        # target choices are made by the player after the replacement effect
+        # has put the card on the stack; taking the first legal target here
+        # silently changes the printed effect.  Keep the physical card in its
+        # current banishment/hand zone while the target window is open, then
+        # move it to the controller's hand only when the player confirms.
+        free_target = self._free_play_target_spec(state, owner, code)
+        if data["type"] == "spell" and free_target is not None and free_target["candidates"]:
+            payment = []
+            if ignore_energy:
+                choices = self._payments(state, owner, 0, data["domains"], data["power_cost"], spell=True)
+                if not choices:
+                    return
+                payment = choices[0]
+            state["decision"] = {
+                "kind": "target", "player": owner,
+                "targets": free_target["candidates"],
+                "multi": free_target["max"] != 1 or free_target.get("allow_repeat", False),
+                "min": free_target["min"], "max": free_target["max"],
+                "selected": [], "allow_repeat": free_target.get("allow_repeat", False),
+                "target_pairs": free_target.get("target_pairs"),
+                "target_might_limit": free_target.get("target_might_limit"),
+                "same_location": free_target.get("same_location", False),
+                "destination_select": free_target.get("destination_select", False),
+                "free_play": {"owner": owner, "card": card,
+                               "card_owner": card_owner if card_owner is not None else owner,
+                               "parent": parent, "payment": payment,
+                               "destination": None, "ignore_energy": ignore_energy,
+                               "free_all": free_all,
+                               "deck_options": free_target.get("deck_options", []),
+                               # Blind Fury/Promising Future already put
+                               # their parent item on a live Chain; Kaisa's
+                               # optional replay starts from Main. Preserve
+                               # that context when the target is confirmed.
+                               "resume_chain": bool(state.get("chain")) or state.get("phase") == "chain"},
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", owner, 0
+            return
+        if card in physical_row.get("banishment", []):
+            physical_row["banishment"].remove(card)
         if card not in row["hand"]:
             row["hand"].append(card)
-        data = self.cards[code]
         if parent not in state.get("chain", []) and parent.get("effect") != "kaisa_replay_spell":
             state.setdefault("chain", []).append(parent)
         if data["type"] == "unit":
@@ -646,6 +718,7 @@ class OriginsRules:
                                           location=f"base:{owner}", accelerate=False,
                                           payment=payment, enter_target=None,
                                           ignore_cost=(not ignore_energy or free_all),
+                                          card_owner=card_owner,
                                           ignore_energy=ignore_energy or free_all,
                                           free_play_parent=True), rng)
             return
@@ -660,6 +733,7 @@ class OriginsRules:
                 payment = choices[0]
             self.apply(state, Action.make("play_gear", card=card, payment=payment,
                                           ignore_cost=(not ignore_energy or free_all),
+                                          card_owner=card_owner,
                                           ignore_energy=ignore_energy or free_all), rng)
             return
         # The simple, no-target path covers all direct effects.  Targeted
@@ -702,12 +776,84 @@ class OriginsRules:
         self.apply(state, Action.make("play_spell", card=card, targets=targets,
                                       destination=destination, spend_buff=None,
                                       payment=payment, ignore_cost=not ignore_energy,
+                                      card_owner=card_owner,
                                       ignore_energy=ignore_energy), rng)
         if parent.get("effect") == "kaisa_replay_spell":
             for entry in reversed(state.get("chain", [])):
                 if entry.get("card") == card:
                     entry["recycle_after"] = True
                     break
+
+    def _free_play_target_spec(self, state, owner, code):
+        """Return the interactive target shape for a free-play spell.
+
+        This intentionally mirrors the GUI target windows used for ordinary
+        hand plays.  A ``None`` result means the spell has no target window;
+        callers retain the existing direct resolution path for those cards.
+        """
+        targeted = (SIMPLE_TARGET_SPELLS | PAIR_TARGET_SPELLS |
+                    DESTINATION_TARGET_SPELLS | OPTIONAL_TARGET_SPELLS |
+                    CONSTRAINED_MULTI_TARGET_SPELLS | {"OGN-029", "OGN-104",
+                    "OGN-183", "OGN-206", "OGN-248"})
+        if code not in targeted:
+            return None
+        if code == "OGN-183":
+            options = list(state["players"][owner]["main"][:3])
+            return {"candidates": options, "min": 1 if options else 0,
+                    "max": 1, "deck_options": options}
+        if code == "OGN-104":
+            candidates = [u["id"] for u in self._units(state, owner)]
+            return {"candidates": candidates, "min": 1 if candidates else 0, "max": 1}
+        if code in PAIR_TARGET_SPELLS:
+            pairs = []
+            if code == "OGN-108":
+                pairs = [[a["id"], b["id"]] for a in self._units(state, owner)
+                         for b in self._units(state, owner) if a["id"] != b["id"]]
+            elif code == "OGN-260":
+                pairs = [[a["id"], b["id"]] for a in self._units(state, owner)
+                         for b in self._units(state, 1 - owner)
+                         if self._is_field(state, b["location"])]
+            else:
+                pairs = [[a["id"], b["id"]] for a in self._units(state, owner)
+                         for b in self._units(state, 1 - owner)]
+            return {"candidates": sorted({uid for pair in pairs for uid in pair}, key=str),
+                    "min": 2 if pairs else 0, "max": 2,
+                    "target_pairs": pairs}
+        if code == "OGN-029":
+            candidates = [u["id"] for u in state["units"]]
+            return {"candidates": candidates, "min": 2 if candidates else 0,
+                    "max": 2, "allow_repeat": True}
+        if code == "OGN-248":
+            candidates = [u["id"] for u in state["units"]
+                          if self._is_field(state, u["location"])]
+            return {"candidates": candidates, "min": 6 if candidates else 0,
+                    "max": 6, "allow_repeat": True}
+        if code in OPTIONAL_TARGET_SPELLS:
+            candidates = [u["id"] for u in self._units(state, owner) if not u["exhausted"]]
+            return {"candidates": candidates, "min": 0, "max": 1}
+        if code in CONSTRAINED_MULTI_TARGET_SPELLS:
+            candidates = [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
+            return {"candidates": candidates, "min": 0, "max": len(candidates),
+                    "target_might_limit": 4, "same_location": True}
+        if code in DESTINATION_TARGET_SPELLS:
+            candidates = []
+            for unit in state["units"]:
+                if code == "OGN-043" and unit["owner"] == owner:
+                    continue
+                if code == "OGN-173" and unit["owner"] != owner:
+                    continue
+                if code in {"OGN-250", "OGN-270"} and (unit["owner"] != owner or
+                                                        unit["location"] != f"base:{owner}"):
+                    continue
+                if code == "OGN-258" and unit["owner"] == owner:
+                    continue
+                candidates.append(unit["id"])
+            return {"candidates": candidates, "min": 1 if candidates else 0,
+                    "max": 1, "destination_select": True}
+        candidates = [u["id"] for u in state["units"]
+                      if code not in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085"}
+                      or self._is_field(state, u["location"])]
+        return {"candidates": candidates, "min": 1 if candidates else 0, "max": 1}
 
     def _finish_reveal(self, state, selected, rng):
         reveal = state.get("reveal")
@@ -724,15 +870,17 @@ class OriginsRules:
                 row = state["players"][owner]
                 if chosen in row["main"]:
                     row["main"].remove(chosen)
-                # A card played from an opponent's deck is controlled (and
-                # therefore tracked) by the Blind Fury caster from this point.
-                state["cards"][chosen]["owner"] = item["owner"]
-                state["players"][item["owner"]]["banishment"].append(chosen)
+                # The caster gains control of the play, but the physical card
+                # remains owned by the player whose Main Deck was revealed.
+                # Keep it in that player's Banishment zone until the ordinary
+                # play path consumes it.
+                state["players"][owner]["banishment"].append(chosen)
                 item["reveal_done"] = True
                 state["chain"].append(item)
                 state["reveal"] = None
                 state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
-                self._free_play_revealed_card(state, item["owner"], chosen, item, rng)
+                self._free_play_revealed_card(state, item["owner"], chosen, item, rng,
+                                              card_owner=owner)
                 return
         if effect == "promising_future":
             owner = reveal["owner"]
@@ -807,6 +955,11 @@ class OriginsRules:
                     ignore_energy=True)
                 if chosen in row["trash"]:
                     self._recycle_cards_to_main(state, owner, [chosen], source="trash", rng=rng)
+                # The free-play helper may leave an explicit target decision
+                # open.  Do not let the reveal finalizer below overwrite that
+                # decision's phase; the normal spell chain will resume after
+                # the target is confirmed.
+                return
         elif effect == "sabotage_recycle":
             self._recycle_cards_to_main(state, reveal["owner"], selected,
                                         source="hand", rng=rng)
@@ -817,6 +970,45 @@ class OriginsRules:
         elif effect == "dr_mundo_recycle":
             self._recycle_cards_to_main(state, reveal["owner"], selected,
                                         source="trash", rng=rng)
+        elif effect == "recycle_top_two":
+            # Candlelit Sanctum lets its controller recycle zero, one, or both
+            # cards and then put every card that was not recycled back in any
+            # order.  The ordinary reveal window is therefore followed by a
+            # small explicit permutation window when two cards remain.
+            owner = reveal["owner"]
+            if reveal.get("kind") == "reorder" or reveal.get("ordered"):
+                # During the second window ``selected`` is the retained-card
+                # order, while ``recycle_selected`` is the first-window
+                # choice.  The order action currently normalizes the window
+                # back to ``kind=select`` before calling this finalizer, so
+                # check both markers.
+                recycled = list(reveal.get("recycle_selected", []))
+                ordered = list(reveal.get("ordered_cards", selected))
+                self._recycle_cards_to_main(state, owner, recycled,
+                                            source="main", rng=rng)
+                row = state["players"][owner]
+                ordered_set = set(ordered)
+                row["main"] = ordered + [uid for uid in row["main"]
+                                          if uid not in ordered_set]
+            else:
+                original = list(reveal.get("original_cards", reveal["cards"]))
+                recycled = list(selected)
+                remaining = [uid for uid in original if uid not in set(recycled)]
+                if len(remaining) > 1:
+                    reveal["kind"] = "reorder"
+                    reveal["original_cards"] = original
+                    reveal["recycle_selected"] = recycled
+                    reveal["cards"] = list(remaining)
+                    reveal["choices"] = list(remaining)
+                    reveal["selected"] = []
+                    reveal["min"] = reveal["max"] = len(remaining)
+                    state["phase"] = "reveal"
+                    state["actor"] = reveal["chooser"]
+                    state["passes"] = 0
+                    return
+                # With zero or one retained cards there is no ordering window.
+                self._recycle_cards_to_main(state, owner, recycled,
+                                            source="main", rng=rng)
         elif effect == "forge_recycle":
             for owner in (0, 1):
                 cards = [uid for uid in selected if uid in state["players"][owner]["trash"]]
@@ -878,6 +1070,14 @@ class OriginsRules:
                 state["chain"].append(item)
         resume = reveal.get("resume") or {"phase": "main", "actor": state["turn_player"], "passes": 0}
         state["reveal"] = None
+        # An optional effect that opened this reveal has already been removed
+        # from ``optional``.  Once the final reveal closes, consume the saved
+        # return marker as well; otherwise validation sees an empty optional
+        # queue while the phase still points at ``optional``.
+        if resume.get("phase") == "optional" and not state.get("optional"):
+            restored = state.pop("optional_return", None)
+            if restored is not None:
+                resume = restored
         if state.get("chain") or resume["phase"] == "chain":
             state["phase"], state["actor"], state["passes"] = "chain", resume.get("actor", state["actor"]), 0
             self._finish_resolution(state)
@@ -888,6 +1088,23 @@ class OriginsRules:
     def _resolve_optional(self, state, item, rng):
         player = item["player"]
         effect = item["effect"]
+        if effect == "stealthy_pursuer_follow":
+            source = self._unit(state, item.get("source"))
+            destination = item.get("destination")
+            if (source is None or source["code"] != "OGN-177"
+                    or source["owner"] != player or source["exhausted"]):
+                return True
+            # This is the same movement event as the initiating move, but it
+            # must not recursively offer the same Pursuer again.  Apply the
+            # ordinary movement state (including automatic exhaustion) while
+            # retaining the already established showdown context.
+            origin = source.get("location")
+            source["location"], source["exhausted"] = destination, True
+            source["move_count"] = source.get("move_count", 0) + 1
+            if self._is_field(state, origin) and state["fields"][origin]["code"] == "OGN-277":
+                source["temporary"] += 1
+            self._cleanup(state, rng)
+            return True
         if effect == "solari_shrine_draw":
             source = item.get("source")
             if item.get("copied"):
@@ -1060,8 +1277,12 @@ class OriginsRules:
                 rune["exhausted"] = False
         elif effect == "recycle_top_two":
             row = state["players"][player]
-            self._recycle_cards_to_main(state, player, list(row["main"][:2]),
-                                        source="main", rng=rng)
+            top = list(row["main"][:2])
+            if top:
+                self._open_reveal(state, owner=player, cards=top, mode="select",
+                                  chooser=player, minimum=0, maximum=len(top),
+                                  effect="recycle_top_two", choices=top, rng=rng)
+                return False
         elif effect == "albus_channel":
             source = self._unit(state, item.get("source"))
             candidates = [unit["id"] for unit in self._units(state, player)
@@ -1159,8 +1380,7 @@ class OriginsRules:
             for unit in list(self._units(state, player, field)):
                 if unit["code"] == "OGN-067":
                     state["units"].remove(unit)
-                    if unit.get("card") is not None:
-                        state["players"][player]["hand"].append(unit["card"])
+                    self._hand_unit_card(state, unit)
         if result in {"point", "draw"} and method == "conquer":
             code = state["fields"][field]["code"]
             if any(unit["code"] == "OGN-155" for unit in self._units(state, player, field)):
@@ -1171,23 +1391,29 @@ class OriginsRules:
                 if unit["code"] == "OGN-112":
                     self._queue_optional(state, player, "kaisa_replay_spell", source=unit["id"])
             if code == "OGN-282":
-                row = state["players"][player]
-                target = next((u for u in self._units(state, player, field) if u["buff"]), None)
-                if target is not None:
-                    self._queue_optional(state, player, "spend_buff_draw", target=target["id"])
+                # Monastery's optional draw lets the player choose which
+                # friendly buff to spend.  Do not silently take the first
+                # matching unit; the optional resolver opens a target window
+                # when more than one legal unit exists (and also handles the
+                # single-target case consistently).
+                if any(u["buff"] for u in self._units(state, player, field)):
+                    self._queue_optional(state, player, "spend_buff_draw")
             elif code == "OGN-287":
                 self._recycle_one_rune(state, player)
             elif code == "OGN-289":
-                self._queue_optional(state, player, "ready_runes")
+                # The battlefield text checks the conquer event now but
+                # resolves at the end of this turn. Keep a pending marker so
+                # the effect cannot ready runes immediately during scoring.
+                state.setdefault("targon_pending", []).append(player)
             elif code == "OGN-291":
                 self._queue_optional(state, player, "recycle_top_two")
             elif code == "OGN-298":  # Zaun Warrens
                 row = state["players"][player]
                 if row["hand"]:
-                    row["trash"].append(row["hand"].pop(0))
-                    row["discarded_this_turn"] = True
-                    self._trigger_jinx_discard(state, player)
-                    self._draw(state, player, 1, rng)
+                    state["decision"] = {"kind": "discard", "player": player,
+                                          "remaining": 1, "zaun_warrens": True}
+                    state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                    return
         if result == "draw":
             self._draw(state, player, 1, rng)
         self._cleanup(state, rng)
@@ -1222,8 +1448,7 @@ class OriginsRules:
         for unit in list(self._units(state, player)):
             if unit.get("temporary_unit"):
                 state["units"].remove(unit)
-                if unit["card"] is not None:
-                    row["trash"].append(unit["card"])
+                self._trash_unit_card(state, unit)
         for rune in row["runes"]:
             rune["exhausted"] = False
         for unit in self._units(state, player):
@@ -1447,6 +1672,13 @@ class OriginsRules:
         # resolution, not exposed as free-standing main-phase actions.
         if spec.timing in {"triggered", "replacement", "static"}:
             return False
+        # A copied Reaction ability still has the printed Reaction timing.
+        # In particular, resource abilities on Daughter of the Void, Hand of
+        # Noxus, and the Seal Gear must not become free actions during Main.
+        # They are offered only while a Chain or Showdown reaction window is
+        # open (the active actor is already enforced by legal_actions()).
+        if spec.timing == "reaction" and state.get("phase") not in {"chain", "showdown"}:
+            return False
         row = state["players"][player]
         if spec.action_kind == "unit_caitlyn" and not self._is_field(state, heimer["location"]):
             return False
@@ -1537,6 +1769,8 @@ class OriginsRules:
             raise ValueError("copied ability source is unavailable")
         if not spec.requires_exhaust or not spec.copyable:
             raise ValueError("ability is not copyable by Heimerdinger")
+        if spec.timing == "reaction" and state.get("phase") not in {"chain", "showdown"}:
+            raise ValueError("copied Reaction ability is unavailable outside a reaction window")
         action = spec.action_kind
         row = state["players"][player]
         # Every copied ability exhausts the activating Heimer exactly once.
@@ -1553,14 +1787,13 @@ class OriginsRules:
                 if target_unit["owner"] != player:
                     raise ValueError("Malzahar copied ability requires a friendly unit")
                 state["units"].remove(target_unit)
-                if target_unit.get("card") is not None:
-                    row["trash"].append(target_unit["card"])
+                self._trash_unit_card(state, target_unit)
             else:
                 gear = next((g for g in row["gear"] if g["id"] == target), None)
                 if gear is None:
                     raise ValueError("Malzahar copied ability target unavailable")
                 row["gear"].remove(gear)
-                row["trash"].append(gear["card"])
+                self._trash_gear_card(state, gear)
             row["power"].extend(["spell_any", "spell_any"])
         elif action == "unit_buff":
             source["buff"] += 1
@@ -1617,8 +1850,7 @@ class OriginsRules:
                 if unit is None or unit["owner"] != player or unit["code"] != "OGN-121":
                     raise ValueError("copied Swift Scout requires Teemo")
                 state["units"].remove(unit)
-                if unit.get("card") is not None:
-                    row["hand"].append(unit["card"])
+                self._hand_unit_card(state, unit)
             row["energy"] -= 1
         elif action == "gear_resource":
             cost = dict(spec.cost)
@@ -1642,13 +1874,12 @@ class OriginsRules:
                 if unit["id"] == source["id"] or unit["owner"] != player:
                     raise ValueError("copied Pack of Wonders target unavailable")
                 state["units"].remove(unit)
-                if unit.get("card") is not None:
-                    row["hand"].append(unit["card"])
+                self._hand_unit_card(state, unit)
             else:
                 gear = next((g for g in row["gear"] if g["id"] == target), None)
                 if gear is not None:
                     row["gear"].remove(gear)
-                    row["hand"].append(gear["card"])
+                    self._hand_gear_card(state, gear)
                 else:
                     hidden = next((h for h in row.get("hidden", []) if h["id"] == target), None)
                     if hidden is None:
@@ -2250,35 +2481,42 @@ class OriginsRules:
             if (self._is_field(state, origin)
                     and state["fields"][origin]["code"] == "OGN-277"):
                 unit["temporary"] += 1
-        # Stealthy Pursuer follows a friendly move from its location.  The
-        # closed engine resolves the optional choice as accepted when the
-        # pursuer is ready; an exhausted pursuer remains in place.
+        # Stealthy Pursuer follows a friendly move from its location only
+        # through an explicit optional window.  The printed ability says
+        # "may"; accepting the window exhausts the Pursuer and moves it to
+        # the same destination.  Queue it after the ordinary move has
+        # established its showdown context so declining/accepting cannot
+        # bypass the normal movement result.
         moved_ids = {unit["id"] for unit in moved}
         friendly_origins = {origins[unit["id"]] for unit in moved if unit["owner"] == initiator}
+        pursuer_followers = []
         for watcher in list(self._units(state, initiator)):
             if (watcher["code"] == "OGN-177" and watcher["id"] not in moved_ids
                     and not watcher["exhausted"] and watcher["location"] in friendly_origins):
-                watcher["location"], watcher["exhausted"] = destination, True
-                watcher["move_count"] = watcher.get("move_count", 0) + 1
+                pursuer_followers.append(watcher)
         self._cleanup(state, rng)
-        if not self._is_field(state, destination):
-            return False
-        enemies = self._units(state, 1 - initiator, destination)
-        if state["fields"][destination]["controller"] == initiator and not enemies:
-            return False
-        state["battle"] = {"field": destination, "attacker": initiator,
-                            "combat": bool(enemies)}
-        state["focus"], state["passes"] = initiator, 0
-        if from_effect:
-            # A spell/ability resolving on the chain resumes into showdown;
-            # an ability activated directly during Main moves there now.
-            if state["phase"] == "chain":
-                state["pending_showdown"] = True
-            else:
-                state["phase"], state["actor"] = "showdown", initiator
-        else:
-            state["phase"], state["actor"] = "showdown", initiator
-        return True
+        entered_showdown = False
+        if self._is_field(state, destination):
+            enemies = self._units(state, 1 - initiator, destination)
+            if state["fields"][destination]["controller"] != initiator or enemies:
+                entered_showdown = True
+                state["battle"] = {"field": destination, "attacker": initiator,
+                                    "combat": bool(enemies)}
+                state["focus"], state["passes"] = initiator, 0
+                if from_effect:
+                    # A spell/ability resolving on the chain resumes into
+                    # showdown; an ability activated directly during Main
+                    # moves there now.
+                    if state["phase"] == "chain":
+                        state["pending_showdown"] = True
+                    else:
+                        state["phase"], state["actor"] = "showdown", initiator
+                else:
+                    state["phase"], state["actor"] = "showdown", initiator
+        for watcher in pursuer_followers:
+            self._queue_optional(state, initiator, "stealthy_pursuer_follow",
+                                 source=watcher["id"], destination=destination)
+        return entered_showdown
 
     def legal_actions(self, state):
         if state["winner"] is not None:
@@ -2301,6 +2539,12 @@ class OriginsRules:
                 return ()
             if reveal["kind"] == "display":
                 return (Action.make("end_reveal"),) if player == reveal["closer"] else ()
+            if reveal["kind"] == "reorder":
+                if player != reveal["chooser"]:
+                    return ()
+                cards = list(reveal.get("cards", []))
+                return tuple(Action.make("order_revealed", order=list(order))
+                             for order in permutations(cards))
             if player != reveal["chooser"]:
                 return ()
             selected = list(reveal.get("selected", []))
@@ -2332,6 +2576,18 @@ class OriginsRules:
                 actions = [Action.make("choose_option", option=option)
                            for option in decision.get("options", [])]
                 if decision.get("nocturne"):
+                    if not self._payments(state, player, 0, DOMAINS, 0, 1):
+                        actions = [a for a in actions
+                                   if json.loads(a.arguments).get("option") != "nocturne_banish"]
+                if decision.get("nocturne_play"):
+                    if not self._payments(state, player, 0, DOMAINS, 0, 1):
+                        actions = [a for a in actions
+                                   if json.loads(a.arguments).get("option") != "nocturne_play"]
+                if decision.get("nocturne_aurora_play"):
+                    if not self._payments(state, player, 0, DOMAINS, 0, 1):
+                        actions = [a for a in actions
+                                   if json.loads(a.arguments).get("option") != "nocturne_play"]
+                if decision.get("nocturne_aurora"):
                     if not self._payments(state, player, 0, DOMAINS, 0, 1):
                         actions = [a for a in actions
                                    if json.loads(a.arguments).get("option") != "nocturne_banish"]
@@ -2553,7 +2809,9 @@ class OriginsRules:
     def _new_unit(self, state, code, owner, location, *, card=None, exhausted=None):
         if exhausted is None:
             exhausted = not any(u["code"] == "OGN-011" for u in self._units(state, owner))
-        unit = {"id": self._object(state), "card": card, "code": code, "owner": owner,
+        card_owner = state.get("cards", {}).get(card, {}).get("owner", owner) if card is not None else owner
+        unit = {"id": self._object(state), "card": card, "card_owner": card_owner,
+                "code": code, "owner": owner,
                 "location": location, "exhausted": exhausted, "buff": 0,
                 "temporary": 0, "temporary_unit": False, "temporary_ganking": False,
                 "temporary_tank": False, "combat_shield": 0, "assault": 0,
@@ -2690,11 +2948,48 @@ class OriginsRules:
         state["units"].remove(target)
         card = target.get("card")
         if card is not None:
-            self._players_hand(state, target["owner"]).append(card)
+            self._hand_unit_card(state, target)
         return True
 
     def _players_hand(self, state, player):
         return state["players"][player]["hand"]
+
+    @staticmethod
+    def _card_owner(state, card, fallback):
+        """Return the physical owner of a card, independent of control."""
+        return state.get("cards", {}).get(card, {}).get("owner", fallback)
+
+    def _unit_card_owner(self, state, unit):
+        card = unit.get("card")
+        return unit.get("card_owner", self._card_owner(state, card, unit["owner"]))
+
+    def _gear_card_owner(self, state, gear):
+        card = gear.get("card")
+        return gear.get("card_owner", self._card_owner(state, card, gear["owner"]))
+
+    def _trash_card(self, state, card, fallback):
+        if card is not None:
+            state["players"][self._card_owner(state, card, fallback)]["trash"].append(card)
+
+    def _trash_unit_card(self, state, unit):
+        self._trash_card(state, unit.get("card"), self._unit_card_owner(state, unit))
+
+    def _hand_unit_card(self, state, unit):
+        card = unit.get("card")
+        if card is not None:
+            row = state["players"][self._unit_card_owner(state, unit)]
+            if card not in row["hand"]:
+                row["hand"].append(card)
+
+    def _trash_gear_card(self, state, gear):
+        self._trash_card(state, gear.get("card"), self._gear_card_owner(state, gear))
+
+    def _hand_gear_card(self, state, gear):
+        card = gear.get("card")
+        if card is not None:
+            row = state["players"][self._gear_card_owner(state, gear)]
+            if card not in row["hand"]:
+                row["hand"].append(card)
 
     def _effect_move_field_unit(self, state, item, rng):
         target = self._unit(state, item.get("target"))
@@ -2791,13 +3086,12 @@ class OriginsRules:
             if target["owner"] != owner:
                 return True
             state["units"].remove(target)
-            if target.get("card") is not None:
-                row["hand"].append(target["card"])
+            self._hand_unit_card(state, target)
             return True
         gear = next((g for g in row["gear"] if g["id"] == item.get("target")), None)
         if gear is not None and gear["id"] != item.get("gear"):
             row["gear"].remove(gear)
-            row["hand"].append(gear["card"])
+            self._hand_gear_card(state, gear)
             return True
         hidden = next((h for h in row.get("hidden", []) if h["id"] == item.get("target")), None)
         if hidden is not None:
@@ -2891,22 +3185,73 @@ class OriginsRules:
         effect has no player choice about which revealed unit is used.
         """
         row = state["players"][player]
-        revealed = []
-        chosen = None
+        pending = state.get("aurora_pending")
+        revealed = (pending["revealed"] if pending and pending.get("player") == player
+                    else [])
         while row["main"]:
             uid = row["main"].pop(0)
             revealed.append(uid)
+            # Nocturne's replacement applies whenever this effect reveals it.
+            # Pause the end-turn transaction before the card is exposed to the
+            # ordinary Aurora endpoint: the controller may banish it and pay
+            # [A], in which case Aurora continues looking for another unit.
+            if state["cards"][uid]["code"] == "OGN-194":
+                state["aurora_pending"] = {
+                    "player": player,
+                    "revealed": revealed,
+                    "nocturne": uid,
+                }
+                state["decision"] = {
+                    "kind": "choice", "player": player,
+                    "options": ["nocturne_banish", "nocturne_skip"],
+                    "nocturne_aurora": {"card": uid, "owner": player},
+                }
+                state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                return False
             if self.cards[state["cards"][uid]["code"]]["type"] == "unit":
-                chosen = uid
-                break
+                return self._finish_dazzling_aurora(state, player, revealed, uid, rng)
+        return self._finish_dazzling_aurora(state, player, revealed, None, rng)
+
+    def _finish_dazzling_aurora(self, state, player, revealed, chosen, rng):
+        """Finish Aurora after any Nocturne replacement windows are closed."""
+        row = state["players"][player]
         if chosen is not None:
             code = state["cards"][chosen]["code"]
             self._new_unit(state, code, player, f"base:{player}", card=chosen, exhausted=True)
             row["played"] += 1
-            revealed.remove(chosen)
+            if chosen in revealed:
+                revealed.remove(chosen)
         if revealed:
             row["main"].extend(revealed)
             self._recycle_cards_to_main(state, player, revealed, source="main", rng=rng)
+        state.pop("aurora_pending", None)
+        return True
+
+    def _continue_dazzling_aurora(self, state, player, rng):
+        """Continue the end-turn Aurora queue after a pending decision."""
+        pending = state.get("aurora_pending")
+        if pending is not None:
+            # The replacement branch may have removed the Nocturne and then
+            # played it for [A].  Resume the same scan with the remaining deck.
+            result = self._resolve_dazzling_aurora(state, player, rng)
+            if result is False:
+                return True
+        return False
+
+    def _resume_end_turn_after_aurora(self, state, player, rng):
+        """Advance queued Aurora effects or finish the suspended end turn."""
+        if self._continue_dazzling_aurora(state, player, rng):
+            return
+        while state.get("aurora_queue"):
+            gear_id = state["aurora_queue"].pop(0)
+            if not any(gear["id"] == gear_id for gear in state["players"][player]["gear"]):
+                continue
+            if self._resolve_dazzling_aurora(state, player, rng) is False:
+                state["end_turn_pending"] = {"player": player}
+                return
+        state.pop("aurora_queue", None)
+        state.pop("end_turn_pending", None)
+        self._finish_end_turn(state, player, rng)
 
     def _effect_peak(self, state, item, rng):
         source = self._unit(state, item.get("source"))
@@ -2988,6 +3333,42 @@ class OriginsRules:
         state["decision"] = decision
         state["phase"], state["actor"] = "decision", item["owner"]
         return False
+
+    def _complete_free_play_target(self, state, decision, selected, rng):
+        """Move a revealed card into the controller's hand and play it.
+
+        The replacement card is kept in its physical owner's zone until this
+        point, so a pending target choice never creates an illegal cross-owner
+        hand entry.  ``play_spell`` then uses the ordinary chain and post-spell
+        trigger machinery with Energy ignored but Power already paid.
+        """
+        info = decision["free_play"]
+        owner, card = info["owner"], info["card"]
+        physical = state["players"][info.get("card_owner", owner)]
+        row = state["players"][owner]
+        if card in physical.get("banishment", []):
+            physical["banishment"].remove(card)
+        if card not in row["hand"]:
+            row["hand"].append(card)
+        state["decision"] = None
+        # Kai'Sa's replay is started from an optional/main-phase continuation;
+        # other reveal replacements are already resolving inside their parent
+        # Chain item.  Preserve that return phase so an empty nested Chain does
+        # not leave the engine stuck in ``phase=chain``.
+        resume_phase = "main" if info.get("parent", {}).get("effect") == "kaisa_replay_spell" else "chain"
+        state["phase"], state["actor"], state["passes"] = resume_phase, owner, 0
+        self.apply(state, Action.make(
+            "play_spell", card=card, targets=list(selected),
+            destination=info.get("destination"), spend_buff=None,
+            payment=list(info.get("payment", [])), ignore_cost=True,
+            ignore_energy=bool(info.get("ignore_energy")),
+            deck_options=list(info.get("deck_options", [])),
+            free_play_parent=True), rng)
+        if info.get("parent", {}).get("effect") == "kaisa_replay_spell":
+            for entry in reversed(state.get("chain", [])):
+                if entry.get("card") == card:
+                    entry["recycle_after"] = True
+                    break
 
     def _effect_kill_target(self, state, item, rng):
         if item.get("target") is None:
@@ -3352,7 +3733,7 @@ class OriginsRules:
         gear = next((g for g in state["players"][item["owner"]]["gear"] if g["id"] == item.get("target")), None)
         if source is not None and gear is not None:
             state["players"][item["owner"]]["gear"].remove(gear)
-            state["players"][item["owner"]]["trash"].append(gear["card"])
+            self._trash_gear_card(state, gear)
             self._apply_buff(state, source)
         return True
 
@@ -3368,14 +3749,14 @@ class OriginsRules:
             targets = [uid for uid in state["players"][owner]["trash"]
                        if self.cards[state["cards"][uid]["code"]]["type"] == "unit"]
             if not targets:
-                state["players"][owner]["trash"].append(item["card"])
+                self._trash_card(state, item.get("card"), item.get("owner", owner))
                 return True
             return self._open_target_choice(state, item, targets)
         trash = state["players"][owner]["trash"]
         if item["target"] in trash:
             trash.remove(item["target"])
             state["players"][owner]["hand"].append(item["target"])
-        state["players"][owner]["trash"].append(item["card"])
+        self._trash_card(state, item.get("card"), item.get("owner", owner))
         return True
 
     def _effect_counter(self, state, item, rng):
@@ -3384,21 +3765,21 @@ class OriginsRules:
             index = int(str(target_id).split(":", 1)[1])
         except (ValueError, IndexError):
             if item.get("card") is not None:
-                state["players"][item["owner"]]["trash"].append(item["card"])
+                self._trash_card(state, item.get("card"), item["owner"])
             return True
         if index < 0 or index >= len(state.get("chain", [])):
             if item.get("card") is not None:
-                state["players"][item["owner"]]["trash"].append(item["card"])
+                self._trash_card(state, item.get("card"), item["owner"])
             return True
         target = state["chain"][index]
         if target is item or target.get("effect") != "spell":
             if item.get("card") is not None:
-                state["players"][item["owner"]]["trash"].append(item["card"])
+                self._trash_card(state, item.get("card"), item["owner"])
             return True
         code = item.get("code")
         data = self.cards.get(target.get("code"), {})
         if code == "OGN-045" and (data.get("energy", 99) > 4 or data.get("power_cost", 99) > 1):
-            state["players"][item["owner"]]["trash"].append(item["card"])
+            self._trash_card(state, item.get("card"), item["owner"])
             return True
         if code == "OGN-080":
             target["owner"] = item["owner"]
@@ -3413,7 +3794,7 @@ class OriginsRules:
             target.pop("x", None)
             state["chain"].append(target)
             if item.get("card") is not None:
-                state["players"][item["owner"]]["trash"].append(item["card"])
+                self._trash_card(state, item.get("card"), item["owner"])
             spec = self._counter_retarget_spec(state, target)
             if spec is not None:
                 if spec.get("kind") == "field":
@@ -3435,8 +3816,8 @@ class OriginsRules:
         card = target.get("card")
         owner = target.get("owner")
         if card is not None and owner in (0, 1):
-            state["players"][owner]["trash"].append(card)
-        state["players"][item["owner"]]["trash"].append(item["card"])
+            self._trash_card(state, card, owner)
+        self._trash_card(state, item.get("card"), item["owner"])
         return True
 
     def _counter_retarget_spec(self, state, item):
@@ -3499,18 +3880,18 @@ class OriginsRules:
     def _recycle_divine_rest(self, state, player, selected, rng):
         row = state["players"][player]
         selected = {zone: set(values) for zone, values in selected.items()}
-        cards = []
+        cards_by_owner = {0: [], 1: []}
         for unit in list(self._units(state, player)):
             if unit["id"] in selected.get("units", set()):
                 continue
             state["units"].remove(unit)
             if unit.get("card") is not None:
-                cards.append(unit["card"])
+                cards_by_owner[self._unit_card_owner(state, unit)].append(unit["card"])
         for gear in list(row["gear"]):
             if gear["id"] in selected.get("gear", set()):
                 continue
             row["gear"].remove(gear)
-            cards.append(gear["card"])
+            cards_by_owner[self._gear_card_owner(state, gear)].append(gear["card"])
         for rune in list(row["runes"]):
             if rune["id"] in selected.get("runes", set()):
                 continue
@@ -3522,15 +3903,17 @@ class OriginsRules:
         for card in list(row["hand"]):
             if card not in selected.get("hand", set()):
                 row["hand"].remove(card)
-                cards.append(card)
-        if cards:
+                cards_by_owner[player].append(card)
+        for card_owner, cards in cards_by_owner.items():
+            if not cards:
+                continue
             # 417.5 randomizes only the cards recycled by this effect; keep
             # the existing Main Deck order intact and append a shuffled batch.
             rng.shuffle(cards)
-            row["main"].extend(cards)
+            state["players"][card_owner]["main"].extend(cards)
             players = state.setdefault("divine_recycle_players", [])
-            if player not in players:
-                players.append(player)
+            if card_owner not in players:
+                players.append(card_owner)
 
     def _finish_divine_choice(self, state, player, rng):
         divine = state.get("divine")
@@ -3678,7 +4061,7 @@ class OriginsRules:
             elif code == "OGN-187":
                 if unit["card"] is not None:
                     state["units"].remove(unit)
-                    state["players"][unit["owner"]]["hand"].append(unit["card"])
+                    self._hand_unit_card(state, unit)
                 else:
                     unit["location"] = f"base:{unit['owner']}"
                     unit["exhausted"] = True
@@ -3723,6 +4106,11 @@ class OriginsRules:
                 # Showdown; the unit arrives exhausted at the controller's
                 # base with its existing damage/markers intact.
                 if unit["owner"] != owner and self._is_field(state, unit["location"]):
+                    # `owner` on a live unit is the current controller.  Keep
+                    # the physical card owner separately so later death,
+                    # recall, or recycle events return the card to its
+                    # original deck rather than the new controller's zones.
+                    unit.setdefault("card_owner", self._card_owner(state, unit.get("card"), unit["owner"]))
                     unit["owner"] = owner
                     unit["location"] = f"base:{owner}"
                     unit["exhausted"] = True
@@ -3846,12 +4234,12 @@ class OriginsRules:
             for player in (0, 1):
                 for gear in list(state["players"][player]["gear"]):
                     state["players"][player]["gear"].remove(gear)
-                    state["players"][player]["trash"].append(gear["card"])
+                    self._trash_gear_card(state, gear)
         elif code == "OGN-179":
             for player in (0, 1):
                 gears = state["players"][player]["gear"]
                 if gears:
-                    state["players"][player]["trash"].append(gears.pop(0)["card"])
+                    self._trash_gear_card(state, gears.pop(0))
         elif code == "OGN-145":
             state["prevent_spell_ability_damage"] = True
         elif code == "OGN-122":
@@ -3967,13 +4355,14 @@ class OriginsRules:
             if state["winner"] is None:
                 self._draw(state, owner, 1, rng)
         if code == "OGN-122":
-            state["players"][owner]["banishment"].append(item["card"])
+            state["players"][self._card_owner(state, item.get("card"), owner)]["banishment"].append(item["card"])
         else:
-            state["players"][owner]["trash"].append(item["card"])
+            self._trash_card(state, item.get("card"), owner)
         if code == "OGN-008" and item.get("discarded_card") is not None:
             self._trigger_jinx_discard(state, owner)
         if item.get("recycle_after"):
-            self._recycle_cards_to_main(state, owner, [item["card"]], source="trash", rng=rng)
+            physical_owner = self._card_owner(state, item.get("card"), owner)
+            self._recycle_cards_to_main(state, physical_owner, [item["card"]], source="trash", rng=rng)
         return True
 
     def apply(self, state, action, rng):
@@ -4015,6 +4404,25 @@ class OriginsRules:
                 else:
                     state["phase"], state["actor"], state["passes"] = resume["phase"], resume["actor"], resume.get("passes", 0)
                 self._cleanup(state, rng)
+                return
+            if kind == "order_revealed":
+                if reveal["kind"] != "reorder" or player != reveal["chooser"]:
+                    raise ValueError("reveal ordering is unavailable")
+                order = list(args.get("order", []))
+                cards = list(reveal.get("cards", []))
+                if len(order) != len(cards) or set(order) != set(cards):
+                    raise ValueError("invalid retained-card order")
+                # Restore the original two-card selection and let the normal
+                # reveal finalizer perform recycling, Karma triggers, and
+                # chain resumption in one place.
+                selected = list(reveal.get("recycle_selected", []))
+                reveal["kind"] = "select"
+                reveal["cards"] = list(reveal.get("original_cards", cards))
+                reveal["choices"] = list(reveal["cards"])
+                reveal["selected"] = selected
+                reveal["ordered"] = True
+                reveal["ordered_cards"] = order
+                self._finish_reveal(state, selected, rng)
                 return
             if kind == "choose_revealed":
                 if reveal["kind"] != "select" or player != reveal["chooser"]:
@@ -4077,6 +4485,8 @@ class OriginsRules:
             source = self._unit(state, args.get("source"))
             if source is None or source["owner"] != player or source["code"] != "OGN-111" or source["exhausted"]:
                 raise ValueError("copied ability source is unavailable")
+            if not self._registry_copy_available(state, player, source, spec):
+                raise ValueError("copied ability is unavailable at this timing")
             state["decision"] = {"kind": "target", "player": player,
                                   "targets": list(args.get("target_candidates", [])),
                                   "item": {"registry_copy": True, "ability_id": spec.ability_id,
@@ -4119,6 +4529,108 @@ class OriginsRules:
                 if not decision or decision.get("kind") != "choice" or args.get("option") not in decision.get("options", []):
                     raise ValueError("invalid choice option")
                 option = args["option"]
+                if decision.get("nocturne_aurora"):
+                    pending = state.get("aurora_pending")
+                    if pending is None:
+                        raise ValueError("Aurora replacement is no longer pending")
+                    card = decision["nocturne_aurora"]["card"]
+                    owner = decision["nocturne_aurora"]["owner"]
+                    row = state["players"][owner]
+                    if option == "nocturne_skip":
+                        state["decision"] = None
+                        self._finish_dazzling_aurora(state, owner, pending["revealed"], card, rng)
+                        self._resume_end_turn_after_aurora(state, owner, rng)
+                        return
+                    if option != "nocturne_banish":
+                        raise ValueError("invalid Aurora Nocturne choice")
+                    payment = self._payments(state, owner, 0, DOMAINS, 0, 1)
+                    if not payment:
+                        raise ValueError("Nocturne requires one rainbow power")
+                    self._pay(row, 0, payment[0])
+                    if card in pending["revealed"]:
+                        pending["revealed"].remove(card)
+                    row["banishment"].append(card)
+                    state["decision"] = {
+                        "kind": "choice", "player": owner,
+                        "options": ["nocturne_play", "nocturne_leave"],
+                        "nocturne_aurora_play": {"card": card, "owner": owner},
+                    }
+                    return
+                if decision.get("nocturne_aurora_play"):
+                    pending = state.get("aurora_pending")
+                    if pending is None:
+                        raise ValueError("Aurora replacement is no longer pending")
+                    card = decision["nocturne_aurora_play"]["card"]
+                    owner = decision["nocturne_aurora_play"]["owner"]
+                    row = state["players"][owner]
+                    if option == "nocturne_leave":
+                        state["decision"] = None
+                        self._resolve_dazzling_aurora(state, owner, rng)
+                        self._resume_end_turn_after_aurora(state, owner, rng)
+                        return
+                    if option != "nocturne_play":
+                        raise ValueError("invalid Aurora Nocturne play choice")
+                    if card not in row["banishment"]:
+                        raise ValueError("Nocturne is no longer in Banishment")
+                    row["banishment"].remove(card)
+                    # This is a free end-turn play; use the same unit object
+                    # creation semantics as Aurora's existing endpoint while
+                    # preserving the physical card in its owner's zone model.
+                    self._new_unit(state, "OGN-194", owner, f"base:{owner}",
+                                   card=card, exhausted=True)
+                    row["played"] += 1
+                    state["decision"] = None
+                    self._resolve_dazzling_aurora(state, owner, rng)
+                    self._resume_end_turn_after_aurora(state, owner, rng)
+                    return
+                if decision.get("nocturne_reveal"):
+                    reveal = state.get("reveal")
+                    card = decision["nocturne_reveal"]["card"]
+                    owner = decision["nocturne_reveal"]["owner"]
+                    row = state["players"][owner]
+                    if option == "nocturne_skip":
+                        self._resume_reveal_after_nocturne(state)
+                        return
+                    if option == "nocturne_banish":
+                        if card not in row["main"]:
+                            raise ValueError("Nocturne is no longer in the revealed deck segment")
+                        row["main"].remove(card)
+                        row["banishment"].append(card)
+                        if reveal is not None and card in reveal.get("cards", []):
+                            reveal["cards"].remove(card)
+                        if reveal is not None and card in reveal.get("choices", []):
+                            reveal["choices"].remove(card)
+                        state["decision"] = {
+                            "kind": "choice", "player": owner,
+                            "options": ["nocturne_play", "nocturne_leave"],
+                            "nocturne_play": {"card": card, "owner": owner},
+                        }
+                        return
+                    raise ValueError("invalid Nocturne replacement choice")
+                if decision.get("nocturne_play"):
+                    card = decision["nocturne_play"]["card"]
+                    owner = decision["nocturne_play"]["owner"]
+                    row = state["players"][owner]
+                    if option == "nocturne_leave":
+                        self._resume_reveal_after_nocturne(state)
+                        return
+                    if option != "nocturne_play":
+                        raise ValueError("invalid Nocturne play choice")
+                    payment = self._payments(state, owner, 0, DOMAINS, 0, 1)
+                    if not payment:
+                        raise ValueError("Nocturne requires one rainbow power")
+                    self._pay(row, 0, payment[0])
+                    if card not in row["banishment"]:
+                        raise ValueError("Nocturne is no longer in Banishment")
+                    row["banishment"].remove(card)
+                    row["hand"].append(card)
+                    self.apply(state, Action.make("play_unit", card=card,
+                                                  location=f"base:{owner}", accelerate=False,
+                                                  payment=[], enter_target=None,
+                                                  ignore_cost=True, ignore_energy=True,
+                                                  free_play_parent=True), rng)
+                    self._resume_reveal_after_nocturne(state)
+                    return
                 if decision.get("nocturne"):
                     nocturne = decision["nocturne"]
                     if option == "nocturne_skip":
@@ -4151,6 +4663,12 @@ class OriginsRules:
                     state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                     return
                 if decision.get("destination_choice"):
+                    if decision.get("free_play"):
+                        info = decision["free_play"]
+                        info["destination"] = option
+                        self._complete_free_play_target(state, decision,
+                                                        [decision["free_play_target"]], rng)
+                        return
                     item = decision["item"]
                     if item.get("registry_copy"):
                         target = self._unit(state, item.get("target"))
@@ -4286,6 +4804,17 @@ class OriginsRules:
                         state["decision"] = None
                         state["phase"], state["actor"], state["passes"] = "chain", player, 0
                     return
+                if decision.get("zaun_warrens"):
+                    state["decision"] = None
+                    # The score helper starts this choice from Main after the
+                    # battle has already closed.  Restore that context before
+                    # drawing (the draw may itself emit a recycle/Burn Out
+                    # event), so any resulting Chain returns to Main.
+                    state["phase"], state["actor"], state["passes"] = "main", state["turn_player"], 0
+                    self._draw(state, player, 1, rng)
+                    self._cleanup(state, rng)
+                    self._trigger_jinx_discard(state, player)
+                    return
                 state["decision"]["remaining"] -= 1
                 if not state["decision"]["remaining"] or not row["hand"]:
                     state["decision"] = None
@@ -4348,6 +4877,30 @@ class OriginsRules:
                 decision = state["decision"]
                 if args["target"] not in decision["targets"]:
                     raise ValueError("invalid target choice")
+                if decision.get("optional_target_effect"):
+                    target = self._unit(state, args["target"])
+                    if target is None or target["owner"] != player or not target["buff"]:
+                        raise ValueError("optional target is no longer legal")
+                    target["buff"] = 0
+                    state["decision"] = None
+                    state["optional_ordered"] = False
+                    # Restore the saved optional/main context before drawing.
+                    # Burn Out may emit Karma's recycle trigger during this
+                    # draw; that trigger must return to the same context
+                    # instead of capturing the transient target-decision
+                    # phase.
+                    if state.get("optional"):
+                        state["phase"], state["actor"], state["passes"] = (
+                            "optional", state["optional"][0]["player"], 0)
+                    else:
+                        restored = state.pop("optional_return", None)
+                        if restored is None:
+                            state["phase"], state["actor"], state["passes"] = "main", player, 0
+                        else:
+                            state["phase"], state["actor"], state["passes"] = restored["phase"], restored["actor"], restored.get("passes", 0)
+                    self._draw(state, player, 1, rng)
+                    self._cleanup(state, rng)
+                    return
                 if decision.get("score_target"):
                     target = self._unit(state, args["target"])
                     if target is None or target["owner"] != player or target["buff"]:
@@ -4359,8 +4912,8 @@ class OriginsRules:
                     return
                 if decision.get("registry_ability"):
                     item = dict(decision["item"])
-                    state["decision"] = None
                     snapshot = copy.deepcopy(state)
+                    state["decision"] = None
                     try:
                         self._resolve_registry_copy(state, player, item, rng, target=args["target"])
                     except Exception:
@@ -4377,6 +4930,33 @@ class OriginsRules:
                     state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                     return
                 if decision.get("destination_select"):
+                    if decision.get("free_play"):
+                        info = decision["free_play"]
+                        target = self._unit(state, args["target"])
+                        if target is None:
+                            raise ValueError("free-play destination target is unavailable")
+                        code = state["cards"][info["card"]]["code"]
+                        if code == "OGN-043":
+                            destinations = [f"base:{target['owner']}", *range(len(state["fields"]))]
+                        elif code == "OGN-173":
+                            destinations = [f"base:{target['owner']}", *range(len(state["fields"]))]
+                        elif code in {"OGN-250", "OGN-270"}:
+                            destinations = list(range(len(state["fields"])))
+                        elif code == "OGN-258":
+                            destinations = [f"base:{target['owner']}", *range(len(state["fields"]))]
+                        else:
+                            raise ValueError("unknown free-play destination target")
+                        destinations = [destination for destination in destinations
+                                        if destination != target["location"]]
+                        if not destinations:
+                            raise ValueError("no legal destination")
+                        state["decision"] = {"kind": "choice", "player": player,
+                                              "options": destinations,
+                                              "free_play": info,
+                                              "free_play_target": args["target"],
+                                              "destination_choice": True}
+                        state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                        return
                     item = decision["item"]
                     target = self._unit(state, args["target"])
                     if target is None:
@@ -4454,14 +5034,13 @@ class OriginsRules:
                             if target["owner"] != player:
                                 raise ValueError("Malzahar requires a friendly target")
                             state["units"].remove(target)
-                            if target.get("card") is not None:
-                                row["trash"].append(target["card"])
+                            self._trash_unit_card(state, target)
                         else:
                             gear = next((g for g in row["gear"] if g["id"] == args["target"]), None)
                             if gear is None:
                                 raise ValueError("Malzahar target is unavailable")
                             row["gear"].remove(gear)
-                            row["trash"].append(gear["card"])
+                            self._trash_gear_card(state, gear)
                         source["exhausted"] = True
                         row["power"].extend(["spell_any", "spell_any"])
                     else:
@@ -4640,6 +5219,9 @@ class OriginsRules:
                     state["decision"] = None
                     self._play_hidden_from_decision(state, player, info, [args["target"]], rng)
                     return
+                if decision.get("free_play"):
+                    self._complete_free_play_target(state, decision, [args["target"]], rng)
+                    return
                 item = dict(decision["item"])
                 item["target"] = args["target"]
                 if item.get("effect") == "spell":
@@ -4686,6 +5268,9 @@ class OriginsRules:
                     info = decision["hidden"]
                     state["decision"] = None
                     self._play_hidden_from_decision(state, player, info, selected, rng)
+                    return
+                if decision.get("free_play"):
+                    self._complete_free_play_target(state, decision, selected, rng)
                     return
                 if decision.get("resume") == "combat_trigger":
                     item = dict(decision["item"])
@@ -4774,7 +5359,9 @@ class OriginsRules:
             row["hand"].remove(card)
             row["played"] += 1
             row["gear"].append({"id": card, "card": card, "code": code,
-                                "owner": player, "location": f"base:{player}",
+                                "owner": player,
+                                "card_owner": self._card_owner(state, card, player),
+                                "location": f"base:{player}",
                                 "exhausted": code == "OGN-017"})
             if code == "OGN-182":
                 self._draw(state, player, 1, rng)
@@ -4895,7 +5482,7 @@ class OriginsRules:
             if gear is None:
                 raise ValueError("gear is unavailable")
             row["gear"].remove(gear)
-            row["trash"].append(gear["card"])
+            self._trash_gear_card(state, gear)
             self._draw(state, player, 1, rng)
             self._channel_rune(state, player, exhausted=True)
             state["passes"] = 0
@@ -4914,7 +5501,7 @@ class OriginsRules:
             if gear is None or gear["code"] != "OGN-212" or gear["exhausted"]:
                 raise ValueError("Forge of the Future is unavailable")
             row["gear"].remove(gear)
-            row["trash"].append(gear["card"])
+            self._trash_gear_card(state, gear)
             cards = [uid for owner in state["players"] for uid in owner["trash"]]
             self._open_reveal(state, owner=player, cards=cards, mode="select",
                               chooser=player, minimum=0, maximum=min(4, len(cards)),
@@ -5012,14 +5599,13 @@ class OriginsRules:
                 if target["owner"] != player:
                     raise ValueError("Malzahar requires a friendly target")
                 state["units"].remove(target)
-                if target.get("card") is not None:
-                    row["trash"].append(target["card"])
+                self._trash_unit_card(state, target)
             else:
                 gear = next((g for g in row["gear"] if g["id"] == args["target"]), None)
                 if gear is None:
                     raise ValueError("Malzahar target is unavailable")
                 row["gear"].remove(gear)
-                row["trash"].append(gear["card"])
+                self._trash_gear_card(state, gear)
             source["exhausted"] = True
             row["power"].extend(["spell_any", "spell_any"])
             state["passes"] = 0
@@ -5130,8 +5716,7 @@ class OriginsRules:
                 if unit is None or unit["owner"] != player or unit["code"] != "OGN-121":
                     raise ValueError("Swift Scout requires a Teemo unit")
                 state["units"].remove(unit)
-                if unit.get("card") is not None:
-                    row["hand"].append(unit["card"])
+                self._hand_unit_card(state, unit)
             state["passes"] = 0
         elif kind == "legend_move":
             if row["legend"] != "OGN-259" or row["legend_exhausted"] or row["energy"] < 2:
@@ -5491,10 +6076,13 @@ class OriginsRules:
                 effect = "return_unit" if code == "OGN-170" else ("sabotage" if code == "OGN-156" else "spell")
                 triggers = self._second_card_triggers(state, player)
                 spell_item = {"effect": effect, "owner": player, "card": card,
+                               "card_owner": self._card_owner(state, card, player),
                                "code": code, "targets": args["targets"],
                                "destination": args.get("destination"),
                                "x": args.get("x", 0),
                                "legion": was_legion}
+                if code == "OGN-183":
+                    spell_item["deck_options"] = list(args.get("deck_options", []))
                 if code in SPELL_CODES:
                     spell_item["post_triggers"] = [{"effect": "ravenbloom", "owner": player}]
                     if row["played"] == 2:
@@ -5557,30 +6145,48 @@ class OriginsRules:
             # Dazzling Aurora is a mandatory end-of-turn trigger.  Resolve all
             # copies controlled by the active player before resetting turn
             # resources and temporary markers.
-            for gear in list(state["players"][player]["gear"]):
-                if gear["code"] == "OGN-160":
-                    self._resolve_dazzling_aurora(state, player, rng)
-            for unit in self._units(state, player):
-                if unit["code"] == "OGN-073" and self._is_field(state, unit["location"]):
-                    for rune in state["players"][player]["runes"][:4]:
-                        rune["exhausted"] = False
-            for unit in state["units"]:
-                unit["damage"], unit["temporary"], unit["assault"], unit["stunned"] = 0, 0, 0, False
-                unit["temporary_tank"] = False
-                unit["kill_on_damage"] = None
-            for obj in state["players"]:
-                obj["energy"], obj["power"] = 0, []
-            state["prevent_spell_ability_damage"] = False
-            decree = state.get("imperial_decree")
-            if decree and decree.get("turn") == state.get("turn"):
-                state.pop("imperial_decree", None)
-            self._cleanup(state, rng)
-            extra_turn = state.pop("extra_turn", None)
-            state["turn_player"] = extra_turn if extra_turn is not None else 1-player
-            if state["winner"] is None:
-                self._start_turn(state, rng)
+            aurora_gears = [gear for gear in list(state["players"][player]["gear"])
+                            if gear["code"] == "OGN-160"]
+            state["aurora_queue"] = [gear["id"] for gear in aurora_gears]
+            while state["aurora_queue"]:
+                gear_id = state["aurora_queue"].pop(0)
+                if not any(gear["id"] == gear_id for gear in state["players"][player]["gear"]):
+                    continue
+                if self._resolve_dazzling_aurora(state, player, rng) is False:
+                    # The end-turn transaction remains suspended until the
+                    # Nocturne replacement window is answered.
+                    state["end_turn_pending"] = {"player": player}
+                    return
+            state.pop("aurora_queue", None)
+            state.pop("end_turn_pending", None)
+            self._finish_end_turn(state, player, rng)
         else:
             raise ValueError(f"unknown action {kind}")
+
+    def _finish_end_turn(self, state, player, rng):
+        """Finish the end-turn transaction after any Aurora choice windows."""
+        for unit in self._units(state, player):
+            if unit["code"] == "OGN-073" and self._is_field(state, unit["location"]):
+                for rune in state["players"][player]["runes"][:4]:
+                    rune["exhausted"] = False
+        for unit in state["units"]:
+            unit["damage"], unit["temporary"], unit["assault"], unit["stunned"] = 0, 0, 0, False
+            unit["temporary_tank"] = False
+            unit["kill_on_damage"] = None
+        for obj in state["players"]:
+            obj["energy"], obj["power"] = 0, []
+        for ready_player in state.pop("targon_pending", []):
+            for rune in state["players"][ready_player]["runes"][:2]:
+                rune["exhausted"] = False
+        state["prevent_spell_ability_damage"] = False
+        decree = state.get("imperial_decree")
+        if decree and decree.get("turn") == state.get("turn"):
+            state.pop("imperial_decree", None)
+        self._cleanup(state, rng)
+        extra_turn = state.pop("extra_turn", None)
+        state["turn_player"] = extra_turn if extra_turn is not None else 1-player
+        if state["winner"] is None:
+            self._start_turn(state, rng)
 
     def _resolve_chain_item(self, state, rng):
         item = state["chain"].pop()
@@ -5648,6 +6254,8 @@ class OriginsRules:
                     state["focus"] = 1-state.get("focus", state.get("actor", state["turn_player"]))
                 state["focus"] = state.get("focus", state.get("turn_player", 0))
                 state["actor"] = state["focus"]
+            elif state["phase"] == "optional" and state.get("optional"):
+                state["actor"] = state["optional"][0]["player"]
             else:
                 state["actor"] = state["turn_player"]
 
@@ -5874,8 +6482,13 @@ class OriginsRules:
             return {"id": uid, "code": state["cards"][uid]["code"]}
         reveal = copy.deepcopy(state.get("reveal"))
         if reveal is not None:
-            reveal["cards"] = [card(uid) for uid in reveal.get("cards", [])]
-            reveal["selected"] = [card(uid) for uid in reveal.get("selected", [])]
+            if not (state.get("decision", {}).get("nocturne_reveal")
+                    and state["decision"].get("player") != player):
+                reveal["cards"] = [card(uid) for uid in reveal.get("cards", [])]
+                reveal["selected"] = [card(uid) for uid in reveal.get("selected", [])]
+            else:
+                reveal["cards"] = []
+                reveal["selected"] = []
         public_players = []
         for index, row in enumerate(state["players"]):
             public_players.append({"hand_count": len(row["hand"]), "main_count": len(row["main"]),
@@ -5926,7 +6539,8 @@ class OriginsRules:
             for gear in row.get("gear", []):
                 if (gear.get("owner") != player or gear.get("location") != f"base:{player}"
                         or gear.get("card") not in state["cards"]
-                        or state["cards"][gear["card"]]["owner"] != player
+                        or gear.get("card_owner", state["cards"][gear["card"]]["owner"])
+                           != state["cards"][gear["card"]]["owner"]
                         or gear.get("exhausted") not in (True, False)):
                     raise ValueError("invalid gear state")
                 located.append(gear["card"])
@@ -5975,6 +6589,10 @@ class OriginsRules:
         if len({u["id"] for u in state["units"]}) != len(state["units"]):
             raise ValueError("duplicate object IDs")
         for unit in state["units"]:
+            if (unit.get("card") is not None
+                    and unit.get("card_owner", state["cards"][unit["card"]]["owner"])
+                       != state["cards"][unit["card"]]["owner"]):
+                raise ValueError("invalid unit card ownership")
             if (not self._is_field(state, unit["location"])
                     and unit["location"] != f"base:{unit['owner']}"):
                 raise ValueError("invalid unit location")

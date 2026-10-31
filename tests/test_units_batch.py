@@ -88,9 +88,13 @@ class RemainingOriginsUnitTests(unittest.TestCase):
                                           if a.kind == "choose_revealed"), random.Random(7))
         self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
                                           if a.kind == "confirm_revealed"), random.Random(7))
-        while self.state["phase"] == "chain":
-            self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
-                                              if a.kind == "pass"), random.Random(7))
+        while self.state["phase"] in {"chain", "decision"}:
+            actions = self.rules.legal_actions(self.state)
+            if self.state["phase"] == "decision":
+                action = next(a for a in actions if a.kind == "choose_target")
+            else:
+                action = next(a for a in actions if a.kind == "pass")
+            self.rules.apply(self.state, action, random.Random(7))
         self.assertIn(spell, row["main"])
         self.assertNotIn(spell, row["trash"])
 

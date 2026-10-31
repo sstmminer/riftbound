@@ -48,14 +48,22 @@ class SpellExpansionNewTests(unittest.TestCase):
 
     def test_possession_takes_control_and_recalls_without_showdown(self):
         card = self.spare("OGN-203")
-        enemy = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        enemy_card = self.state["players"][1]["main"].pop()
+        self.state["cards"][enemy_card]["code"] = "OGN-219"
+        enemy = self.rules._new_unit(self.state, "OGN-219", 1, 0,
+                                     card=enemy_card, exhausted=False)
         action = next(a for a in self.rules.legal_actions(self.state)
                       if a.kind == "play_spell" and card in a.arguments and enemy["id"] in a.arguments)
         self.rules.apply(self.state, action, random.Random(9))
         self.drain()
         self.assertEqual(enemy["owner"], 0)
+        self.assertEqual(enemy["card_owner"], 1)
         self.assertEqual(enemy["location"], "base:0")
         self.assertTrue(enemy["exhausted"])
+        enemy["damage"] = self.rules.might(self.state, enemy)
+        self.rules._cleanup(self.state, random.Random(9))
+        self.assertIn(enemy_card, self.state["players"][1]["trash"])
+        self.assertNotIn(enemy_card, self.state["players"][0]["trash"])
         self.assertEqual(self.state["phase"], "main")
 
     def test_imperial_decree_kills_unit_when_it_takes_damage(self):

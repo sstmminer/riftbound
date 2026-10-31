@@ -923,6 +923,7 @@ class OriginsGUI(tk.Tk):
             "end_reveal": "结束展示 / End reveal",
             "choose_revealed": "选择展示牌 / Select revealed card",
             "confirm_revealed": "确认展示牌选择 / Confirm revealed cards",
+            "order_revealed": "安排牌库顺序 / Order retained cards",
             "choose_option": "确认选项 / Choose option",
             "play_hidden": "打出 Hidden / Play Hidden",
             "play_hidden_targeted": "打出 Hidden 并选择目标 / Play Hidden",
@@ -1477,6 +1478,8 @@ class OriginsGUI(tk.Tk):
         text = "公开展示：" + "、".join(self._card_name(card["code"]) for card in reveal.get("cards", []))
         if kind == "select":
             text += f"；已选 {len(reveal.get('selected', []))}/{reveal.get('max', 0)}"
+        elif kind == "reorder":
+            text += "；请选择保留牌的牌库顺序 / choose retained order"
         elif kind == "display":
             # The public-display branch is closed by the player who caused the
             # reveal (the displayed player's opponent).  Keep this wording
@@ -1530,11 +1533,20 @@ class OriginsGUI(tk.Tk):
             if end is not None and can_close:
                 ttk.Button(popup, text="施放者结束展示 / Caster ends reveal",
                            command=lambda a=end: self.perform(a)).pack(pady=6)
-        else:
+        elif reveal.get("kind") == "select":
             confirm = next((a for a in legal if a.kind == "confirm_revealed"), None)
             if confirm is not None:
                 ttk.Button(popup, text=self.action_text(confirm),
                            command=lambda a=confirm: self.perform(a)).pack(pady=6)
+        else:
+            order_actions = [a for a in legal if a.kind == "order_revealed"]
+            for action in order_actions:
+                args = json.loads(action.arguments)
+                names = " → ".join(self._card_name(next(
+                    card["code"] for card in reveal.get("cards", [])
+                    if card["id"] == uid)) for uid in args.get("order", []))
+                ttk.Button(popup, text=f"顺序：{names}",
+                           command=lambda a=action: self.perform(a)).pack(pady=3)
 
     def _render_decision_bar(self, decision, legal):
         """Render target/choice instructions in the persistent bottom bar."""

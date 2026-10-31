@@ -42,6 +42,34 @@ class RemainingOriginSpellTests(unittest.TestCase):
         self.assertNotIn(top, state["players"][1]["main"])
         self.assertTrue(any(unit["code"] == "OGN-088" and unit["owner"] == 0
                             for unit in state["units"]))
+        self.assertEqual(state["cards"][top]["owner"], 1)
+        played = next(unit for unit in state["units"] if unit["card"] == top)
+        self.assertEqual(played["card_owner"], 1)
+        played["damage"] = rules.might(state, played)
+        rules._cleanup(state, random.Random(7))
+        self.assertIn(top, state["players"][1]["trash"])
+        self.assertNotIn(top, state["players"][0]["trash"])
+
+    def test_blind_fury_targeted_spell_opens_click_target_window(self):
+        rules, state, card = self.scenario("OGN-025")
+        opponent = state["players"][1]
+        top = opponent["main"][0]
+        state["cards"][top]["code"] = "OGN-009"
+        target = rules._new_unit(state, "OGN-001", 1, 0, card=None, exhausted=False)
+        action = next(action for action in rules.legal_actions(state)
+                      if action.kind == "play_spell" and card in action.arguments)
+        rules.apply(state, action, random.Random(7))
+        self.pass_chain(rules, state)
+        rules.apply(state, next(a for a in rules.legal_actions(state)
+                                if a.kind == "choose_revealed"), random.Random(7))
+        rules.apply(state, next(a for a in rules.legal_actions(state)
+                                if a.kind == "confirm_revealed"), random.Random(7))
+        self.assertEqual(state["decision"]["kind"], "target")
+        self.assertEqual(state["decision"]["targets"], [target["id"]])
+        rules.apply(state, next(a for a in rules.legal_actions(state)
+                                if a.kind == "choose_target"), random.Random(7))
+        self.assertEqual(state["phase"], "chain")
+        self.assertEqual(state["chain"][-1]["targets"], [target["id"]])
 
     def test_promising_future_collects_both_choices_in_next_player_order(self):
         rules, state, card = self.scenario("OGN-115", power="mind")

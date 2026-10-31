@@ -160,3 +160,17 @@ class NocturneRevealTests(unittest.TestCase):
         options = {json.loads(a.arguments).get("option") for a in self.rules.legal_actions(self.state)}
         self.assertNotIn("nocturne_banish", options)
         self.assertIn("nocturne_skip", options)
+
+    def test_batch_reveal_pauses_for_private_nocturne_replacement(self):
+        row = self.state["players"][0]
+        other = row["main"][1]
+        self.rules._open_reveal(self.state, owner=0, cards=[self.card, other],
+                                mode="select", chooser=0, minimum=0, maximum=1,
+                                effect="reinforce", choices=[other], rng=random.Random(1))
+        self.assertEqual(self.state["phase"], "decision")
+        self.assertEqual(self.rules.observe(self.state, 1)["reveal"]["cards"], [])
+        skip = next(a for a in self.rules.legal_actions(self.state)
+                    if json.loads(a.arguments).get("option") == "nocturne_skip")
+        self.rules.apply(self.state, skip, random.Random(1))
+        self.assertEqual(self.state["phase"], "reveal")
+        self.assertIn(self.card, row["main"])

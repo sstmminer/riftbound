@@ -152,7 +152,10 @@ class AbilityRegistryTests(unittest.TestCase):
 
         # A new ready Heimer can use another registered E ability; Energy
         # Conduit adds energy rather than accidentally appending a null domain.
+        # Its printed [Reaction] timing requires an open Chain/Showdown
+        # reaction window; it is not a free Main-phase action.
         heimer["exhausted"] = False
+        state["phase"], state["actor"] = "chain", 0
         before = state["players"][0]["energy"]
         conduit = next(a for a in rules.legal_actions(state)
                        if a.kind == "ability_activate"

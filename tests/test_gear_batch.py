@@ -128,6 +128,41 @@ class GearBatchTests(unittest.TestCase):
         self.assertEqual(len(self.state["units"]), before + 1)
         self.assertEqual(self.state["units"][-1]["card"], second)
 
+    def test_dazzling_aurora_pauses_for_nocturne_replacement(self):
+        self.play("OGN-160")
+        row = self.state["players"][0]
+        nocturne, unit = row["main"][:2]
+        self.state["cards"][nocturne]["code"] = "OGN-194"
+        self.state["cards"][unit]["code"] = "OGN-219"
+        row["power"] = ["body"]
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "end_turn"), random.Random(4))
+        self.assertEqual(self.state["phase"], "decision")
+        self.assertTrue(any("nocturne_banish" in a.arguments
+                            for a in self.rules.legal_actions(self.state)))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if "nocturne_skip" in a.arguments), random.Random(4))
+        self.assertTrue(any(u.get("card") == nocturne for u in self.state["units"]))
+
+    def test_dazzling_aurora_nocturne_can_banish_then_continue(self):
+        self.play("OGN-160")
+        row = self.state["players"][0]
+        nocturne, unit = row["main"][:2]
+        self.state["cards"][nocturne]["code"] = "OGN-194"
+        self.state["cards"][unit]["code"] = "OGN-219"
+        row["power"] = ["body"]
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "end_turn"), random.Random(4))
+        banish = next(a for a in self.rules.legal_actions(self.state)
+                      if "nocturne_banish" in a.arguments)
+        self.rules.apply(self.state, banish, random.Random(4))
+        self.assertTrue(any("nocturne_leave" in a.arguments
+                            for a in self.rules.legal_actions(self.state)))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if "nocturne_leave" in a.arguments), random.Random(4))
+        self.assertIn(nocturne, row["banishment"])
+        self.assertTrue(any(u.get("card") == unit for u in self.state["units"]))
+
 
 if __name__ == "__main__":
     unittest.main()

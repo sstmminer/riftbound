@@ -227,11 +227,27 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 
 本次审计确认的剩余结算漏洞和受限事项：
 
-- Nocturne 的替代窗口目前只接入 Vision；Reinforce、Blind Fury、Promising Future、Stacked Deck、Baited Hook、Teemo、Dazzling Aurora 等其他牌库查看/展示入口尚未统一接入逐张 replacement queue。
-- Blind Fury 会改写对手牌库物理牌的 `owner`，Possession 也把控制者和牌主共用一个 `owner` 字段；跨玩家控制单位的死亡、回手和回收可能进入错误牌区。
-- Stealthy Pursuer 的“may 跟随移动”仍自动接受；Targon's Peak 的符文准备时机提前；Candlelit Sanctum、Navori Fighting Pit、Monastery of Hirana、Zaun Warrens 等仍存在取第一张/第一个目标的简化路径。
-- Baited Hook、Dazzling Aurora 和部分免费打出法术仍可能绕过完整入场触发或后续目标窗口；多个死亡替代同时存在时仍使用硬编码优先顺序。
-- Reaction 型横置能力在 Heimer 路径中仍可能暴露在过宽时机；多个 Heimer 或原生/复制来源同时触发时的顺序还没有完整裁判化。
+- OGN-298 Zaun Warrens 的征服触发现在打开显式弃牌窗口，控制者可点选任意手牌后再抽牌；
+  选择完成后恢复到 Main，牌库耗尽/回收和 Jinx 弃牌事件仍从该窗口继续进入统一事件链。
+  Heimerdinger 复制的 Reaction 横置能力（Daughter、Hand、Seal、Energy Conduit 等）只在
+  Chain/Showdown 反应窗口暴露，并在 resolver 层拒绝主阶段直接调用，避免把 Reaction 当作
+  无条件的 Main 动作。
+- 按 RUP5 437.1.a/417.5，并结合三张牌的卡面文本，本轮修复三个战场选择窗口：Navori Fighting Pit（OGN-283）在同一战场存在多个未加 Buff
+  单位时要求控制者点选目标；Monastery of Hirana（OGN-282）的可选抽牌先确认是否发动，
+  接受后再点选要消耗 Buff 的友军；The Candlelit Sanctum（OGN-291）允许回收顶两张中的
+  0/1/2 张，保留两张时额外打开排列顺序窗口。GUI 与事件日志均显示这些中间选择。
+
+- Nocturne 的逐张 replacement queue 已统一接入 Reinforce、Blind Fury、Promising Future、Stacked Deck、
+  Baited Hook、Teemo 等 `_open_reveal` 入口；Dazzling Aurora 有独立的结束回合暂停窗口。
+  Aurora 目前仍以其原有的免费单位入场路径处理，复杂入场目标/触发的继续链需要后续统一。
+- Blind Fury 与 Possession 现在保留单位的 `card_owner`，死亡、回手和跨控制免费打出的法术/装备会按物理牌主
+  回收到正确牌区；完整的控制权系统（尤其所有未来跨区域效果）仍需继续扩展。
+- Stealthy Pursuer 的 “may 跟随移动” 已改为可选窗口并在接受时横置；Targon's Peak 改为在结束回合准备前两枚符文。
+  仍有少数其他战场触发保留简化选择路径。
+- 免费打出的目标法术已进入统一点选窗口；复杂免费打出单位的全部入场目标交互仍未完全覆盖。多个死亡替代
+  同时存在时仍需把当前硬编码检查改为正式的替代效果优先级窗口。
+- Heimer 复制的 Reaction 横置能力现在只在 Chain/Showdown 反应窗口暴露；多个 Heimer 或原生/复制来源
+  同时触发时的顺序、完整反应优先权以及复杂嵌套后的 event log/replay 仍缺少裁判级差分测试。
 - 复杂 optional/replacement 嵌套后的 event log/replay、跨区域选择和所有 look/reveal 入口仍缺少独立裁判差分测试。
 
 ## 尚未完成

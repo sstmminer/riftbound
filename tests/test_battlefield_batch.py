@@ -52,7 +52,21 @@ class BattlefieldBatchTests(unittest.TestCase):
         before_hand = len(row["hand"])
         self.rules._score(self.state, 0, 0, "conquer", random.Random(3))
         self.assertEqual(len(row["hand"]), before_hand)
+        self.assertEqual(self.state["decision"]["kind"], "discard")
+        discard = next(action for action in self.rules.legal_actions(self.state)
+                       if action.kind == "discard_card")
+        self.rules.apply(self.state, discard, random.Random(3))
         self.assertEqual(len(row["trash"]), 1)
+
+    def test_targons_peak_defers_rune_ready_until_end_turn(self):
+        self.state["fields"][0]["code"] = "OGN-289"
+        row = self.state["players"][0]
+        rune = row["rune_deck"].pop(0)
+        row["runes"].append(rune)
+        rune["exhausted"] = True
+        self.rules._score(self.state, 0, 0, "conquer", random.Random(3))
+        self.assertTrue(rune["exhausted"])
+        self.assertEqual(self.state.get("targon_pending"), [0])
 
     def test_vilemaws_lair_blocks_return_to_base(self):
         self.state["fields"][0]["code"] = "OGN-295"

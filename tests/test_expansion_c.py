@@ -438,6 +438,33 @@ class ExpansionBatchCTests(unittest.TestCase):
         self.rules._deal_damage(self.state, kayn, 5)
         self.assertEqual(kayn["damage"], before)
 
+    def test_stealthy_pursuer_follow_is_an_explicit_optional_choice(self):
+        mover = self.rules._new_unit(self.state, "OGN-003", 0, "base:0", exhausted=False)
+        pursuer = self.rules._new_unit(self.state, "OGN-177", 0, "base:0", exhausted=False)
+        self.rules._resolve_move(self.state, [mover], 0, 0, random.Random(9))
+        self.assertEqual(self.state["phase"], "optional")
+        self.assertEqual(pursuer["location"], "base:0")
+        self.assertFalse(pursuer["exhausted"])
+        decline = next(action for action in self.rules.legal_actions(self.state)
+                       if action.kind == "optional_effect" and '"accept":false' in action.arguments)
+        self.rules.apply(self.state, decline, random.Random(9))
+        self.assertEqual(pursuer["location"], "base:0")
+        self.assertFalse(pursuer["exhausted"])
+
+        state = self.rules.initial_state(random.Random(62))
+        state.update(phase="main", actor=0, turn_player=0, turn=2)
+        state["players"][0]["energy"] = 20
+        state["players"][0]["power"] = ["fury", "mind", "calm", "body", "chaos"] * 3
+        mover = self.rules._new_unit(state, "OGN-003", 0, "base:0", exhausted=False)
+        pursuer = self.rules._new_unit(state, "OGN-177", 0, "base:0", exhausted=False)
+        self.rules._resolve_move(state, [mover], 0, 0, random.Random(9))
+        accept = next(action for action in self.rules.legal_actions(state)
+                      if action.kind == "optional_effect" and '"accept":true' in action.arguments)
+        self.rules.apply(state, accept, random.Random(9))
+        self.assertEqual(pursuer["location"], 0)
+        self.assertTrue(pursuer["exhausted"])
+        self.assertEqual(state["phase"], "showdown")
+
 
 if __name__ == "__main__":
     unittest.main()

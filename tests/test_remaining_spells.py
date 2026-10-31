@@ -71,6 +71,29 @@ class RemainingOriginSpellTests(unittest.TestCase):
         self.assertEqual(state["phase"], "chain")
         self.assertEqual(state["chain"][-1]["targets"], [target["id"]])
 
+    def test_blind_fury_dangerous_duo_opens_entry_target_window(self):
+        rules, state, card = self.scenario("OGN-025")
+        opponent = state["players"][1]
+        top = opponent["main"][0]
+        state["cards"][top]["code"] = "OGN-016"
+        target = rules._new_unit(state, "OGN-001", 0, "base:0", card=None, exhausted=False)
+        action = next(action for action in rules.legal_actions(state)
+                      if action.kind == "play_spell" and card in action.arguments)
+        rules.apply(state, action, random.Random(7))
+        self.pass_chain(rules, state)
+        rules.apply(state, next(a for a in rules.legal_actions(state)
+                                if a.kind == "choose_revealed"), random.Random(7))
+        rules.apply(state, next(a for a in rules.legal_actions(state)
+                                if a.kind == "confirm_revealed"), random.Random(7))
+        self.assertEqual(state["decision"]["targets"], [target["id"]])
+        rules.apply(state, next(a for a in rules.legal_actions(state)
+                                if a.kind == "choose_target" and target["id"] in a.arguments),
+                    random.Random(7))
+        while state["phase"] == "chain":
+            rules.apply(state, next(a for a in rules.legal_actions(state)
+                                    if a.kind == "pass"), random.Random(7))
+        self.assertEqual(target["temporary"], 2)
+
     def test_promising_future_collects_both_choices_in_next_player_order(self):
         rules, state, card = self.scenario("OGN-115", power="mind")
         for row in state["players"]:

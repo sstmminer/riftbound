@@ -237,18 +237,31 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
   接受后再点选要消耗 Buff 的友军；The Candlelit Sanctum（OGN-291）允许回收顶两张中的
   0/1/2 张，保留两张时额外打开排列顺序窗口。GUI 与事件日志均显示这些中间选择。
 
-- Nocturne 的逐张 replacement queue 已统一接入 Reinforce、Blind Fury、Promising Future、Stacked Deck、
-  Baited Hook、Teemo 等 `_open_reveal` 入口；Dazzling Aurora 有独立的结束回合暂停窗口。
-  Aurora 目前仍以其原有的免费单位入场路径处理，复杂入场目标/触发的继续链需要后续统一。
+- 重做 Dazzling Aurora（OGN-160）流程：每张牌都通过统一公开 reveal 窗口逐张展示，由对手结束展示；
+  非单位牌通过统一回收事件处理，单位牌进入普通免费出牌流程，入场触发、目标选择、Nocturne 替代和
+  Karma 回收都在同一条 Chain continuation 中恢复。移除了原先直接创建单位的 Aurora 专用结算路径。
+- 建立统一死亡替代窗口：Armory、The Boss、原生/复制替代效果先进入玩家可排序的可选队列；全部拒绝后
+  才执行 Zhonya 的强制替代。接受一个替代效果会清除同一单位的兄弟选项，避免重复消耗资源。
+- 免费打出路径继续统一：Blind Fury/Promising Future/Kai'Sa/Baited Hook 等路径保留物理牌主，
+  Dangerous Duo 的入场目标和 Baited Hook 的单位打出均使用普通目标窗口与 Chain continuation，
+  不再在这些效果中自动取第一个目标。
+- 单位、装备和法术现在保留 `card_owner` 与当前控制者的区别；Possession 后回手、死亡、牺牲、装备清除和
+  跨玩家免费打出均按物理牌主回到对应区域。AbilityRegistry 记录能力来源、时机和事件组，多个 Heimer
+  或原生/复制来源同时触发时由控制者通过 `order_optional` 排序。
+- 引擎新增不进入普通观察和 GUI 的 `internal_event_log`，记录动作前后完整私有状态、摘要哈希和操作者；
+  原有 `event_log` 保持面向对局玩家的公开摘要，Replay 同时校验两层日志。
+
+- Nocturne 的逐张 replacement queue 已统一接入 Vision、Reinforce、Blind Fury、Promising Future、Stacked Deck、
+  Baited Hook、Teemo 和 Aurora 的公共 reveal 入口；复杂嵌套入场触发仍需继续增加差分测试。
 - Blind Fury 与 Possession 现在保留单位的 `card_owner`，死亡、回手和跨控制免费打出的法术/装备会按物理牌主
   回收到正确牌区；完整的控制权系统（尤其所有未来跨区域效果）仍需继续扩展。
 - Stealthy Pursuer 的 “may 跟随移动” 已改为可选窗口并在接受时横置；Targon's Peak 改为在结束回合准备前两枚符文。
   仍有少数其他战场触发保留简化选择路径。
-- 免费打出的目标法术已进入统一点选窗口；复杂免费打出单位的全部入场目标交互仍未完全覆盖。多个死亡替代
-  同时存在时仍需把当前硬编码检查改为正式的替代效果优先级窗口。
-- Heimer 复制的 Reaction 横置能力现在只在 Chain/Showdown 反应窗口暴露；多个 Heimer 或原生/复制来源
-  同时触发时的顺序、完整反应优先权以及复杂嵌套后的 event log/replay 仍缺少裁判级差分测试。
-- 复杂 optional/replacement 嵌套后的 event log/replay、跨区域选择和所有 look/reveal 入口仍缺少独立裁判差分测试。
+- 免费打出的目标法术和已覆盖的复杂单位入场目标现在都进入统一点击窗口；仍需为更多未来卡牌补充
+  同类目标规格，而不是新增卡牌专用分支。
+- Heimer 复制的 Reaction 横置能力现在只在 Chain/Showdown 反应窗口暴露；完整反应优先权和更复杂的
+  多层嵌套仍需继续用官方 FAQ 场景做差分测试。
+- 内部事件日志已可记录复杂 optional/replacement/reveal 链，但仍需要独立裁判或第二套引擎做差分认证。
 
 ## 尚未完成
 

@@ -101,6 +101,8 @@ class OriginsRules:
         registry.register("gear_return", self._effect_gear_return)
         registry.register("gear_armory_protect", self._effect_gear_armory_protect)
         registry.register("gear_baited_hook", self._effect_gear_baited_hook)
+        registry.register("baited_hook_finish", self._effect_baited_hook_finish)
+        registry.register("dazzling_aurora_continue", self._effect_dazzling_aurora_continue)
         registry.register("peak", self._effect_peak)
         registry.register("drummer", self._effect_drummer)
         registry.register("vision", self._effect_vision)
@@ -293,7 +295,10 @@ class OriginsRules:
             for source in self._registry_event_sources(state, owner, "gear.mistfall_ready"):
                 self._queue_optional(state, owner, "mistfall_ready",
                                      source=source["id"], copied=source["copied"],
-                                     target=unit["id"])
+                                     target=unit["id"],
+                                     registry_ability=source["ability_id"],
+                                     registry_source_kind=source["kind"],
+                                     event_group=source["ability_id"])
 
     def _radiant_stun_trigger(self, state, player):
         if state["players"][player]["legend"] != "OGN-261":
@@ -370,63 +375,70 @@ class OriginsRules:
             if not dead:
                 break
             # Replacement effects are checked before a lethal unit leaves the
-            # board.  Zhonya's Hourglass is mandatory and consumes itself;
-            # Unlicensed Armory creates an optional prompt when its energy
-            # resource is available.  The marker is removed before restoring
-            # the unit so repeated cleanup calls cannot loop.
+            # board. Offer every applicable optional replacement first, then
+            # use Zhonya as the mandatory fallback. The pending record keeps
+            # this choice stable across the optional decision window.
             replaced = False
             for unit in list(dead):
-                if unit.get("death_replacement") is None:
-                    owner = unit["owner"]
-                    gear = next((g for g in state["players"][owner]["gear"]
-                                 if g["code"] == "OGN-077" and not g["exhausted"]), None)
-                    if gear is not None:
-                        state["players"][owner]["gear"].remove(gear)
-                        self._trash_gear_card(state, gear)
+                owner = unit["owner"]
+                pending = state.get("death_pending")
+                if pending is not None and pending.get("unit") != unit["id"]:
+                    continue
+                if pending is not None:
+                    pending_ids = set(pending.get("option_ids", []))
+                    if any(item.get("id") in pending_ids for item in state.get("optional", [])):
+                        return
+                    zhonya = next((g for g in state["players"][owner]["gear"]
+                                   if g["id"] == pending.get("zhonya")
+                                   and g["code"] == "OGN-077" and not g["exhausted"]), None)
+                    if zhonya is not None:
+                        state["players"][owner]["gear"].remove(zhonya)
+                        self._trash_gear_card(state, zhonya)
+                        unit.pop("death_replacement", None)
+                        state.pop("death_pending", None)
                         unit["damage"] = 0
                         unit["location"] = f"base:{owner}"
                         unit["exhausted"] = True
                         replaced = True
                         continue
-                # The Boss's E replacement can also be copied by a ready
-                # Heimer when the player's legend is The Boss.  It is queued
-                # as an optional decision so the normal replacement timing is
-                # preserved and a declined choice lets lethal cleanup proceed.
-                if (unit.get("death_replacement") is None and unit.get("buff")
-                        and any(power in DOMAINS or power == "any"
-                                for power in state["players"][unit["owner"]]["power"])):
-                    boss_sources = self._registry_event_sources(
-                        state, unit["owner"], "legend.the_boss_save")
-                    if boss_sources:
-                        unit["death_replacement"] = {"kind": "boss", "turn": state["turn"],
-                                                       "prompted": True}
-                        for source in boss_sources:
-                            self._queue_optional(state, unit["owner"], "boss_save",
-                                                 target=unit["id"], source=source["id"],
-                                                 copied=source["copied"])
-                        return
-                replacement = unit.get("death_replacement")
-                if replacement and replacement.get("turn") == state.get("turn"):
-                    if replacement.get("kind") == "armory":
-                        row = state["players"][unit["owner"]]
-                        if (not replacement.get("prompted")
-                                and "fury" in row["power"]):
-                            replacement["prompted"] = True
-                            self._queue_optional(state, unit["owner"], "armory_save", target=unit["id"])
-                            return
-                        unit.pop("death_replacement", None)
-                    elif replacement.get("kind") == "zhonya":
-                        owner = unit["owner"]
-                        gear = next((g for g in state["players"][owner]["gear"]
-                                     if g["code"] == "OGN-077" and not g["exhausted"]), None)
-                        if gear is not None:
-                            state["players"][owner]["gear"].remove(gear)
-                            self._trash_gear_card(state, gear)
-                            unit.pop("death_replacement", None)
-                            unit["damage"] = 0
-                            unit["location"] = f"base:{owner}"
-                            unit["exhausted"] = True
-                            replaced = True
+                    unit.pop("death_replacement", None)
+                    state.pop("death_pending", None)
+                zhonya = next((g for g in state["players"][owner]["gear"]
+                               if g["code"] == "OGN-077" and not g["exhausted"]), None)
+                optional_specs = []
+                marker = unit.get("death_replacement") or {}
+                row = state["players"][owner]
+                if marker.get("kind") == "armory" and "fury" in row["power"]:
+                    optional_specs.append({"effect": "armory_save", "target": unit["id"]})
+                if (unit.get("buff") and any(power in DOMAINS or power == "any"
+                                              for power in row["power"])):
+                    for source in self._registry_event_sources(state, owner, "legend.the_boss_save"):
+                        optional_specs.append({
+                            "effect": "boss_save", "target": unit["id"],
+                            "source": source["id"], "copied": source["copied"],
+                            "registry_ability": source.get("ability_id"),
+                            "registry_source_kind": source.get("kind"),
+                            "event_group": source.get("ability_id"),
+                        })
+                if optional_specs:
+                    state["death_pending"] = {
+                        "unit": unit["id"],
+                        "zhonya": zhonya["id"] if zhonya else None,
+                        "option_ids": [],
+                    }
+                    for spec in optional_specs:
+                        effect = spec.pop("effect")
+                        self._queue_optional(state, owner, effect, **spec)
+                        state["death_pending"]["option_ids"].append(state["optional"][-1]["id"])
+                    return
+                if zhonya is not None:
+                    state["players"][owner]["gear"].remove(zhonya)
+                    self._trash_gear_card(state, zhonya)
+                    unit.pop("death_replacement", None)
+                    unit["damage"] = 0
+                    unit["location"] = f"base:{owner}"
+                    unit["exhausted"] = True
+                    replaced = True
             if replaced:
                 continue
             dead_ids = {u["id"] for u in dead}
@@ -443,7 +455,10 @@ class OriginsRules:
                             for shrine in shrine_sources:
                                 self._queue_optional(
                                     state, player, "solari_shrine_draw",
-                                    source=shrine["id"], copied=shrine["copied"])
+                                    source=shrine["id"], copied=shrine["copied"],
+                                    registry_ability=shrine["ability_id"],
+                                    registry_source_kind=shrine["kind"],
+                                    event_group=shrine["ability_id"])
                             if shrine_sources:
                                 return
                 # Karthus doubles Deathknell effects controlled by its owner
@@ -587,6 +602,16 @@ class OriginsRules:
             "id": f"o{state['next_object']}", "player": player, "effect": effect, **payload
         })
 
+    def _complete_death_replacement(self, state, target_id):
+        """Consume a chosen death replacement and discard sibling choices."""
+        pending = state.get("death_pending")
+        if pending is None or pending.get("unit") != target_id:
+            return
+        sibling_ids = set(pending.get("option_ids", []))
+        state["optional"] = [item for item in state.get("optional", [])
+                              if item.get("id") not in sibling_ids]
+        state.pop("death_pending", None)
+
     def _open_reveal(self, state, *, owner, cards, mode, chooser=None,
                      minimum=0, maximum=0, effect=None, item=None, choices=None,
                      closer=None, rng=None):
@@ -661,6 +686,31 @@ class OriginsRules:
         code = state["cards"][card]["code"]
         data = self.cards[code]
 
+        # Dangerous Duo has an entry target when played as the second card.
+        # Free-play effects must expose the same target window instead of
+        # silently passing ``enter_target=None``.
+        if data["type"] == "unit" and code == "OGN-016" and row["played"]:
+            candidates = [unit["id"] for unit in self._units(state, owner)]
+            if candidates:
+                payment = []
+                if ignore_energy and not free_all:
+                    choices = self._payments(state, owner, 0, data["domains"], data["power_cost"])
+                    if not choices:
+                        return
+                    payment = choices[0]
+                state["decision"] = {
+                    "kind": "target", "player": owner,
+                    "targets": candidates, "item": parent,
+                    "free_play_unit": {
+                        "owner": owner, "card": card,
+                        "card_owner": card_owner if card_owner is not None else owner,
+                        "parent": parent, "ignore_energy": ignore_energy,
+                        "free_all": free_all, "payment": payment,
+                    },
+                }
+                state["phase"], state["actor"], state["passes"] = "decision", owner, 0
+                return
+
         # A revealed spell is still a normal spell play.  In particular, its
         # target choices are made by the player after the replacement effect
         # has put the card on the stack; taking the first legal target here
@@ -703,7 +753,7 @@ class OriginsRules:
             physical_row["banishment"].remove(card)
         if card not in row["hand"]:
             row["hand"].append(card)
-        if parent not in state.get("chain", []) and parent.get("effect") != "kaisa_replay_spell":
+        if parent is not None and parent not in state.get("chain", []) and parent.get("effect") != "kaisa_replay_spell":
             state.setdefault("chain", []).append(parent)
         if data["type"] == "unit":
             payment = []
@@ -721,6 +771,10 @@ class OriginsRules:
                                           card_owner=card_owner,
                                           ignore_energy=ignore_energy or free_all,
                                           free_play_parent=True), rng)
+            if (parent is not None and parent in state.get("chain", [])
+                    and state.get("phase") == "main"):
+                state["phase"], state["actor"], state["passes"] = (
+                    "chain", state["chain"][-1]["owner"], 0)
             return
         if data["type"] == "gear":
             payment = []
@@ -735,6 +789,10 @@ class OriginsRules:
                                           ignore_cost=(not ignore_energy or free_all),
                                           card_owner=card_owner,
                                           ignore_energy=ignore_energy or free_all), rng)
+            if (parent is not None and parent in state.get("chain", [])
+                    and state.get("phase") == "main"):
+                state["phase"], state["actor"], state["passes"] = (
+                    "chain", state["chain"][-1]["owner"], 0)
             return
         # The simple, no-target path covers all direct effects.  Targeted
         # cards use their legacy action shape with a deterministic legal target
@@ -778,7 +836,7 @@ class OriginsRules:
                                       payment=payment, ignore_cost=not ignore_energy,
                                       card_owner=card_owner,
                                       ignore_energy=ignore_energy), rng)
-        if parent.get("effect") == "kaisa_replay_spell":
+        if parent is not None and parent.get("effect") == "kaisa_replay_spell":
             for entry in reversed(state.get("chain", [])):
                 if entry.get("card") == card:
                     entry["recycle_after"] = True
@@ -860,6 +918,40 @@ class OriginsRules:
         if reveal is None:
             raise ValueError("no reveal window is active")
         effect = reveal.get("effect")
+        if effect == "dazzling_aurora":
+            owner = reveal["owner"]
+            row = state["players"][owner]
+            card = next((uid for uid in reveal.get("cards", [])
+                         if uid in row["main"]), None)
+            continuation = reveal.get("item") or {
+                "effect": "dazzling_aurora_continue", "owner": owner,
+            }
+            # The reveal window is complete, but the continuation remains on
+            # the Chain so every recycle trigger and every ordinary free-play
+            # trigger resolves before Aurora looks at its next card.
+            state["reveal"] = None
+            if not state.get("chain") and "chain_return" not in state:
+                state["chain_return"] = "main"
+                state["chain_from_spell"] = False
+            state["chain"].append(continuation)
+            if card is not None and self.cards[state["cards"][card]["code"]]["type"] == "unit":
+                continuation["advance_gear"] = True
+                row["main"].remove(card)
+                row["banishment"].append(card)
+                state["phase"], state["actor"], state["passes"] = "chain", owner, 0
+                self._free_play_revealed_card(
+                    state, owner, card, continuation, rng,
+                    free_all=True, card_owner=owner)
+                return
+            if card is not None:
+                # Keep the card in Main until the generic recycle operation
+                # moves it to the bottom and emits Karma's recycle event.
+                self._recycle_cards_to_main(state, owner, [card], source="main", rng=rng)
+            if state.get("phase") != "chain":
+                state["phase"], state["actor"], state["passes"] = "chain", owner, 0
+            self._finish_resolution(state)
+            self._cleanup(state, rng)
+            return
         if effect == "blind_fury":
             owner = reveal["owner"]
             chosen = selected[0] if selected else None
@@ -1027,10 +1119,17 @@ class OriginsRules:
                 cards.remove(chosen)
                 row["main"].remove(chosen)
                 row["banishment"].append(chosen)
-                code = state["cards"][chosen]["code"]
-                if self.cards[code]["type"] == "unit":
-                    self._new_unit(state, code, owner, f"base:{owner}", card=chosen, exhausted=True)
-                    row["played"] += 1
+                # Keep the remaining cards in a continuation item so the
+                # selected unit is played through the ordinary play path
+                # (including entry targets/triggers) before recycling occurs.
+                continuation = {"effect": "baited_hook_finish", "owner": owner,
+                                "remaining": cards}
+                state["reveal"] = None
+                state["chain"].append(continuation)
+                state["phase"], state["actor"], state["passes"] = "chain", owner, 0
+                self._free_play_revealed_card(state, owner, chosen, continuation, rng,
+                                              free_all=True, card_owner=owner)
+                return
             self._recycle_cards_to_main(state, owner, cards, source="main", rng=rng)
         elif effect == "replay_trash_unit":
             resume = reveal.get("resume") or {"phase": "main", "actor": reveal["owner"], "passes": 0}
@@ -1164,6 +1263,7 @@ class OriginsRules:
             target["damage"] = 0
             target["location"] = f"base:{player}"
             target["exhausted"] = True
+            self._complete_death_replacement(state, target["id"])
             return True
         if effect == "armory_save":
             target = self._unit(state, item.get("target"))
@@ -1180,6 +1280,7 @@ class OriginsRules:
             target["damage"] = 0
             target["location"] = f"base:{player}"
             target["exhausted"] = True
+            self._complete_death_replacement(state, target["id"])
             return True
         if effect == "replay_trash_unit":
             code = item.get("code")
@@ -1750,16 +1851,22 @@ class OriginsRules:
             source_present = any(gear["code"] in spec.source_codes for gear in row["gear"])
             for gear in row["gear"]:
                 if gear["code"] in spec.source_codes and not gear["exhausted"]:
-                    sources.append({"id": gear["id"], "kind": "gear", "copied": False})
+                    sources.append({"id": gear["id"], "kind": "gear", "copied": False,
+                                    "ability_id": ability_id, "timing": spec.timing})
         elif spec.source_kind == "legend":
             source_present = row["legend"] in spec.source_codes
             if row["legend"] in spec.source_codes and not row["legend_exhausted"]:
-                sources.append({"id": f"legend:{player}", "kind": "legend", "copied": False})
+                sources.append({"id": f"legend:{player}", "kind": "legend", "copied": False,
+                                "ability_id": ability_id, "timing": spec.timing})
         if spec.copyable and source_present:
             for unit in self._units(state, player):
                 if unit["code"] == "OGN-111" and not unit["exhausted"]:
-                    sources.append({"id": unit["id"], "kind": "unit", "copied": True})
-        return sources
+                    sources.append({"id": unit["id"], "kind": "unit", "copied": True,
+                                    "ability_id": ability_id, "timing": spec.timing})
+        # Source order is deterministic for replay.  When several sources
+        # belong to the same controller, legal_actions exposes an explicit
+        # optional-order window so the player may choose a different order.
+        return sorted(sources, key=lambda source: (bool(source["copied"]), str(source["id"])))
 
     def _resolve_registry_copy(self, state, player, args, rng, target=None):
         """Resolve a Heimer copied ability through its registered action kind."""
@@ -3177,81 +3284,62 @@ class OriginsRules:
                           minimum=0, maximum=1, effect="baited_hook", choices=choices, rng=rng)
         return True
 
-    def _resolve_dazzling_aurora(self, state, player, rng):
-        """Resolve Dazzling Aurora's end-of-turn top-deck unit effect.
-
-        The first unit is played for free at Base; all preceding cards are
-        recycled.  This is intentionally deterministic because the printed
-        effect has no player choice about which revealed unit is used.
-        """
-        row = state["players"][player]
-        pending = state.get("aurora_pending")
-        revealed = (pending["revealed"] if pending and pending.get("player") == player
-                    else [])
-        while row["main"]:
-            uid = row["main"].pop(0)
-            revealed.append(uid)
-            # Nocturne's replacement applies whenever this effect reveals it.
-            # Pause the end-turn transaction before the card is exposed to the
-            # ordinary Aurora endpoint: the controller may banish it and pay
-            # [A], in which case Aurora continues looking for another unit.
-            if state["cards"][uid]["code"] == "OGN-194":
-                state["aurora_pending"] = {
-                    "player": player,
-                    "revealed": revealed,
-                    "nocturne": uid,
-                }
-                state["decision"] = {
-                    "kind": "choice", "player": player,
-                    "options": ["nocturne_banish", "nocturne_skip"],
-                    "nocturne_aurora": {"card": uid, "owner": player},
-                }
-                state["phase"], state["actor"], state["passes"] = "decision", player, 0
-                return False
-            if self.cards[state["cards"][uid]["code"]]["type"] == "unit":
-                return self._finish_dazzling_aurora(state, player, revealed, uid, rng)
-        return self._finish_dazzling_aurora(state, player, revealed, None, rng)
-
-    def _finish_dazzling_aurora(self, state, player, revealed, chosen, rng):
-        """Finish Aurora after any Nocturne replacement windows are closed."""
-        row = state["players"][player]
-        if chosen is not None:
-            code = state["cards"][chosen]["code"]
-            self._new_unit(state, code, player, f"base:{player}", card=chosen, exhausted=True)
-            row["played"] += 1
-            if chosen in revealed:
-                revealed.remove(chosen)
-        if revealed:
-            row["main"].extend(revealed)
-            self._recycle_cards_to_main(state, player, revealed, source="main", rng=rng)
-        state.pop("aurora_pending", None)
+    def _effect_baited_hook_finish(self, state, item, rng):
+        """Recycle Baited Hook's unselected cards after its free play resolves."""
+        owner = item["owner"]
+        remaining = [uid for uid in item.get("remaining", [])
+                     if uid in state["players"][owner]["main"]]
+        self._recycle_cards_to_main(state, owner, remaining, source="main", rng=rng)
         return True
 
-    def _continue_dazzling_aurora(self, state, player, rng):
-        """Continue the end-turn Aurora queue after a pending decision."""
-        pending = state.get("aurora_pending")
-        if pending is not None:
-            # The replacement branch may have removed the Nocturne and then
-            # played it for [A].  Resume the same scan with the remaining deck.
-            result = self._resolve_dazzling_aurora(state, player, rng)
-            if result is False:
-                return True
-        return False
+    def _begin_dazzling_aurora(self, state, player, rng):
+        """Open one public top-card reveal for Aurora.
 
-    def _resume_end_turn_after_aurora(self, state, player, rng):
-        """Advance queued Aurora effects or finish the suspended end turn."""
-        if self._continue_dazzling_aurora(state, player, rng):
-            return
+        Aurora uses the same reveal window as every other look effect. The
+        continuation item stays on the Chain while recycled cards, Karma, and
+        the eventual free play resolve, so nested triggers cannot overwrite an
+        end-turn-specific side path.
+        """
+        row = state["players"][player]
+        current = state.get("aurora_current_gear")
+        if current is not None and any(gear["id"] == current for gear in row["gear"]):
+            if row["main"]:
+                top = row["main"][0]
+                self._open_reveal(
+                    state, owner=player, cards=[top], mode="display",
+                    chooser=1 - player, closer=1 - player,
+                    effect="dazzling_aurora", item={
+                        "effect": "dazzling_aurora_continue", "owner": player,
+                        "aurora_gear": current,
+                    }, choices=[top], rng=rng)
+                return False
+            state.pop("aurora_current_gear", None)
         while state.get("aurora_queue"):
             gear_id = state["aurora_queue"].pop(0)
-            if not any(gear["id"] == gear_id for gear in state["players"][player]["gear"]):
-                continue
-            if self._resolve_dazzling_aurora(state, player, rng) is False:
-                state["end_turn_pending"] = {"player": player}
-                return
+            if any(gear["id"] == gear_id for gear in row["gear"]):
+                state["aurora_current_gear"] = gear_id
+                if row["main"]:
+                    top = row["main"][0]
+                    self._open_reveal(
+                        state, owner=player, cards=[top], mode="display",
+                        chooser=1 - player, closer=1 - player,
+                        effect="dazzling_aurora", item={
+                            "effect": "dazzling_aurora_continue", "owner": player,
+                            "aurora_gear": gear_id,
+                        }, choices=[top], rng=rng)
+                    return False
+                break
+        state.pop("aurora_current_gear", None)
         state.pop("aurora_queue", None)
         state.pop("end_turn_pending", None)
         self._finish_end_turn(state, player, rng)
+        return True
+
+    def _effect_dazzling_aurora_continue(self, state, item, rng):
+        """Resume Aurora after the preceding reveal/free play has settled."""
+        if item.get("advance_gear"):
+            state.pop("aurora_current_gear", None)
+        return self._begin_dazzling_aurora(state, item["owner"], rng)
 
     def _effect_peak(self, state, item, rng):
         source = self._unit(state, item.get("source"))
@@ -4206,10 +4294,10 @@ class OriginsRules:
             state["units"].remove(unit)
             card = unit["card"]
             if card is not None:
-                row = state["players"][unit["owner"]]
+                row = state["players"][self._unit_card_owner(state, unit)]
                 if card in row["champion"]:
                     row["champion"].remove(card)
-                row["hand"].append(card)
+                self._hand_unit_card(state, unit)
             if code == "OGN-104":
                 self._channel_rune(state, unit["owner"], exhausted=True)
         if code == "OGN-048":
@@ -4381,6 +4469,9 @@ class OriginsRules:
             if kind == "end_reveal":
                 if reveal["kind"] != "display" or player != reveal["closer"]:
                     raise ValueError("only the displayed player's opponent can end this reveal")
+                if reveal.get("effect") == "dazzling_aurora":
+                    self._finish_reveal(state, [], rng)
+                    return
                 # A display-only effect still has to complete the card that
                 # opened the window (including post-spell triggers).  The
                 # chain resolver had popped that item before opening the
@@ -4529,60 +4620,6 @@ class OriginsRules:
                 if not decision or decision.get("kind") != "choice" or args.get("option") not in decision.get("options", []):
                     raise ValueError("invalid choice option")
                 option = args["option"]
-                if decision.get("nocturne_aurora"):
-                    pending = state.get("aurora_pending")
-                    if pending is None:
-                        raise ValueError("Aurora replacement is no longer pending")
-                    card = decision["nocturne_aurora"]["card"]
-                    owner = decision["nocturne_aurora"]["owner"]
-                    row = state["players"][owner]
-                    if option == "nocturne_skip":
-                        state["decision"] = None
-                        self._finish_dazzling_aurora(state, owner, pending["revealed"], card, rng)
-                        self._resume_end_turn_after_aurora(state, owner, rng)
-                        return
-                    if option != "nocturne_banish":
-                        raise ValueError("invalid Aurora Nocturne choice")
-                    payment = self._payments(state, owner, 0, DOMAINS, 0, 1)
-                    if not payment:
-                        raise ValueError("Nocturne requires one rainbow power")
-                    self._pay(row, 0, payment[0])
-                    if card in pending["revealed"]:
-                        pending["revealed"].remove(card)
-                    row["banishment"].append(card)
-                    state["decision"] = {
-                        "kind": "choice", "player": owner,
-                        "options": ["nocturne_play", "nocturne_leave"],
-                        "nocturne_aurora_play": {"card": card, "owner": owner},
-                    }
-                    return
-                if decision.get("nocturne_aurora_play"):
-                    pending = state.get("aurora_pending")
-                    if pending is None:
-                        raise ValueError("Aurora replacement is no longer pending")
-                    card = decision["nocturne_aurora_play"]["card"]
-                    owner = decision["nocturne_aurora_play"]["owner"]
-                    row = state["players"][owner]
-                    if option == "nocturne_leave":
-                        state["decision"] = None
-                        self._resolve_dazzling_aurora(state, owner, rng)
-                        self._resume_end_turn_after_aurora(state, owner, rng)
-                        return
-                    if option != "nocturne_play":
-                        raise ValueError("invalid Aurora Nocturne play choice")
-                    if card not in row["banishment"]:
-                        raise ValueError("Nocturne is no longer in Banishment")
-                    row["banishment"].remove(card)
-                    # This is a free end-turn play; use the same unit object
-                    # creation semantics as Aurora's existing endpoint while
-                    # preserving the physical card in its owner's zone model.
-                    self._new_unit(state, "OGN-194", owner, f"base:{owner}",
-                                   card=card, exhausted=True)
-                    row["played"] += 1
-                    state["decision"] = None
-                    self._resolve_dazzling_aurora(state, owner, rng)
-                    self._resume_end_turn_after_aurora(state, owner, rng)
-                    return
                 if decision.get("nocturne_reveal"):
                     reveal = state.get("reveal")
                     card = decision["nocturne_reveal"]["card"]
@@ -5100,8 +5137,7 @@ class OriginsRules:
                                     or target["code"] != "OGN-121"):
                                 raise ValueError("Swift Scout requires a Teemo target")
                             state["units"].remove(target)
-                            if target.get("card") is not None:
-                                row["hand"].append(target["card"])
+                            self._hand_unit_card(state, target)
                         row["energy"] -= 1
                         row["legend_exhausted"] = True
                     else:
@@ -5155,6 +5191,25 @@ class OriginsRules:
                                                    accelerate=item["accelerate"],
                                                    payment=item["payment"],
                                                    enter_target=args["target"]), rng)
+                    return
+                if decision.get("free_play_unit"):
+                    info = decision["free_play_unit"]
+                    owner = info["owner"]
+                    card = info["card"]
+                    physical = state["players"][info.get("card_owner", owner)]
+                    row = state["players"][owner]
+                    if card in physical.get("banishment", []):
+                        physical["banishment"].remove(card)
+                    if card not in row["hand"]:
+                        row["hand"].append(card)
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", owner, 0
+                    self.apply(state, Action.make(
+                        "play_unit", card=card, location=f"base:{owner}",
+                        accelerate=False, payment=list(info.get("payment", [])),
+                        enter_target=args["target"], ignore_cost=True,
+                        ignore_energy=bool(info.get("ignore_energy")) or bool(info.get("free_all")),
+                        free_play_parent=True), rng)
                     return
                 if decision.get("multi"):
                     selected = decision.setdefault("selected", [])
@@ -5881,15 +5936,13 @@ class OriginsRules:
                     if killed is None or killed["owner"] != player:
                         raise ValueError("Commander Ledros requires friendly units")
                     state["units"].remove(killed)
-                    if killed.get("card") is not None:
-                        row["trash"].append(killed["card"])
+                    self._trash_unit_card(state, killed)
                 if not ignore_cost and code == "OGN-208":
                     sacrificed = self._unit(state, sacrifice_id)
                     if sacrificed is None or sacrificed["owner"] != player:
                         raise ValueError("Cruel Patron requires a friendly unit sacrifice")
                     state["units"].remove(sacrificed)
-                    if sacrificed.get("card") is not None:
-                        row["trash"].append(sacrificed["card"])
+                    self._trash_unit_card(state, sacrificed)
                 zone = row["hand"] if card in row["hand"] else row["champion"]
                 zone.remove(card)
                 ready = (any(u["code"] == "OGN-011" for u in self._units(state, player))
@@ -6148,18 +6201,8 @@ class OriginsRules:
             aurora_gears = [gear for gear in list(state["players"][player]["gear"])
                             if gear["code"] == "OGN-160"]
             state["aurora_queue"] = [gear["id"] for gear in aurora_gears]
-            while state["aurora_queue"]:
-                gear_id = state["aurora_queue"].pop(0)
-                if not any(gear["id"] == gear_id for gear in state["players"][player]["gear"]):
-                    continue
-                if self._resolve_dazzling_aurora(state, player, rng) is False:
-                    # The end-turn transaction remains suspended until the
-                    # Nocturne replacement window is answered.
-                    state["end_turn_pending"] = {"player": player}
-                    return
-            state.pop("aurora_queue", None)
-            state.pop("end_turn_pending", None)
-            self._finish_end_turn(state, player, rng)
+            state["end_turn_pending"] = {"player": player}
+            self._begin_dazzling_aurora(state, player, rng)
         else:
             raise ValueError(f"unknown action {kind}")
 

@@ -107,6 +107,10 @@ class Environment:
         self._actions: list[Action] = []
         self._digests: list[str] = []
         self._events: list[dict] = []
+        # Privileged, backend-facing trace.  ``event_log`` intentionally stays
+        # a compact public summary for UI/debug display; this second stream may
+        # contain private hands, deck order and complete before/after states.
+        self._internal_events: list[dict] = []
 
     def _require_reset(self) -> dict:
         if self._state is None:
@@ -140,6 +144,17 @@ class Environment:
         return copy.deepcopy(self._events)
 
     @property
+    def internal_event_log(self) -> list[dict]:
+        """Privileged detailed trace, never exposed to a playing policy.
+
+        Each committed action stores complete private before/after backend
+        states and digest boundaries.  This makes nested optional, reveal and
+        replacement continuations auditable without leaking them through the
+        normal observation or GUI event stream.
+        """
+        return copy.deepcopy(self._internal_events)
+
+    @property
     def current_player(self) -> int:
         player = self._rules.player(copy.deepcopy(self._require_reset()))
         if type(player) is not int or player not in (0, 1):
@@ -157,6 +172,7 @@ class Environment:
         self._actions = []
         self._digests = [self._digest()]
         self._events = []
+        self._internal_events = []
         return self.observe(self.current_player)
 
     def observe(self, player: int) -> dict:
@@ -208,6 +224,8 @@ class Environment:
             raise InvalidAction("action is not legal in the current state")
         # Apply to private copies: errors must not consume randomness or mutate state.
         before_player = self.current_player
+        internal_before_state = copy.deepcopy(self._state)
+        internal_before_digest = self._digests[-1]
         before_summary = self._event_summary(
             self._rules.observe(copy.deepcopy(self._state), before_player))
         state, rng = copy.deepcopy(self._state), copy.deepcopy(self._rng)
@@ -232,6 +250,15 @@ class Environment:
         after_summary = self._event_summary(self._rules.observe(copy.deepcopy(state), player))
         self._events.append({"seq": len(self._events) + 1, "action": action.to_dict(),
                              "before": before_summary, "after": after_summary})
+        self._internal_events.append({
+            "seq": len(self._internal_events) + 1,
+            "action": action.to_dict(),
+            "actor": before_player,
+            "before_digest": internal_before_digest,
+            "after_digest": self._digests[-1],
+            "before_state": internal_before_state,
+            "after_state": copy.deepcopy(state),
+        })
         return Transition(copy.deepcopy(observation), tuple(outcome or (0.0, 0.0)),
                           outcome is not None, self.truncated)
 
@@ -249,7 +276,8 @@ class Environment:
         return {"schema": 1, "rules_id": self.rules_id, "seed": self._seed,
                 "max_steps": self.max_steps,
                 "actions": [a.to_dict() for a in self._actions],
-                "digests": list(self._digests), "events": self.event_log}
+                "digests": list(self._digests), "events": self.event_log,
+                "internal_events": self.internal_event_log}
 
 
 def replay(rules: Rules, record: dict) -> Environment:
@@ -269,4 +297,6 @@ def replay(rules: Rules, record: dict) -> Environment:
             raise ValueError(f"replay mismatch at step {index}")
     if "events" in record and env.event_log != record["events"]:
         raise ValueError("event log mismatch")
+    if "internal_events" in record and env.internal_event_log != record["internal_events"]:
+        raise ValueError("internal event log mismatch")
     return env

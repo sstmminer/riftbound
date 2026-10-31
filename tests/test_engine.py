@@ -133,6 +133,20 @@ class EngineTests(unittest.TestCase):
         self.assertIn("phase", events[0]["after"])
         self.assertEqual(replay(FixtureRules(), env.audit_replay()).event_log, events)
 
+    def test_internal_event_log_keeps_detailed_private_state_separate(self):
+        env = self.make_env()
+        env.step(env.legal_actions()[0])
+        internal = env.internal_event_log
+        self.assertEqual(len(internal), 1)
+        self.assertIn("before_state", internal[0])
+        self.assertIn("after_state", internal[0])
+        self.assertEqual(internal[0]["before_digest"], env.audit_replay()["digests"][0])
+        self.assertEqual(internal[0]["after_digest"], env.audit_replay()["digests"][1])
+        self.assertEqual(replay(FixtureRules(), env.audit_replay()).internal_event_log, internal)
+        # The public event stream remains compact and must not contain the
+        # privileged full state snapshots.
+        self.assertNotIn("before_state", env.event_log[0])
+
     def test_action_canonicalization_and_round_trip(self):
         first = Action("play", '{"b":2,"a":1}')
         self.assertEqual(first, Action("play", '{"a":1,"b":2}'))

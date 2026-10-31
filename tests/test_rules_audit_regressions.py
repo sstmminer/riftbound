@@ -1,4 +1,5 @@
 import copy
+import json
 import random
 import unittest
 
@@ -25,6 +26,29 @@ class RulesAuditRegressionTests(unittest.TestCase):
         rules.apply(state, action, random.Random(101))
         self.assertFalse(target["exhausted"])
         self.assertEqual(state["players"][0]["power"], [])
+
+    def test_multiple_heimer_sources_expose_orderable_registry_event_window(self):
+        rules = OriginsRules()
+        state = rules.initial_state(random.Random(104))
+        state.update(phase="main", actor=0, turn_player=0, turn=3)
+        state["players"][0]["power"] = ["body", "body", "body"]
+        target = rules._new_unit(state, "OGN-003", 0, 0, exhausted=True)
+        first = rules._new_unit(state, "OGN-111", 0, 0, exhausted=False)
+        second = rules._new_unit(state, "OGN-111", 0, 0, exhausted=False)
+        state["players"][0]["gear"].append({
+            "id": "g152", "card": None, "code": "OGN-152", "owner": 0,
+            "location": "base:0", "exhausted": False,
+        })
+        rules._apply_buff(state, target)
+        self.assertEqual(len(state["optional"]), 3)
+        self.assertTrue(all(item["registry_ability"] == "gear.mistfall_ready"
+                            for item in state["optional"]))
+        order = next(action for action in rules.legal_actions(state)
+                     if action.kind == "order_optional")
+        rules.apply(state, order, random.Random(104))
+        self.assertEqual(state["optional_ordered"], True)
+        ordered_ids = list(json.loads(order.arguments)["order"])
+        self.assertEqual([item["id"] for item in state["optional"]], ordered_ids)
 
     def test_native_boss_death_replacement_is_optional_and_recalls(self):
         rules = OriginsRules()

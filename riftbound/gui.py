@@ -1615,6 +1615,8 @@ class OriginsGUI(tk.Tk):
             "recall_defender": "将目标单位移回基地",
             "qiyana_conquer": "Qiyana：抽牌或横置引导符文",
             "play_flame_chompers": "Flame Chompers：支付 Fury 从弃牌区打出",
+            "armory_save": "Unlicensed Armory：支付 Fury，回基地并横置",
+            "boss_save": "The Boss：支付通用符能，消耗增益并回基地",
         }
         name = effect_names.get(optional.get("effect"), optional.get("effect", "可选效果"))
         tk.Label(self.actions, text=f"可选效果（P{optional.get('player')}）：{name}",

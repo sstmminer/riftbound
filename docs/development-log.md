@@ -350,3 +350,17 @@ Promising Future、Blind Fury、The Harrowing、Baited Hook 和反制效果提�
 2. 按机制簇扩展：基础 Action/Reaction → 牌区移动与选择 → Stun/Deathknell → Hidden/装备 → Tank/Shield/Prevent → 动态战场与控制权。
 3. 每个机制簇新增真实卡牌回归测试、随机对局和回放测试。
 4. 每次扩展后更新本文件、`docs/rules-coverage.md`、支持卡表和分发包。
+
+### 完整认证首轮（2026-10-31）
+
+新增 `tools/full_certification.py` 作为可归档认证入口，统一检查 298 张目录与支持表分区、
+AbilityRegistry、独立状态契约、固定种子终局/死锁/截断/Replay，以及明确的规则差分阻塞项。
+当前全量测试为 387 项；单种子贪心/随机对局均终局，0 死锁、0 截断、0 Replay mismatch，
+独立契约随机轨迹也通过。七张优先卡（Spirit's Refuge、Wraith、Pirate's Haven、Miss Fortune、
+Undercover Agent、Mindsplitter、Vanguard Helm）已有聚焦回归场景，card-level blocker 已关闭；负向、
+嵌套和替代效果场景仍作为持续覆盖项补充。
+
+认证报告仍按设计返回 `certified=false`。未关闭的机制级阻塞为：缺少独立第二规则裁判、复杂跨区域
+控制权/嵌套免费打出、递归复制与部分替代效果的完整统一路径，以及部分战场可选效果矩阵。独立契约
+检查只能证明状态守恒和决策形状，不替代官方裁判差分。每次认证命令的 JSON 输出应随提交归档，不能
+用“298 张均在 SUPPORTED”替代裁判级认证。

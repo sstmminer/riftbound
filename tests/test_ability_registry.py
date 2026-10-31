@@ -129,6 +129,26 @@ class AbilityRegistryTests(unittest.TestCase):
         self.assertEqual(source["replacement_priority"], 7)
         self.assertEqual(source["copy_policy"], "requires_exhaust")
 
+    def test_origins_replacement_and_triggered_specs_declare_event_continuations(self):
+        """Event-driven abilities must carry enough metadata for generic windows.
+
+        The runtime still owns the actual rule resolution, but the registry is
+        the single source of truth for the event and continuation names.  This
+        prevents a copied replacement/trigger from silently falling back to a
+        card-specific path when the UI or a future backend inspects it.
+        """
+        expected = {
+            "gear.mistfall_ready": ("friendly_unit_buffed", "mistfall_ready"),
+            "gear.solari_shrine_draw": ("stunned_enemy_destroyed", "solari_shrine_draw"),
+            "legend.the_boss_save": ("friendly_unit_would_die", "boss_save"),
+        }
+        for ability_id, (event, continuation) in expected.items():
+            spec = ORIGINS_ABILITIES.get(ability_id)
+            self.assertEqual(spec.event, event)
+            self.assertEqual(spec.continuation, continuation)
+            self.assertTrue(spec.target_spec)
+            self.assertTrue(spec.copyable)
+
     def test_extended_registry_metadata_rejects_invalid_values(self):
         with self.assertRaisesRegex(ValueError, "invalid replacement priority"):
             AbilitySpec("future.bad_priority", "unit", frozenset({"OGN-998"}),

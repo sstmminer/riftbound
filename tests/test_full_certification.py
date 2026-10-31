@@ -2,7 +2,9 @@ import unittest
 
 from tools.full_certification import (
     CARD_BEHAVIOR_BLOCKERS,
+    CARD_BEHAVIOR_COVERAGE,
     build_certification,
+    contract_audit,
     catalog_audit,
     registry_audit,
 )
@@ -21,6 +23,7 @@ class FullCertificationTests(unittest.TestCase):
                                      policies=("greedy",), run_tests=False)
         self.assertTrue(report["checks"]["catalog_partition"])
         self.assertTrue(report["checks"]["ability_registry"])
+        self.assertTrue(report["checks"]["contract_invariants"])
         self.assertFalse(report["checks"]["known_blockers_closed"])
         self.assertFalse(report["checks"]["card_behavior_blockers_closed"])
         self.assertFalse(report["checks"]["certified"])
@@ -29,6 +32,13 @@ class FullCertificationTests(unittest.TestCase):
             {entry["code"] for entry in report["card_behavior_blockers"]},
             {entry["code"] for entry in CARD_BEHAVIOR_BLOCKERS},
         )
+        self.assertEqual(
+            {entry["code"] for entry in report["card_behavior_coverage"]},
+            {entry["code"] for entry in CARD_BEHAVIOR_COVERAGE},
+        )
+
+    def test_independent_contract_audit_passes(self):
+        self.assertTrue(contract_audit(seeds=1, steps=20)["passed"])
 
 
 if __name__ == "__main__":

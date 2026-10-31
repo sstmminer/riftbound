@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import random
 import sys
 import time
 
@@ -22,12 +23,14 @@ if str(ROOT) not in sys.path:
 
 from riftbound.abilities import ORIGINS_ABILITIES
 from riftbound.catalog import load_origins
+from riftbound.origins import OriginsRules
 from riftbound.support import (
     ACCELERATE, FIELD_CODES, GEAR_CODES, HIDDEN_CODES, LEGENDS, LEGEND,
     REACTIONS, RUNES, SPELL_CODES, SPRITE_TOKEN, TOKEN, TOKEN_CODES,
     UNIT_CODES, SUPPORTED,
 )
 from tools.stable_baseline import build_report
+from tools.contract_invariants import violations
 
 
 PARTITIONS = {
@@ -68,11 +71,12 @@ KNOWN_BLOCKERS = (
     },
 )
 
-# Card-level gaps found by the static first pass. These stay separate from
-# mechanism-level blockers: SUPPORTED means a card can enter a legal deck and
-# state, while this list records cards that still need isolated positive and
-# negative interaction scenarios before certification.
-CARD_BEHAVIOR_BLOCKERS = (
+# Card-level gaps found by the static first pass. The seven cards now have
+# focused executable scenarios, but the full certification contract also
+# requires negative, nested and replacement-effect cases. Keep them open until
+# that broader evidence exists; the separate coverage list records the work
+# already completed without overstating it.
+CARD_BEHAVIOR_COVERAGE = (
     {"code": "OGN-063", "name": "Spirit's Refuge",
      "scope": "gear play target and buffed-unit Deflect"},
     {"code": "OGN-118", "name": "Wraith of Echoes",
@@ -88,6 +92,9 @@ CARD_BEHAVIOR_BLOCKERS = (
     {"code": "OGN-228", "name": "Vanguard Helm",
      "scope": "buffed friendly death then another-unit buff"},
 )
+
+# Kept as a public compatibility symbol for downstream report consumers.
+CARD_BEHAVIOR_BLOCKERS = CARD_BEHAVIOR_COVERAGE
 
 
 def catalog_audit() -> dict:
@@ -148,18 +155,69 @@ def registry_audit() -> dict:
     }
 
 
+def contract_audit(*, seeds: int, steps: int = 100) -> dict:
+    """Run the independent state-shape checker over deterministic traces.
+
+    This is intentionally a structural audit rather than a second rules
+    engine.  It checks that ordinary legal transitions preserve card/rune
+    conservation, ownership, visibility and phase invariants without calling
+    ``OriginsRules.validate``.  Semantic card interactions remain covered by
+    the explicit blockers below.
+    """
+    checked_states = 0
+    failures = []
+    for seed in range(seeds):
+        rules = OriginsRules()
+        state = rules.initial_state(random.Random(seed))
+        rng = random.Random(seed + 1000)
+        for step in range(steps):
+            errors = violations(state)
+            checked_states += 1
+            if errors:
+                failures.append({"seed": seed, "step": step,
+                                 "phase": state.get("phase"),
+                                 "errors": errors})
+                break
+            if state.get("winner") is not None:
+                break
+            actions = tuple(rules.legal_actions(state))
+            if not actions:
+                failures.append({"seed": seed, "step": step,
+                                 "phase": state.get("phase"),
+                                 "errors": ["no legal actions"]})
+                break
+            rules.apply(state, rng.choice(actions), rng)
+        else:
+            errors = violations(state)
+            checked_states += 1
+            if errors:
+                failures.append({"seed": seed, "step": steps,
+                                 "phase": state.get("phase"),
+                                 "errors": errors})
+    return {
+        "seeds": seeds,
+        "steps_per_seed": steps,
+        "states_checked": checked_states,
+        "failures": failures,
+        "passed": not failures,
+    }
+
+
 def build_certification(*, seeds: int, max_steps: int, policies: tuple[str, ...],
                         run_tests: bool = True) -> dict:
     started = time.monotonic()
     catalog = catalog_audit()
     registry = registry_audit()
+    contract = contract_audit(seeds=seeds, steps=min(max_steps, 100))
     runtime = build_report(seeds=seeds, max_steps=max_steps, policies=policies,
                            run_tests=run_tests)
     blockers = [dict(item, status="open") for item in KNOWN_BLOCKERS]
     card_blockers = [dict(item, status="open") for item in CARD_BEHAVIOR_BLOCKERS]
+    card_coverage = [dict(item, status="focused_tests") for item in CARD_BEHAVIOR_COVERAGE]
     checks = {
         "catalog_partition": catalog["partition_complete"],
         "ability_registry": registry["integrity"],
+        "contract_invariants": contract["passed"],
         "runtime_gate": runtime["gate"]["passed"],
         "known_blockers_closed": not blockers,
         "card_behavior_blockers_closed": not card_blockers,
@@ -170,9 +228,11 @@ def build_certification(*, seeds: int, max_steps: int, policies: tuple[str, ...]
         "scope": "Origins / two-player standard constructed",
         "catalog": catalog,
         "ability_registry": registry,
+        "contract_invariants": contract,
         "runtime": runtime,
         "known_blockers": blockers,
         "card_behavior_blockers": card_blockers,
+        "card_behavior_coverage": card_coverage,
         "checks": {**checks, "certified": all(checks.values())},
         "seconds": round(time.monotonic() - started, 3),
     }

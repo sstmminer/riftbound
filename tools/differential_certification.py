@@ -112,8 +112,10 @@ def run_production_fixture(fixture: dict) -> dict:
     fixture_id = fixture["id"]
     supported = {
         "move_ready_unit_exhausts_and_enters_showdown": "move",
+        "exhausted_unit_cannot_move": "illegal_move",
         "lethal_damage_moves_card_to_physical_owner_trash": "damage",
         "recycle_is_explicit_zone_event": "recycle",
+        "optional_effect_requires_explicit_choice": "optional",
     }
     adapter = supported.get(fixture_id)
     if adapter is None:
@@ -136,6 +138,11 @@ def run_production_fixture(fixture: dict) -> dict:
                                   "damage": unit["damage"],
                                   "exhausted": unit["exhausted"]}},
             }
+        elif adapter == "illegal_move":
+            unit = rules._new_unit(state, "OGN-006", 0, "base:0", exhausted=True)
+            legal = unit["id"] in rules._movable(state, 0)
+            actual = {"errors": [] if legal else [
+                "units are not jointly movable to destination"]}
         elif adapter == "damage":
             row = state["players"][0]
             actual_card = row["hand"].pop()
@@ -155,7 +162,7 @@ def run_production_fixture(fixture: dict) -> dict:
             }
             actual["players"][0]["trash"] = ["c1"] if any(
                 actual_card in state["players"][0]["trash"] for _ in (0,)) else []
-        else:  # recycle
+        elif adapter == "recycle":
             row = state["players"][0]
             actual_card = row["hand"].pop()
             row["trash"].append(actual_card)
@@ -164,6 +171,16 @@ def run_production_fixture(fixture: dict) -> dict:
             actual = {"players": [{"main": ["c1"], "hand": [], "trash": [], "energy": 0},
                                    {"main": [], "hand": [], "trash": [], "energy": 0}]}
             actual["players"][0]["main"] = ["c1"] if actual_card in state["players"][0]["main"] else []
+        else:  # optional
+            from riftbound.engine import Action
+
+            rules._queue_optional(state, 0, "channel_rune", source="field:test")
+            option_id = state["optional"][-1]["id"]
+            rules.apply(state, Action.make("optional_effect",
+                                            optional=option_id, accept=False),
+                        random.Random(7005))
+            actual = {"phase": state["phase"], "actor": state["actor"],
+                      "optional": state["optional"]}
         return {"status": "supported", "adapter": adapter,
                 "passed": True,
                 "actual": actual, "failures": []}
@@ -178,7 +195,10 @@ def _compare_production(expected: dict, production: dict) -> list[str]:
     if production.get("status") != "supported":
         return failures
     actual = production["actual"]
-    for path in ("phase", "actor", "passes", "units", "players"):
+    if "errors" in expected:
+        if expected["errors"] != actual.get("errors", []):
+            failures.append(f"production.errors: expected {expected['errors']!r}, got {actual.get('errors', [])!r}")
+    for path in ("phase", "actor", "passes", "units", "players", "optional"):
         if path in expected.get("state", {}) and expected["state"][path] != actual.get(path):
             failures.append(f"production.state.{path}: expected {expected['state'][path]!r}, got {actual.get(path)!r}")
     return failures

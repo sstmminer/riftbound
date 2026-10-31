@@ -49,6 +49,27 @@ class BattlefieldBeginningPhaseTriggerTests(unittest.TestCase):
         self.assertEqual(state["phase"], "main")
         self.assertTrue(state["players"][0]["champion"])
 
+    def test_mandatory_navori_target_does_not_drop_later_battlefield_option(self):
+        rules = OriginsRules()
+        state = rules.initial_state(random.Random(907))
+        state.update(phase="main", actor=0, turn_player=0, turn=1, winner=None)
+        for field, code in enumerate(("OGN-283", "OGN-288")):
+            state["fields"][field]["code"] = code
+            state["fields"][field]["controller"] = 0
+        first = rules._new_unit(state, "OGN-219", 0, 0, exhausted=False)
+        rules._new_unit(state, "OGN-219", 0, 0, exhausted=False)
+        rules._new_unit(state, "OGN-219", 0, 1, exhausted=False)
+
+        rules._start_turn(state, random.Random(908))
+        self.assertEqual(state["phase"], "decision")
+        self.assertTrue(state.get("deferred_battlefield_optionals"))
+        rules.apply(state, Action.make("choose_target", target=first["id"]),
+                    random.Random(909))
+
+        self.assertEqual(state["phase"], "optional")
+        self.assertEqual([item["effect"] for item in state["optional"]],
+                         ["channel_rune"])
+
 
 if __name__ == "__main__":
     unittest.main()

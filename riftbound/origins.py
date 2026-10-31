@@ -6225,6 +6225,8 @@ class OriginsRules:
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "main", player, 0
                     self._cleanup(state, rng)
+                    if state.get("decision") is None and state.get("reveal") is None:
+                        self._flush_deferred_battlefield_optionals(state)
                     return
                 if decision.get("registry_ability"):
                     item = dict(decision["item"])

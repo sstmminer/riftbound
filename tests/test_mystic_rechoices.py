@@ -73,6 +73,14 @@ class MysticRechoiceTests(unittest.TestCase):
         self.assertEqual(self.state["chain"][-1]["targets"], [target["id"]])
         self.assertTrue(self.state["chain"][-1]["choice_done"])
 
+    def test_whirlwind_counter_has_no_dead_end_without_units(self):
+        counter = self._counter_scenario("OGN-187")
+        self._put_counter_on_chain(counter)
+        self.assertEqual(self.state["decision"]["options"], ["skip"])
+        self.rules.apply(self.state, Action.make("choose_option", option="skip"),
+                         random.Random(612))
+        self.assertTrue(self.state["chain"][-1]["choice_done"])
+
 
 if __name__ == "__main__":
     unittest.main()

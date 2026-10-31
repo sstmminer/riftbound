@@ -537,6 +537,33 @@ class OriginsTests(unittest.TestCase):
         self.assertFalse(state.get("decision"))
         self.assertTrue(state["units"][-1]["exhausted"])
 
+    def test_accelerate_exposes_resource_reactions(self):
+        state = self.scenario()
+        row = state["players"][0]
+        row["legend"] = "OGN-253"  # Hand of Noxus: Reaction Add Energy
+        row["legend_exhausted"] = False
+        row["played"] = 1
+        gear_card = row["main"].pop()
+        state["cards"][gear_card]["code"] = "OGN-098"  # Energy Conduit
+        row["gear"].append({"id": gear_card, "card": gear_card, "code": "OGN-098",
+                             "owner": 0, "location": "base:0", "exhausted": False})
+        uid = self.hand(state, "OGN-010")
+        self.act(state, "play_unit", card=uid, location="base:0")
+        kinds = {action.kind for action in self.rules.legal_actions(state)}
+        self.assertIn("legend_energy", kinds)
+        self.assertIn("gear_resource", kinds)
+        # Daughter's rainbow power is restricted to playing spells and cannot
+        # be offered as an Accelerate payment for a unit.
+        row["legend"] = "OGN-247"
+        row["legend_exhausted"] = False
+        self.assertNotIn("legend_spell_power",
+                         {action.kind for action in self.rules.legal_actions(state)})
+        row["legend"] = "OGN-253"
+        self.act(state, "legend_energy")
+        self.act(state, "gear_resource", gear=gear_card)
+        self.assertTrue(state["decision"].get("accelerate"))
+        self.act(state, "choose_option", option="skip")
+
     def test_magma_wurm_only_other_units_enter_ready(self):
         state = self.scenario()
         uid = self.hand(state, "OGN-011")

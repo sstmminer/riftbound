@@ -963,7 +963,8 @@ class OriginsGUI(tk.Tk):
 
     def rune_menu(self, event, uid):
         obs = self.env.observe(0) if self.env.current_player == 0 else None
-        if obs and obs.get("phase") == "decision" and obs.get("decision"):
+        if (obs and obs.get("phase") == "decision" and obs.get("decision")
+                and not obs["decision"].get("accelerate")):
             self.set_notice("当前正在选择目标，请左键点选；右键菜单暂不可用。")
             return
         menu = tk.Menu(self, tearoff=False)
@@ -1696,13 +1697,23 @@ class OriginsGUI(tk.Tk):
             prompt = "选择要从手牌免费打出的 Hidden 牌"
         elif decision.get("accelerate"):
             domains = "/".join(decision["accelerate"].get("domains", []))
-            prompt = (f"加速：可先横置/回收符文支付 1 法力 + {domains} 符能，"
-                      "然后确认单位活跃入场；也可跳过")
+            prompt = (f"加速待支付：请直接在符文区横置/回收符文，或发动下方资源能力；"
+                      f"完成后选择支付 1 法力 + {domains} 符能并活跃入场，或跳过")
         else:
             prompt = f"等待选择：{kind}"
         tk.Label(self.actions, text=prompt, bg="#101b2b", fg="#f3d58b").pack(side="left", padx=4)
         if kind == "predict":
             for action in legal:
+                ttk.Button(self.actions, text=self.action_text(action),
+                           command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
+            return
+        if decision.get("accelerate"):
+            # Rune resources are operated directly on the rune cards. Keep
+            # them out of this bar; show only the accelerate/skip choice and
+            # any non-rune resource abilities exposed by the engine.
+            for action in legal:
+                if action.kind in {"exhaust_rune", "recycle_rune"}:
+                    continue
                 ttk.Button(self.actions, text=self.action_text(action),
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
             return

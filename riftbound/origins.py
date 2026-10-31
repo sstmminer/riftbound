@@ -1827,7 +1827,10 @@ class OriginsRules:
         # Noxus, and the Seal Gear must not become free actions during Main.
         # They are offered only while a Chain or Showdown reaction window is
         # open (the active actor is already enforced by legal_actions()).
-        if spec.timing == "reaction" and state.get("phase") not in {"chain", "showdown"}:
+        accelerate_window = (state.get("phase") == "decision"
+                             and (state.get("decision") or {}).get("accelerate"))
+        if spec.timing == "reaction" and state.get("phase") not in {"chain", "showdown"} \
+                and not accelerate_window:
             return False
         row = state["players"][player]
         if spec.action_kind == "unit_caitlyn" and not self._is_field(state, heimer["location"]):
@@ -1934,7 +1937,10 @@ class OriginsRules:
             raise ValueError("copied ability source is unavailable")
         if not spec.requires_exhaust or not spec.copyable:
             raise ValueError("ability is not copyable by Heimerdinger")
-        if spec.timing == "reaction" and state.get("phase") not in {"chain", "showdown"}:
+        accelerate_window = (state.get("phase") == "decision"
+                             and (state.get("decision") or {}).get("accelerate"))
+        if spec.timing == "reaction" and state.get("phase") not in {"chain", "showdown"} \
+                and not accelerate_window:
             raise ValueError("copied Reaction ability is unavailable outside a reaction window")
         action = spec.action_kind
         row = state["players"][player]
@@ -2291,6 +2297,28 @@ class OriginsRules:
                            for u in self._units(state, player)
                            if u["code"] == "OGN-121")
         return result
+
+    def _accelerate_resource_actions(self, state, player):
+        """Resource Add abilities legal while paying an Accelerate cost.
+
+        RUP5 357.1.a/430.3 permits Reaction resource abilities during a cost
+        payment. These actions stay inside the pending decision; they do not
+        open priority and do not resolve the unit entry prematurely.
+        """
+        actions = []
+        for action in self._resource_actions(state) + self._gear_actions(state):
+            if action.kind in {"legend_energy", "gear_resource"}:
+                actions.append(action)
+                continue
+            if action.kind == "ability_activate":
+                args = json.loads(action.arguments)
+                try:
+                    spec = self.abilities.get(args.get("ability_id"))
+                except KeyError:
+                    continue
+                if spec.action_kind in {"legend_energy", "gear_resource"}:
+                    actions.append(action)
+        return actions
 
     def _payments(self, state, player, energy, domains, power_count, any_count=0, *, spell=False):
         row = state["players"][player]
@@ -2770,16 +2798,17 @@ class OriginsRules:
                 if decision.get("accelerate"):
                     row = state["players"][player]
                     domains = set(decision["accelerate"].get("domains", []))
-                    can_energy = row["energy"] >= 1 or any(not rune["exhausted"] for rune in row["runes"])
+                    # Rune/gear/legend Add-resource actions are separate
+                    # payment actions. Accelerate itself is offered only once
+                    # the current pools can actually pay its [1] + [C].
+                    can_energy = row["energy"] >= 1
                     if len(domains) == 1:
-                        can_power = any(power in domains or power == "any" for power in row["power"]) or any(
-                            domains.intersection(self.cards[rune["code"]]["domains"])
-                            for rune in row["runes"])
+                        can_power = any(power in domains or power == "any" for power in row["power"])
                     else:
                         # Radiance patch: [C] becomes [A] when the accelerated
                         # unit has no or multiple domains, so any one power is
                         # a legal payment after resource activation.
-                        can_power = bool(row["power"]) or bool(row["runes"])
+                        can_power = bool(row["power"])
                     if not (can_energy and can_power):
                         actions = [action for action in actions
                                    if json.loads(action.arguments).get("option") != "accelerate"]
@@ -2787,6 +2816,7 @@ class OriginsRules:
                         if not rune["exhausted"]:
                             actions.append(Action.make("exhaust_rune", rune=rune["id"]))
                         actions.append(Action.make("recycle_rune", rune=rune["id"]))
+                    actions.extend(self._accelerate_resource_actions(state, player))
                 return tuple(actions)
             if decision["kind"] == "predict":
                 return (Action.make("predict", recycle=False), Action.make("predict", recycle=True))

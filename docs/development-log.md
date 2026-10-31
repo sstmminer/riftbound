@@ -219,7 +219,7 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 
 本批法术审计注记：Blind Fury（OGN-025）公开对手牌库顶牌，由施放者选择并把该物理牌转为施放者控制后免费打出；Promising Future（OGN-115）先由下家选择、再由另一玩家选择，按下家顺序逐张打出，忽略 Energy 但仍检查并支付 Power；Divine Judgment（OGN-244）以两个玩家独立的四区选择窗口完成后才发出回收事件，避免 Karma 在第二位玩家选择期间插入。当前免费打出的复杂目标法术仍通过已有 legacy 目标路径取首个合法目标，待统一 free-play 目标窗口后可改为点选序列；这属于明确记录的受限交互路径，不按白板处理。
 
-本批仍保留两项明确限制：Volibear（OGN-041）现在以五次可重复点击逐点分配 5 点伤害，已能表达任意分配，但没有单独的数字分配面板；Heimerdinger（OGN-111）通过 `AbilityRegistry` 按 `requires_exhaust=True` 自动发现单位、传奇和装备的横置能力，Vi/Udyr 等没有横置符号的能力以及 Nocturne/Zhonya 的非横置替代效果会被排除。Solari Shrine、Mistfall、The Boss 等事件型横置能力也使用同一注册表和事件窗口。Nocturne（OGN-194）的 Ganking 与牌库顶查看窗口均已接入：Vision 查看顶牌时由查看者私下选择放弃或支付一枚 [A]，支付后先放逐该物理牌，再通过普通单位出牌状态机以零费用打出；无可支付符能时不会暴露不可用选项。Teemo 的防守触发只在实际进入防守战斗时生成，不会因从 Hidden 打出就提前触发。
+本批仍保留明确限制：Volibear（OGN-041）现在以五次可重复点击逐点分配 5 点伤害，已能表达任意分配，但没有单独的数字分配面板；Heimerdinger（OGN-111）通过 `AbilityRegistry` 按 `requires_exhaust=True` 自动发现单位、传奇和装备的横置能力，Vi/Udyr 等没有横置符号的能力以及 Nocturne/Zhonya 的非横置替代效果会被排除。Solari Shrine、Mistfall、The Boss 等事件型横置能力也使用同一注册表和事件窗口。Nocturne（OGN-194）的 Ganking 与牌库顶查看窗口均已接入：Vision、批量 reveal 和 Dazzling Aurora 的查看窗口由牌主私下选择跳过或支付一枚 [A]；支付后先放逐该物理牌，再继续对应的免费出牌/翻牌流程；无可支付符能时不会暴露不可用选项。Teemo 的防守触发只在实际进入防守战斗时生成，不会因从 Hidden 打出就提前触发。
 
 ## RUP5/官方勘误与裁判级审计（2026-10-31）
 

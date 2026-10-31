@@ -68,15 +68,16 @@ GUI 底部日志现在有序号，并显示回合玩家、当前行动玩家、�
 加入私有目标选择窗口：只有拥有行动权的玩家能看到合法目标，选择完成后才继续
 结算链。OGN-234 Harnessed Dragon、OGN-051 Solari Shieldbearer 和 OGN-082
 Whiteflame Protector 使用该窗口。单位新增本回合 Stun 状态；Stun 单位不产生战斗
-伤害，回合结束清除。装备区目前只有 `core.py` 的通用 GearZone 原语和单元测试，尚未
-接入 Origins 对局的完整装备牌区。GearZone 已按 RUP5 148.1.a.1、149.1、149.2 和
+伤害，回合结束清除。此处记录的是早期 GearZone 阶段；后续已接入 Origins Gear 区并覆盖
+21 张装备。GearZone 已按 RUP5 148.1.a.1、149.1、149.2 和
 359.2.d 修正：非特殊效果下只能进入控制者的 Base，并且进入时 Ready/竖置。
 GUI 也把对手 Base 放回对手手牌与身份区一侧；我方 Base 保留在我方区域下方。
 
 随后加入 Rune Prison、Discipline、Cannon Barrage、Flurry of Blades 和 Primal
 Strength，复用目标选择、Stun、反应时机和战场范围伤害窗口。
 
-Falling Star（OGN-029）和 Icathian Rain（OGN-248）现在都使用统一的卡牌点击目标窗口。
+Falling Star（OGN-029）和 Icathian Rain（OGN-248）曾先接入统一卡牌点击目标窗口；后续审计确认
+它们仍需迁移为法术完成后创建 Reflexive Trigger 的官方时序。
 Falling Star 可按顺序点击同一单位两次，Icathian Rain 可点击六次；点击序列会在临时窗口中
 显示编号，确认前可删除单项或清空重选。引擎保留点击顺序并在确认后按该顺序逐次结算伤害。
 
@@ -88,7 +89,7 @@ Falling Star 可按顺序点击同一单位两次，Icathian Rain 可点击六�
 删除和清空重选。多目标、成对目标、目的地目标、装备能力、单位技能和传奇能力共用同一
 `decision`/`choose_target` 路径；重复分配效果必须在确认后按序结算。
 
-本轮已迁移：OGN-029/248、低风险单目标法术、成对目标法术、目的地移动法术、OGN-090/124/184
+本轮已迁移：低风险单目标法术、成对目标法术、目的地移动法术、OGN-090/124/184
 装备能力、Caitlyn/Malzahar 目标技能，以及 Blind Monk、Bounty Hunter、Swift Scout 的目标能力；
 Unforgiven 的目标单位与目的地选择、OGN-256 的同战场总战力约束多选、OGN-266/268 的战场点击和 Bullet Time 的 X 选择也已迁移。
 仍需专用界面的范围包括 Dragon's Rage 的连续移动目标、可选装备/符文/手牌选择和需要同时
@@ -123,8 +124,8 @@ The Arena's Greatest（OGN-290）在每名玩家首次开始阶段给予 1 点�
 并在选择后恢复正常结算。Startipped Peak
 的“may channel”现已进入可选效果确认窗口。
 
-新增法术中带 Hidden 的牌（OGN-053、OGN-213、OGN-220）当前只执行其公开 Action
-侧；Hidden 的隐藏、揭示和反应时机仍记录为未完成机制，不会被假装成完整支持。
+新增法术中带 Hidden 的牌（OGN-053、OGN-213、OGN-220）在当时只执行其公开 Action
+侧；后续已接入 Hidden 放置、揭示和反应基础流程，复杂跨牌交互仍按末尾限制记录。
 
 后续法术批次加入 Charm（OGN-043）、Mobilize（OGN-134）和 Ride the Wind（OGN-173）。
 Charm/Ride the Wind 使用显式目的地选择并按移动规则横置或准备单位；Mobilize 在符文牌库
@@ -137,8 +138,7 @@ Charm/Ride the Wind 使用显式目的地选择并按移动规则横置或准备
 
 同时加入 Altar to Unity、Navori Fighting Pit 和 Void Gate
 （OGN-275/283/296）：持有时生成 Recruit、给首个未 Buff 友军加 Buff，以及让法术/能力
-对该战场单位的每次伤害增加 1。Navori 的可选目标目前取首个未 Buff 友军，待统一选择
-窗口接入后改为玩家确认。
+对该战场单位的每次伤害增加 1。Navori 的多目标可选效果现已改为玩家确认窗口。
 
 本轮机制簇继续加入 Blind Monk、Unforgiven、Radiant Dawn、Bounty Hunter 和 The Boss
 （OGN-257/259/261/267/269）；传奇动作覆盖 Buff、跨基地移动和临时 Ganking，Radiant

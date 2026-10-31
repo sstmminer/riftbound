@@ -104,6 +104,52 @@ class UnverifiedOriginsCardsTests(unittest.TestCase):
         self.assertFalse(unit["exhausted"])
         self.assertEqual(unit["temporary"], 1)
 
+    def test_miss_fortune_first_move_opens_optional_ready_target(self):
+        self.state["fields"][0]["controller"] = 0
+        self.state["fields"][1]["controller"] = 0
+        source = self.rules._new_unit(
+            self.state, "OGN-162", 0, 0, exhausted=False)
+        target = self.rules._new_unit(
+            self.state, "OGN-219", 0, 0, exhausted=True)
+        self.rules._resolve_move(
+            self.state, [source], 1, 0, random.Random(19))
+        self.assertEqual(self.state["phase"], "optional")
+        accept = next(action for action in self.rules.legal_actions(self.state)
+                      if '"accept":true' in action.arguments)
+        self.rules.apply(self.state, accept, random.Random(19))
+        choose = next(action for action in self.rules.legal_actions(self.state)
+                      if action.kind == "choose_target"
+                      and target["id"] in action.arguments)
+        self.rules.apply(self.state, choose, random.Random(19))
+        self.assertFalse(target["exhausted"])
+        self.assertEqual(source["move_count"], 1)
+
+    def test_vanguard_helm_death_opens_another_unit_target(self):
+        self.state["fields"][0]["controller"] = 0
+        self.state["players"][0]["gear"].append(
+            {"id": "gear:228", "card": None, "code": "OGN-228",
+             "owner": 0, "card_owner": 0, "location": "base:0",
+             "exhausted": False, "temporary": False})
+        victim = self.rules._new_unit(
+            self.state, "OGN-219", 0, 0, exhausted=False)
+        target = self.rules._new_unit(
+            self.state, "OGN-219", 0, 0, exhausted=False)
+        victim["buff"] = 1
+        victim["damage"] = self.rules.might(self.state, victim)
+        self.rules._cleanup(self.state, random.Random(19))
+        choose = next(action for action in self.rules.legal_actions(self.state)
+                      if action.kind == "choose_target"
+                      and target["id"] in action.arguments)
+        self.rules.apply(self.state, choose, random.Random(19))
+        for _ in range(2):
+            self.rules.apply(
+                self.state,
+                next(action for action in self.rules.legal_actions(self.state)
+                     if action.kind == "pass"),
+                random.Random(19),
+            )
+        self.assertEqual(target["buff"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

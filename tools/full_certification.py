@@ -72,10 +72,10 @@ KNOWN_BLOCKERS = (
 )
 
 # Card-level gaps found by the static first pass. The seven cards now have
-# focused executable scenarios, but the full certification contract also
-# requires negative, nested and replacement-effect cases. Keep them open until
-# that broader evidence exists; the separate coverage list records the work
-# already completed without overstating it.
+# focused executable scenarios, so the original "missing implementation"
+# blockers are closed. The separate coverage list remains in the report so
+# negative, nested and replacement-effect cases can be expanded without
+# confusing implementation coverage with full rules certification.
 CARD_BEHAVIOR_COVERAGE = (
     {"code": "OGN-063", "name": "Spirit's Refuge",
      "scope": "gear play target and buffed-unit Deflect"},
@@ -93,8 +93,10 @@ CARD_BEHAVIOR_COVERAGE = (
      "scope": "buffed friendly death then another-unit buff"},
 )
 
-# Kept as a public compatibility symbol for downstream report consumers.
-CARD_BEHAVIOR_BLOCKERS = CARD_BEHAVIOR_COVERAGE
+# Kept as a public compatibility symbol for downstream report consumers. New
+# card-specific gaps should be added here only when the card has no executable
+# behavior path and no focused regression scenario.
+CARD_BEHAVIOR_BLOCKERS = ()
 
 
 def catalog_audit() -> dict:

@@ -25,13 +25,10 @@ class FullCertificationTests(unittest.TestCase):
         self.assertTrue(report["checks"]["ability_registry"])
         self.assertTrue(report["checks"]["contract_invariants"])
         self.assertFalse(report["checks"]["known_blockers_closed"])
-        self.assertFalse(report["checks"]["card_behavior_blockers_closed"])
+        self.assertTrue(report["checks"]["card_behavior_blockers_closed"])
         self.assertFalse(report["checks"]["certified"])
         self.assertGreater(len(report["known_blockers"]), 0)
-        self.assertEqual(
-            {entry["code"] for entry in report["card_behavior_blockers"]},
-            {entry["code"] for entry in CARD_BEHAVIOR_BLOCKERS},
-        )
+        self.assertEqual(report["card_behavior_blockers"], [])
         self.assertEqual(
             {entry["code"] for entry in report["card_behavior_coverage"]},
             {entry["code"] for entry in CARD_BEHAVIOR_COVERAGE},

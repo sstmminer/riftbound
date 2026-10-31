@@ -102,6 +102,9 @@ class OriginsRules:
         registry.register("gear_return", self._effect_gear_return)
         registry.register("gear_armory_protect", self._effect_gear_armory_protect)
         registry.register("gear_baited_hook", self._effect_gear_baited_hook)
+        registry.register("spirit_refuge", self._effect_spirit_refuge)
+        registry.register("mindsplitter", self._effect_mindsplitter)
+        registry.register("vanguard_helm", self._effect_vanguard_helm)
         registry.register("baited_hook_finish", self._effect_baited_hook_finish)
         registry.register("dazzling_aurora_continue", self._effect_dazzling_aurora_continue)
         registry.register("peak", self._effect_peak)
@@ -318,7 +321,7 @@ class OriginsRules:
     def _stun_triggers(self, state, player):
         for source in self._units(state, player):
             if source["code"] == "OGN-059":
-                source["exhausted"] = False
+                self._ready_unit(state, source)
                 source["temporary"] += 1
 
     def _channel_rune(self, state, player, *, exhausted=False):
@@ -350,12 +353,42 @@ class OriginsRules:
             unit["damage"] = max(unit["damage"], self.might(state, unit))
 
     def _deflect(self, state, unit):
-        return int(unit["code"] in {"OGN-013", "OGN-041", "OGN-155", "OGN-161", "OGN-231"} or
-                   (unit["code"] == "OGN-232" and self.might(state, unit) >= 5))
+        # Spirit's Refuge grants the same dynamic Deflect keyword to every
+        # friendly buffed unit while the Gear remains in play.  Keep this in
+        # the single Deflect predicate so ordinary and free-play target
+        # payment paths cannot diverge.
+        refuge = (unit.get("buff", 0) > 0 and any(
+            gear["code"] == "OGN-063"
+            for gear in state["players"][unit["owner"]]["gear"]))
+        return int(unit["code"] in {"OGN-013", "OGN-041", "OGN-155", "OGN-161", "OGN-231"}
+                   or (unit["code"] == "OGN-232" and self.might(state, unit) >= 5)
+                   or refuge)
+
+    def _ready_unit(self, state, unit):
+        """Make a unit ready and apply ready-triggered Gear effects.
+
+        All effect paths that ready a unit call this helper, so Pirate's
+        Haven and future ready listeners cannot diverge between normal,
+        copied, and replacement resolutions.  Beginning-of-turn readiness
+        intentionally remains a direct state reset and does not trigger Gear.
+        """
+        if unit is None:
+            return False
+        was_exhausted = bool(unit.get("exhausted"))
+        unit["exhausted"] = False
+        if not was_exhausted:
+            return False
+        owner = unit.get("owner")
+        if owner in (0, 1):
+            bonus = sum(1 for gear in state["players"][owner]["gear"]
+                        if gear["code"] == "OGN-143")
+            if bonus:
+                unit["temporary"] += bonus
+        return True
 
     def _ganking(self, state, unit):
         location = unit["location"]
-        return ((unit["code"] in {"OGN-112", "OGN-194"})
+        return ((unit["code"] in {"OGN-112", "OGN-162", "OGN-194"})
                 or (unit["code"] == "OGN-125" and unit["buff"])
                 or (unit["code"] == "OGN-232" and self.might(state, unit) >= 5)
                 or unit.get("temporary_ganking", False)
@@ -375,6 +408,9 @@ class OriginsRules:
         deathknell_channel = []
         deathknell_channel_two = []
         deathknell_recycle = []
+        deathknell_undercover = []
+        wraith_draw = []
+        vanguard_triggers = []
         kogmaw_fields = []
         viktor_tokens = []
         machine_tokens = []
@@ -456,6 +492,15 @@ class OriginsRules:
                 continue
             dead_ids = {u["id"] for u in dead}
             for unit in dead:
+                if unit.get("buff", 0):
+                    for gear in state["players"][unit["owner"]]["gear"]:
+                        if gear["code"] == "OGN-228":
+                            candidates = [other for other in self._units(state, unit["owner"])
+                                          if other["id"] != unit["id"] and other["id"] not in dead_ids]
+                            if candidates:
+                                vanguard_triggers.append({"effect": "vanguard_helm",
+                                                          "owner": unit["owner"],
+                                                          "gear": gear["id"]})
                 state["units"].remove(unit)
                 if unit["card"] is not None:
                     owner_row = state["players"][unit.get("card_owner", unit["owner"])]
@@ -492,6 +537,19 @@ class OriginsRules:
                     deathknell_channel_two.extend([unit["owner"]] * multiplier)
                 if unit["code"] == "OGN-110" and unit.get("card") is not None:
                     deathknell_recycle.append((self._unit_card_owner(state, unit), unit["card"]))
+                if unit["code"] == "OGN-178":
+                    deathknell_undercover.append(unit["owner"])
+                # Each Wraith source triggers once per turn when a friendly
+                # unit dies. Mark the surviving source itself so multiple
+                # Wraiths each trigger once, while recursive cleanup cannot
+                # trigger the same source again.
+                for watcher in state["units"]:
+                    if (watcher["owner"] == unit["owner"]
+                            and watcher["code"] == "OGN-118"
+                            and watcher["id"] not in dead_ids
+                            and watcher.get("wraith_draw_turn") != state["turn"]):
+                        watcher["wraith_draw_turn"] = state["turn"]
+                        wraith_draw.append(watcher["owner"])
                 if unit["code"] == "OGN-190" and self._is_field(state, unit["location"]):
                     kogmaw_fields.append(unit["location"])
                 if unit["code"] != TOKEN and any(other["owner"] == unit["owner"]
@@ -504,6 +562,10 @@ class OriginsRules:
         if deathknell:
             draw_rng = rng if rng is not None else random.Random(0)
             for player in deathknell:
+                self._draw(state, player, 1, draw_rng)
+        if wraith_draw:
+            draw_rng = rng if rng is not None else random.Random(0)
+            for player in wraith_draw:
                 self._draw(state, player, 1, draw_rng)
         for player in deathknell_channel:
             self._channel_rune(state, player, exhausted=True)
@@ -518,6 +580,15 @@ class OriginsRules:
                                             source="trash", rng=rng or random.Random(0))
             for rune in state["players"][player]["runes"]:
                 rune["exhausted"] = False
+        if deathknell_undercover:
+            state.setdefault("undercover_pending", []).extend(deathknell_undercover)
+            if state.get("decision") is None:
+                self._begin_undercover_discard(state)
+        if vanguard_triggers:
+            if state.get("decision") is None:
+                self._triggers(state, vanguard_triggers)
+            else:
+                state.setdefault("deferred_triggers", []).extend(vanguard_triggers)
         for player in viktor_tokens:
             self._new_unit(state, TOKEN, player, f"base:{player}")
         for player in machine_tokens:
@@ -553,6 +624,49 @@ class OriginsRules:
             self._trigger_recycle_event(state, player)
         if result.immediate_winner is not None:
             state["winner"] = result.immediate_winner
+
+    def _begin_undercover_discard(self, state, rng=None):
+        """Open Undercover Agent's mandatory Deathknell discard window."""
+        pending = state.get("undercover_pending", [])
+        if not pending or state.get("decision") is not None:
+            return
+        player = pending.pop(0)
+        row = state["players"][player]
+        state["undercover_player"] = player
+        if not row["hand"]:
+            self._draw(state, player, 2, rng if rng is not None else random.Random(0))
+            state.pop("undercover_player", None)
+            if state.get("undercover_pending"):
+                self._begin_undercover_discard(state, rng)
+            return
+        if state.get("undercover_resume") is None:
+            state["undercover_resume"] = {
+                "phase": state.get("phase", "main"),
+                "actor": state.get("actor", player),
+                "passes": state.get("passes", 0),
+            }
+        state["decision"] = {
+            "kind": "discard", "player": player,
+            "remaining": min(2, len(row["hand"])),
+            "undercover_discard": True,
+        }
+        state["phase"], state["actor"], state["passes"] = "decision", player, 0
+
+    def _finish_undercover_discard(self, state, rng):
+        """Finish one Undercover discard and restore its Deathknell context."""
+        resume = state.pop("undercover_resume", None)
+        state["decision"] = None
+        if resume is None:
+            resume = {"phase": "main", "actor": state["turn_player"], "passes": 0}
+        player = state.pop("undercover_player", resume["actor"])
+        state["phase"], state["actor"], state["passes"] = (
+            resume["phase"], resume["actor"], resume.get("passes", 0))
+        self._draw(state, player, 2, rng)
+        self._cleanup(state, rng)
+        if state.get("decision") is None and state.get("undercover_pending"):
+            self._begin_undercover_discard(state, rng)
+        if state.get("decision") is None and state.get("deferred_triggers"):
+            self._triggers(state, state.pop("deferred_triggers"))
 
     def _recycle_cards_to_main(self, state, player, cards, *, source, rng):
         """Move cards to the bottom of Main Deck and emit one recycle event."""
@@ -1218,6 +1332,22 @@ class OriginsRules:
             if item is not None:
                 item["reveal_done"] = True
                 state["chain"].append(item)
+        elif effect == "mindsplitter":
+            # The selected card belongs to the revealed opponent.  Move the
+            # physical card to that player's trash, then return the original
+            # triggered item to the Chain for normal continuation cleanup.
+            revealed_owner = reveal["owner"]
+            row = state["players"][revealed_owner]
+            chosen = selected[0] if selected else None
+            if chosen is not None and chosen in row["hand"]:
+                row["hand"].remove(chosen)
+                row["trash"].append(chosen)
+                row["discarded_this_turn"] = True
+                self._trigger_jinx_discard(state, revealed_owner)
+            item = reveal.get("item")
+            if item is not None:
+                item["reveal_done"] = True
+                state["chain"].append(item)
         elif effect == "dr_mundo_recycle":
             self._recycle_cards_to_main(state, reveal["owner"], selected,
                                         source="trash", rng=rng)
@@ -1373,6 +1503,25 @@ class OriginsRules:
     def _resolve_optional(self, state, item, rng):
         player = item["player"]
         effect = item["effect"]
+        if effect == "miss_fortune_ready":
+            source = self._unit(state, item.get("source"))
+            candidates = [unit["id"] for unit in self._units(state, player)
+                          if unit["id"] != item.get("source") and unit["exhausted"]]
+            if source is None or source["owner"] != player or not candidates:
+                return True
+            if item.get("target") is None:
+                state["decision"] = {
+                    "kind": "target", "player": player, "targets": candidates,
+                    "item": {"effect": "miss_fortune_ready", "owner": player,
+                              "source": source["id"]},
+                    "optional_ready_effect": True,
+                }
+                state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                return False
+            target = self._unit(state, item.get("target"))
+            if target is not None and target["owner"] == player and target["id"] != source["id"]:
+                self._ready_unit(state, target)
+            return True
         if effect == "stealthy_pursuer_follow":
             source = self._unit(state, item.get("source"))
             destination = item.get("destination")
@@ -1420,7 +1569,7 @@ class OriginsRules:
                 return True
             row["power"].pop(power_index)
             source["exhausted"] = True
-            target["exhausted"] = False
+            self._ready_unit(state, target)
             return True
         if effect in {"boss_save", "heimer_boss_save"}:
             target = self._unit(state, item.get("target"))
@@ -2903,7 +3052,11 @@ class OriginsRules:
             if (destination == f"base:{unit['owner']}" and self._is_field(state, origin)
                     and state["fields"][origin]["code"] == "OGN-295"):
                 raise ValueError("Vilemaw's Lair prevents moving to base")
-            unit["location"], unit["exhausted"] = destination, not ready
+            unit["location"] = destination
+            if ready:
+                self._ready_unit(state, unit)
+            else:
+                unit["exhausted"] = True
             unit["move_count"] = unit.get("move_count", 0) + 1
             if unit["code"] == "OGN-205" and unit["move_count"] == 3:
                 state["points"][unit["owner"]] += 1
@@ -2950,6 +3103,12 @@ class OriginsRules:
         for watcher in pursuer_followers:
             self._queue_optional(state, initiator, "stealthy_pursuer_follow",
                                  source=watcher["id"], destination=destination)
+        for unit in moved:
+            if unit["code"] == "OGN-162" and unit.get("move_count", 0) == 1:
+                if any(other["owner"] == initiator and other["id"] != unit["id"]
+                       and other["exhausted"] for other in state["units"]):
+                    self._queue_optional(state, initiator, "miss_fortune_ready",
+                                         source=unit["id"])
         return entered_showdown
 
     def legal_actions(self, state):
@@ -3227,6 +3386,10 @@ class OriginsRules:
             original = item.get("original_location")
             return [u["id"] for u in self._units(state, owner)
                     if u["id"] != source and u["location"] != original]
+        if effect == "spirit_refuge":
+            return [u["id"] for u in self._units(state, owner)]
+        if effect == "vanguard_helm":
+            return [u["id"] for u in self._units(state, owner)]
         return None
 
     def _arm_chain_top(self, state):
@@ -3338,7 +3501,7 @@ class OriginsRules:
         source = self._unit(state, item.get("source"))
         if source:
             source["temporary"] += 2
-            source["exhausted"] = False
+            self._ready_unit(state, source)
         return True
 
     def _effect_buff_self(self, state, item, rng):
@@ -3638,6 +3801,49 @@ class OriginsRules:
         self._open_reveal(state, owner=owner, cards=top, mode="select", chooser=owner,
                           minimum=0, maximum=1, effect="baited_hook", choices=choices, rng=rng)
         return True
+
+    def _effect_spirit_refuge(self, state, item, rng):
+        """Spirit's Refuge entry trigger: buff one friendly unit.
+
+        Deflect is derived dynamically by ``_deflect`` while the Gear and the
+        unit's buff remain in play, so the trigger only needs to apply the
+        ordinary buff marker.
+        """
+        owner = item["owner"]
+        if item.get("target") is None:
+            return self._open_target_choice(
+                state, item, self._units(state, owner))
+        target = self._unit(state, item["target"])
+        if target is not None and target["owner"] == owner:
+            self._apply_buff(state, target)
+        return True
+
+    def _effect_vanguard_helm(self, state, item, rng):
+        """Vanguard Helm buffs one other friendly unit after a buffed death."""
+        owner = item["owner"]
+        target = self._unit(state, item.get("target"))
+        if target is not None and target["owner"] == owner:
+            self._apply_buff(state, target)
+        return True
+
+    def _effect_mindsplitter(self, state, item, rng):
+        """Mindsplitter reveals the opponent's hand, then chooses one card."""
+        owner = item["owner"]
+        opponent = 1 - owner
+        if item.get("reveal_done"):
+            return True
+        hand = list(state["players"][opponent]["hand"])
+        if not hand:
+            return True
+        # The opponent's hand is public for the duration of the selection,
+        # but the caster must explicitly choose and confirm the discarded
+        # card.  Reuse the generic reveal/select window so this remains
+        # compatible with future hand-selection effects.
+        self._open_reveal(state, owner=opponent, cards=hand, mode="select",
+                          chooser=owner, minimum=1, maximum=1,
+                          closer=owner, effect="mindsplitter", item=item,
+                          choices=hand, rng=rng)
+        return False
 
     def _effect_baited_hook_finish(self, state, item, rng):
         """Recycle Baited Hook's unselected cards after its free play resolves."""
@@ -3968,7 +4174,7 @@ class OriginsRules:
             return self._open_target_choice(state, item, targets)
         target = self._unit(state, item["target"])
         if target is not None and target["owner"] == item["owner"] and target["id"] != source:
-            target["exhausted"] = False
+            self._ready_unit(state, target)
         return True
 
     def _effect_buff_target(self, state, item, rng):
@@ -4064,7 +4270,7 @@ class OriginsRules:
     def _effect_ready_self(self, state, item, rng):
         source = self._unit(state, item.get("source"))
         if source is not None:
-            source["exhausted"] = False
+            self._ready_unit(state, source)
         return True
 
     def _effect_twisted_fate(self, state, item, rng):
@@ -4230,13 +4436,13 @@ class OriginsRules:
             return True
         target["buff"] -= 1
         self._apply_buff(state, source)
-        source["exhausted"] = False
+        self._ready_unit(state, source)
         return True
 
     def _effect_jinx_discard(self, state, item, rng):
         source = self._unit(state, item.get("source"))
         if source is not None and source["owner"] == item["owner"]:
-            source["exhausted"] = False
+            self._ready_unit(state, source)
             source["temporary"] += 1
         return True
 
@@ -4930,7 +5136,7 @@ class OriginsRules:
             elif code == "OGN-220":
                 unit["stunned"] = True
             elif code == "OGN-146":
-                unit["exhausted"] = False
+                self._ready_unit(state, unit)
             elif code == "OGN-252":
                 self._deal_damage(state, unit, 5)
             elif code == "OGN-033":
@@ -4960,7 +5166,7 @@ class OriginsRules:
             elif code == "OGN-260" and item["targets"] and item["targets"][0] == uid and len(item["targets"]) >= 2:
                 other = self._unit(state, item["targets"][1])
                 if unit["owner"] == owner:
-                    unit["exhausted"] = False
+                    self._ready_unit(state, unit)
                 if (unit["owner"] == owner and other is not None
                         and other["owner"] != owner
                         and self._is_field(state, other["location"])):
@@ -5021,7 +5227,7 @@ class OriginsRules:
             for unit in self._units(state, owner):
                 if unit["buff"]:
                     unit["buff"] = 0
-                    unit["exhausted"] = False
+                    self._ready_unit(state, unit)
             for unit in self._units(state, owner):
                 self._apply_buff(state, unit)
         elif code == "OGN-094":
@@ -5156,6 +5362,20 @@ class OriginsRules:
                     raise ValueError("only the displayed player's opponent can end this reveal")
                 if reveal.get("effect") == "dazzling_aurora":
                     self._finish_reveal(state, [], rng)
+                    return
+                if reveal.get("effect") == "mindsplitter":
+                    # The opponent closes the public reveal; the caster then
+                    # chooses one of the revealed physical hand cards.  Keep
+                    # the chain item pending until that choice is confirmed.
+                    item = reveal.get("item") or {}
+                    state["reveal"] = None
+                    state["decision"] = {
+                        "kind": "hand_card", "player": item.get("owner"),
+                        "cards": list(reveal.get("cards", [])),
+                        "item": item, "mindsplitter": True,
+                    }
+                    state["phase"], state["actor"], state["passes"] = (
+                        "decision", item.get("owner"), 0)
                     return
                 # A display-only effect still has to complete the card that
                 # opened the window (including post-spell triggers).  The
@@ -5585,6 +5805,8 @@ class OriginsRules:
                         row["power"].pop(power_index)
                         # 805.6: the replacement makes the unit enter ready;
                         # this is not a separate 'becomes ready' event.
+                        # Accelerate is a play-time replacement, not a
+                        # separate "becomes ready" event.
                         unit["exhausted"] = False
                     state["decision"] = None
                     self._finish_unit_play(state, pending, rng)
@@ -5605,7 +5827,7 @@ class OriginsRules:
                         item["option"] = option
                         return
                     if option == "ready":
-                        source["exhausted"] = False
+                        self._ready_unit(state, source)
                     elif option == "ganking":
                         source["temporary_ganking"] = True
                     source.setdefault("udyr_choices", []).append(option)
@@ -5684,6 +5906,12 @@ class OriginsRules:
                 row["hand"].remove(args["card"])
                 row["trash"].append(args["card"])
                 row["discarded_this_turn"] = True
+                if decision.get("undercover_discard"):
+                    decision["remaining"] -= 1
+                    if decision["remaining"]:
+                        return
+                    self._finish_undercover_discard(state, rng)
+                    return
                 if decision.get("scrapyard_discard"):
                     decision["remaining"] -= 1
                     if decision["remaining"]:
@@ -5764,8 +5992,26 @@ class OriginsRules:
                 card = args["card"]
                 code = state["cards"][card]["code"]
                 if card not in row["hand"]:
-                    raise ValueError("chosen card is no longer in hand")
+                    if not decision.get("mindsplitter"):
+                        raise ValueError("chosen card is no longer in hand")
                 item = decision.get("item", {})
+                if decision.get("mindsplitter"):
+                    opponent = 1 - player
+                    opponent_row = state["players"][opponent]
+                    if card not in opponent_row["hand"]:
+                        raise ValueError("Mindsplitter card is no longer in the revealed hand")
+                    opponent_row["hand"].remove(card)
+                    opponent_row["trash"].append(card)
+                    opponent_row["discarded_this_turn"] = True
+                    item["reveal_done"] = True
+                    state["decision"] = None
+                    state["chain"].append(item)
+                    state["phase"], state["actor"], state["passes"] = "chain", player, 0
+                    self._trigger_jinx_discard(state, opponent)
+                    if state.get("optional") or state.get("chain", [])[-1] is not item:
+                        return
+                    self._finish_resolution(state)
+                    return
                 field = item.get("field")
                 row["hand"].remove(card)
                 row["hand"].append(card)
@@ -5785,6 +6031,26 @@ class OriginsRules:
                 decision = state["decision"]
                 if args["target"] not in decision["targets"]:
                     raise ValueError("invalid target choice")
+                if decision.get("optional_ready_effect"):
+                    target = self._unit(state, args["target"])
+                    item = decision.get("item", {})
+                    if target is None or target["owner"] != player or not target["exhausted"]:
+                        raise ValueError("optional ready target is no longer legal")
+                    self._ready_unit(state, target)
+                    state["decision"] = None
+                    state["optional_ordered"] = False
+                    if state.get("optional"):
+                        state["phase"], state["actor"], state["passes"] = (
+                            "optional", state["optional"][0]["player"], 0)
+                    else:
+                        restored = state.pop("optional_return", None)
+                        if restored is None:
+                            state["phase"], state["actor"], state["passes"] = "main", player, 0
+                        else:
+                            state["phase"], state["actor"], state["passes"] = (
+                                restored["phase"], restored["actor"], restored.get("passes", 0))
+                    self._cleanup(state, rng)
+                    return
                 if decision.get("optional_target_effect"):
                     target = self._unit(state, args["target"])
                     if target is None or target["owner"] != player or not target["buff"]:
@@ -6336,9 +6602,15 @@ class OriginsRules:
                 self._draw(state, player, 1, rng)
             elif code == "OGN-212":
                 self._new_unit(state, TOKEN, player, f"base:{player}", exhausted=False)
+            elif code == "OGN-063":
+                # Entry targeting is handled by the same Chain target window
+                # as unit play triggers; no first-friendly-unit fallback.
+                self._triggers(state, [{"effect": "spirit_refuge",
+                                        "owner": player, "gear": card}])
+                return
             for unit in self._units(state, player):
                 if unit["code"] == "OGN-091":
-                    unit["exhausted"] = False
+                    self._ready_unit(state, unit)
             state["passes"] = 0
         elif kind == "hide_card":
             card = args["card"]
@@ -6948,6 +7220,9 @@ class OriginsRules:
                                     if source["code"] == "OGN-117")
                 if code == "OGN-051":
                     triggers.append({"effect": "stun_target", "source": unit["id"],
+                                     "owner": player})
+                if code == "OGN-192":
+                    triggers.append({"effect": "mindsplitter", "source": unit["id"],
                                      "owner": player})
                 if code == "OGN-082":
                     triggers.append({"effect": "buff_eight", "source": unit["id"],

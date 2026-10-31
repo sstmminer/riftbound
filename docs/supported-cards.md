@@ -225,7 +225,7 @@
 | OGN-022 | Thermo Beam | spell | Kill all gear. |
 | OGN-179 | Acceptable Losses | spell | Each player kills one of their gear. |
 | OGN-060 | Mask of Foresight | gear | When a friendly unit attacks or defends alone, give it +1 Might this turn. |
-| OGN-033 | Shakedown | spell | Choose an enemy unit and deal 6 to it. |
+| OGN-033 | Shakedown | spell | Choose an enemy unit. Deal 6 to it unless its controller has you draw 2. |
 | OGN-198 | The Harrowing | spell | Play a unit from your trash, ignoring its Energy cost. |
 | OGN-224 | Salvage | spell | Draw 1. |
 | OGN-072 | Solari Shrine | gear | When you kill a stunned enemy unit, you may exhaust this to draw 1. |

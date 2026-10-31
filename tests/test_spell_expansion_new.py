@@ -78,6 +78,43 @@ class SpellExpansionNewTests(unittest.TestCase):
         self.rules._cleanup(self.state, random.Random(9))
         self.assertNotIn(target, self.state["units"])
 
+    def test_shakedown_target_controller_can_choose_draw_two(self):
+        card = self.spare("OGN-033")
+        self.state["players"][0]["power"] = ["fury"] * 4
+        enemy = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        before_hand = len(self.state["players"][0]["hand"])
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell_targeted" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and enemy["id"] in a.arguments),
+                         random.Random(9))
+        self.drain()
+        self.assertTrue(self.state["decision"].get("shakedown"))
+        draw = next(a for a in self.rules.legal_actions(self.state)
+                    if a.kind == "choose_option" and '"option":"draw"' in a.arguments)
+        self.rules.apply(self.state, draw, random.Random(9))
+        self.drain()
+        self.assertEqual(len(self.state["players"][0]["hand"]), before_hand + 1)
+        self.assertEqual(enemy["damage"], 0)
+
+    def test_shakedown_target_controller_can_choose_six_damage(self):
+        card = self.spare("OGN-033")
+        self.state["players"][0]["power"] = ["fury"] * 4
+        enemy = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell_targeted" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and enemy["id"] in a.arguments),
+                         random.Random(9))
+        self.drain()
+        damage = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "choose_option" and '"option":"damage"' in a.arguments)
+        self.rules.apply(self.state, damage, random.Random(9))
+        self.drain()
+        self.assertNotIn(enemy, self.state["units"])
+
     def test_icathian_rain_allows_six_repeated_targets(self):
         card = self.spare("OGN-248")
         self.state["players"][0]["power"] = ["fury", "mind", "body"] * 2

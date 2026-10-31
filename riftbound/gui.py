@@ -1040,10 +1040,14 @@ class OriginsGUI(tk.Tk):
         }
         text = names.get(action.kind, action.kind)
         if action.kind == "choose_option":
-            text = {"draw": "抽一张牌 / Draw 1", "channel": "横置引导一枚符文 / Channel rune",
+            if args.get("shakedown"):
+                text = {"draw": "让施法者抽两张 / Draw 2",
+                        "damage": "承受 6 点伤害 / Take 6 damage"}.get(args.get("option"), text)
+            else:
+                text = {"draw": "抽一张牌 / Draw 1", "channel": "横置引导一枚符文 / Channel rune",
                     "accelerate": "加速：支付额外费用并活跃 / Accelerate: pay and enter ready",
                     "skip": "跳过加速：横置入场 / Skip Accelerate: enter exhausted"}.get(
-                args.get("option"), text)
+                    args.get("option"), text)
             option = args.get("option")
             if isinstance(option, int):
                 text = f"选择战场 {option + 1} / Choose battlefield {option + 1}"
@@ -1694,6 +1698,8 @@ class OriginsGUI(tk.Tk):
             prompt = "选择战场：点击战场区域"
         elif kind == "chain_target":
             prompt = "选择要无效化的结算链项目：点击右侧结算链中的卡牌"
+        elif kind == "choice" and decision.get("shakedown"):
+            prompt = "Shakedown：由目标单位控制者选择让施法者抽两张，或让单位承受 6 点伤害"
         elif kind == "divine":
             prompt = "Divine Judgment：每个区域最多保留两张；点击卡牌切换保留状态"
         elif kind == "hand_card":

@@ -2940,7 +2940,8 @@ class OriginsRules:
                     actions.append(Action.make("confirm_divine"))
                 return tuple(actions)
             if decision["kind"] == "choice":
-                actions = [Action.make("choose_option", option=option)
+                actions = [Action.make("choose_option", option=option,
+                                       **({"shakedown": True} if decision.get("shakedown") else {}))
                            for option in decision.get("options", [])]
                 if decision.get("nocturne"):
                     if not self._payments(state, player, 0, DOMAINS, 0, 1):
@@ -4461,6 +4462,22 @@ class OriginsRules:
                          if uid in state["players"][owner]["main"]]
             item["reinforce_remaining"] = []
             self._recycle_cards_to_main(state, owner, remaining, source="main", rng=rng)
+        if code == "OGN-033" and not item.get("choice_done"):
+            target = self._unit(state, item.get("targets", [None])[0])
+            if target is None or target["owner"] == owner:
+                return True
+            # Shakedown's target controller chooses whether the caster draws
+            # two or the target takes six, after the spell has resolved onto
+            # the Chain but before either branch is executed.
+            state["decision"] = {
+                "kind": "choice", "player": target["owner"],
+                "options": ["draw", "damage"], "item": item,
+                "shakedown": True,
+            }
+            state["chain"].append(item)
+            state["phase"], state["actor"] = "decision", target["owner"]
+            state["passes"] = 0
+            return False
         if code == "OGN-071" and not item.get("choice_done"):
             state["chain"].append(item)
             state["decision"] = {"kind": "choice", "player": 1 - owner,
@@ -4562,6 +4579,9 @@ class OriginsRules:
                 friendly["stunned"] = True
                 enemy["stunned"] = True
             item["targets"] = []
+
+        if code == "OGN-033" and item.get("choice") == "draw":
+            self._draw(state, owner, 2, rng)
 
         for uid in item["targets"]:
             unit = self._unit(state, uid)
@@ -4709,7 +4729,7 @@ class OriginsRules:
             elif code == "OGN-252":
                 self._deal_damage(state, unit, 5)
             elif code == "OGN-033":
-                if unit["owner"] != owner:
+                if item.get("choice") == "damage" and unit["owner"] != owner:
                     self._deal_damage(state, unit, 6)
             elif code == "OGN-262":
                 if unit["owner"] != owner and self._is_field(state, unit["location"]):
@@ -5331,6 +5351,15 @@ class OriginsRules:
                     state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                     return
                 if decision.get("party_favors"):
+                    item = decision["item"]
+                    item["choice"] = option
+                    item["choice_done"] = True
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                    return
+                if decision.get("shakedown"):
+                    if option not in {"draw", "damage"}:
+                        raise ValueError("invalid Shakedown choice")
                     item = decision["item"]
                     item["choice"] = option
                     item["choice_done"] = True

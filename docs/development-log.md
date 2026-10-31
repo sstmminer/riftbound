@@ -198,7 +198,7 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 - 新增 Mask of Foresight、Solari Shrine、Garbage Grabber，并接入单人战斗增益、击杀眩晕单位触发和 Gear 资源回收动作。
 - 将 Fortified Position（OGN-279）纳入正式支持集；其防御触发与战斗护盾路径已有回归覆盖。
 - 新增 Raging Soul、Vi、Sona、Pit Crew、Herald of Scales，覆盖弃牌状态、回收资源、回合结束符文、Gear 触发和 Dragon 费用静态修正。
-- 新增 Shakedown、The Harrowing、Salvage 的基础目标/弃牌区/抽牌路径；Shakedown 的“对手选择抽牌或承受伤害”仍需独立选择窗口。
+- 新增 Shakedown、The Harrowing、Salvage 的目标/弃牌区/抽牌路径；Shakedown 现在由目标单位控制者在底部窗口选择“让施法者抽 2 张”或“让单位承受 6 点伤害”。
 - 按 RUP5 107.3、422、811 接入 Hidden 基础流程：己方控制且未占用的战场可支付 1 点万能符能放置 facedown；下回合起可从该区以 0 费打出。观察接口对控制方提供正面卡图，对手只提供牌背；GUI 支持手牌/英雄区右键放置、战场右键打出和控制方悬浮查看。Hidden 目标限制已覆盖 Stand United、Fight or Flight、Hidden Blade、Blastcone Fae 的战场范围；Pakaa Cub 可直接使用基础 Hidden 流程，Noxus Saboteur 只阻止对手在其所在战场揭示/打出，Bandle Tree 支持第二个 facedown 槽，Tideturner 按勘误允许选择其他位置的友军。
 
 - 本轮继续接入 7 张低依赖牌：Mushroom Pouch 在开始阶段检查己方 facedown 并抽牌；Swift Scout 支持支付能量隐藏 Hidden，并把己方 Teemo 从英雄区或战场回手；Noxian Guillotine 设置本回合下次受伤击杀标记，Legion 时立即击杀；Kinkou Monk 在入场时打开最多两个友军的显式多目标确认窗口。Jinx 的弃牌触发已接入显式弃牌决策、Invert Timelines 和 Zaun Warrens 路径；Karthus 会把其控制者的 Deathknell 触发次数加倍。配套补入官方卡图和回归测试，支持集扩展到 277 张。

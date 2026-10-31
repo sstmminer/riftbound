@@ -213,6 +213,24 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 
 ## 最新卡池完成批次
 
+### 普通施放与免费施放统一（2026-10-31）
+
+普通手牌施放和牌库/弃牌区/放逐区替代打出的法术现在共用
+`OriginsRules._spell_target_spec`。这份规格统一维护目标范围、必选/可选数量、重复目标、成对目标、
+同战场限制、目的地选择以及战场/X 选择；免费路径不再自动取第一个单位、第一组目标或第一个目的地。
+因此 Falling Star、Icathian Rain、Retreat、Facebreaker、Possession、Stand United、Back to Back、
+Dragon's Rage 等目标法术在免费重播时仍然通过同一点击/确认窗口处理。
+
+免费施放的资源支付也回到统一支付入口：Energy 被替代效果忽略时，Power 与 Deflect 仍按最终目标
+重新计算；Gear 和无目标法术在存在多个合法支付组合时打开支付窗口；Wallop/Call to Glory 可在免费
+施放时明确选择支付牌面符能或消耗友军 Buff。Siphon Power 与 Bullet Time 使用战场选择，Bullet Time
+随后打开 X 点数窗口。若目标确认后不存在任何合法支付，窗口会关闭并恢复父结算链/主阶段，牌留在其
+当前物理区域，不会把对局卡死或伪造支付。
+
+本次新增回归覆盖：免费目标法术的“目标→支付”、免费战场/X 法术、免费施放消耗 Buff、无支付时的
+安全退出，以及普通/免费目标规格的领域与战场限制。后续新增目标法术应先登记到
+`_spell_target_spec`，不要在某个免费效果中另写自动目标路径。
+
 本轮完成 Origins 第一弹最后 13 张卡牌：Unlicensed Armory（OGN-023）、Blind Fury（OGN-025）、Volibear, Furious（OGN-041）、Zhonya's Hourglass（OGN-077）、Ava Achiever（OGN-107）、Heimerdinger, Inventor（OGN-111）、Kai'Sa, Evolutionary（OGN-112）、Promising Future（OGN-115）、Teemo, Strategist（OGN-121）、Dazzling Aurora（OGN-160）、Nocturne, Horrifying（OGN-194）、Baited Hook（OGN-242）和 Divine Judgment（OGN-244）。
 
 新增流程覆盖死亡替代、装备主动能力、攻击/防守触发、牌库顶牌展示与选择、免费打出、分配伤害和多区域资源选择。每张卡均导入官方标准图、横置图和高清悬浮图；`tools/check_assets.py` 验证 298 张映射完整。

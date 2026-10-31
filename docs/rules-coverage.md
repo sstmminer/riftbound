@@ -34,7 +34,7 @@
 
 Origins 第一弹卡牌编号已全部注册；Dazzling Aurora/Nocturne 的停止与放逐判例按 [Origins FAQ](https://riftbound.leagueoflegends.com/en-us/news/rules-and-releases/riftbound-origins-faq) 执行；其他系列、多局 Match、多人模式仍不支持。Heimerdinger 通过统一 `AbilityRegistry` 复制所有已注册且明确需要横置的单位、传奇和装备能力；注册表同时保留触发型/替代型横置能力的时机、来源和事件组元数据。多个 Ready Heimer 或原生/复制来源同时触发时，控制者可用 `order_optional` 排序。非横置能力（Vi、Udyr、Nocturne、Zhonya）不会进入复制候选。Nocturne 从牌库顶触发的替代窗口已覆盖 Vision、批量 reveal 和 Dazzling Aurora 的公共查看流程；Aurora 逐张公开到单位并通过普通免费出牌和 Chain continuation 继续。免费打出的目标法术与已覆盖的单位入场目标使用点击窗口。单位/装备/法术保留 `card_owner` 与控制者，跨控制回手、死亡、牺牲和清除按物理牌主处理。Volibear 已用五次可重复点击完成 5 点分配。代码不根据自然语言猜测效果，也不静默跳过未知关键词。
 
-当前仍需单独完成的高优先规则项：少数 AbilityRegistry 的替代、递归复制和复杂事件能力尚未完整裁判化；部分跨区域控制权、复杂嵌套免费打出和战场可选效果仍缺少完整差分测试。`status` 中的 `full_origins_supported=false` 仍然有效：298 张代表目录、构筑和显式处理器覆盖，不代表每张牌都已完成官方裁判级验证。
+当前仍需单独完成的高优先规则项：少数 AbilityRegistry 的替代、递归复制和复杂事件能力尚未完整裁判化；部分跨区域控制权、复杂嵌套免费打出和战场可选效果仍缺少完整差分测试。普通施放与免费施放已经共用法术目标规格和资源窗口；目标确认后没有合法 Power/Deflect 支付时会安全退出并恢复父流程，牌保留在当前物理区域。`status` 中的 `full_origins_supported=false` 仍然有效：298 张代表目录、构筑和显式处理器覆盖，不代表每张牌都已完成官方裁判级验证。
 
 测试通过只证明已执行的场景及不变量，没有官方裁判或另一套独立引擎的差分认证。当前训练文件用于有限卡池实验，不代表完整 Riftbound。引擎另外保留不进入普通观察和 GUI 的 `internal_event_log`，用于记录复杂结算的私有前后状态并验证回放。Greedy 与 Random 只是基准策略，不代表竞技水平。
 

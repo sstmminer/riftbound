@@ -39,6 +39,10 @@ class RemainingOriginSpellTests(unittest.TestCase):
                                 if a.kind == "choose_revealed"), random.Random(7))
         rules.apply(state, next(a for a in rules.legal_actions(state)
                                 if a.kind == "confirm_revealed"), random.Random(7))
+        # Blind Fury's replacement says to play the revealed card while
+        # ignoring its complete cost; only Blind Fury itself paid resources.
+        self.assertEqual(state["players"][0]["energy"], 16)
+        self.assertEqual(len(state["players"][0]["power"]), 18)
         self.assertNotIn(top, state["players"][1]["main"])
         self.assertTrue(any(unit["code"] == "OGN-088" and unit["owner"] == 0
                             for unit in state["units"]))
@@ -49,6 +53,95 @@ class RemainingOriginSpellTests(unittest.TestCase):
         rules._cleanup(state, random.Random(7))
         self.assertIn(top, state["players"][1]["trash"])
         self.assertNotIn(top, state["players"][0]["trash"])
+
+    def test_free_spell_uses_target_then_payment_windows(self):
+        rules, state, _ = self.scenario("OGN-009")
+        row = state["players"][0]
+        card = row["hand"].pop()
+        row["banishment"].append(card)
+        target = rules._new_unit(state, "OGN-219", 1, 0, exhausted=False)
+        rules._free_play_revealed_card(
+            state, 0, card, None, random.Random(7),
+            ignore_energy=True, card_owner=0)
+        self.assertEqual(state["decision"]["kind"], "target")
+        rules.apply(state, next(a for a in rules.legal_actions(state)
+                                if a.kind == "choose_target" and target["id"] in a.arguments),
+                    random.Random(7))
+        self.assertEqual(state["decision"]["kind"], "free_play_payment")
+        self.assertGreater(len(state["decision"]["payments"]), 1)
+        rules.apply(state, rules.legal_actions(state)[0], random.Random(7))
+        self.assertEqual(len(row["power"]), 19)
+        self.assertIn(target["id"], state["chain"][-1].get("targets", []))
+
+    def test_free_field_spell_uses_field_and_x_windows(self):
+        rules, state, _ = self.scenario("OGN-268")
+        row = state["players"][0]
+        card = row["hand"].pop()
+        row["banishment"].append(card)
+        rules._free_play_revealed_card(
+            state, 0, card, None, random.Random(7),
+            ignore_energy=True, free_all=True, card_owner=0)
+        self.assertEqual(state["decision"]["kind"], "field")
+        rules.apply(state, next(a for a in rules.legal_actions(state)
+                                if a.kind == "choose_field"), random.Random(7))
+        self.assertEqual(state["decision"]["kind"], "choice")
+        rules.apply(state, next(a for a in rules.legal_actions(state)
+                                if a.kind == "choose_option" and '"option":2' in a.arguments),
+                    random.Random(7))
+        self.assertEqual(state["chain"][-1]["field"], 0)
+        self.assertEqual(state["chain"][-1]["x"], 2)
+        self.assertEqual(len(row["power"]), 18)
+
+    def test_shared_spell_target_spec_matches_restrictions(self):
+        rules, state, _ = self.scenario("OGN-203")
+        friendly = rules._new_unit(state, "OGN-219", 0, 0, exhausted=False)
+        enemy_base = rules._new_unit(state, "OGN-219", 1, "base:1", exhausted=False)
+        enemy_field = rules._new_unit(state, "OGN-219", 1, 0, exhausted=False)
+        spec = rules._spell_target_spec(state, 0, "OGN-203")
+        self.assertIn(enemy_field["id"], spec["candidates"])
+        self.assertNotIn(enemy_base["id"], spec["candidates"])
+        self.assertNotIn(friendly["id"], spec["candidates"])
+        stand = rules._spell_target_spec(state, 0, "OGN-053")
+        self.assertEqual(stand["min"], 1)
+        self.assertIn(friendly["id"], stand["candidates"])
+        self.assertNotIn(enemy_field["id"], stand["candidates"])
+
+    def test_free_spell_exposes_optional_buff_payment(self):
+        rules, state, _ = self.scenario("OGN-146")
+        row = state["players"][0]
+        card = row["hand"].pop()
+        row["banishment"].append(card)
+        target = rules._new_unit(state, "OGN-219", 0, 0, exhausted=True)
+        target["buff"] = 1
+        rules._free_play_revealed_card(
+            state, 0, card, None, random.Random(7),
+            ignore_energy=True, card_owner=0)
+        rules.apply(state, next(a for a in rules.legal_actions(state)
+                                if a.kind == "choose_target"), random.Random(7))
+        self.assertEqual(state["decision"]["kind"], "choice")
+        buff_choice = next(a for a in rules.legal_actions(state)
+                           if "buff:" in a.arguments)
+        rules.apply(state, buff_choice, random.Random(7))
+        self.assertIsNone(state["decision"])
+        self.assertEqual(target["buff"], 0)
+        self.assertIn(target["id"], state["chain"][-1]["targets"])
+
+    def test_unpayable_free_target_closes_without_deadlocking(self):
+        rules, state, _ = self.scenario("OGN-009")
+        row = state["players"][0]
+        row["power"] = []
+        card = row["hand"].pop()
+        row["banishment"].append(card)
+        target = rules._new_unit(state, "OGN-219", 1, 0, exhausted=False)
+        rules._free_play_revealed_card(
+            state, 0, card, None, random.Random(7),
+            ignore_energy=True, card_owner=0)
+        rules.apply(state, next(a for a in rules.legal_actions(state)
+                                if a.kind == "choose_target" and target["id"] in a.arguments),
+                    random.Random(7))
+        self.assertIsNone(state["decision"])
+        self.assertEqual(state["phase"], "main")
+        self.assertIn(card, row["banishment"])
 
     def test_blind_fury_targeted_spell_opens_click_target_window(self):
         rules, state, card = self.scenario("OGN-025")

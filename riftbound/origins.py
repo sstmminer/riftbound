@@ -29,6 +29,7 @@ SIMPLE_TARGET_SPELLS = frozenset({
     "OGN-093", "OGN-095", "OGN-102", "OGN-146", "OGN-154",
     "OGN-169", "OGN-172", "OGN-203", "OGN-207", "OGN-213",
     "OGN-008", "OGN-168", "OGN-180", "OGN-229", "OGN-252", "OGN-254", "OGN-262",
+    "OGN-053",
 })
 PAIR_TARGET_SPELLS = frozenset({"OGN-108", "OGN-128", "OGN-209", "OGN-220", "OGN-260"})
 DESTINATION_TARGET_SPELLS = frozenset({"OGN-043", "OGN-173", "OGN-250", "OGN-270", "OGN-258"})
@@ -758,17 +759,45 @@ class OriginsRules:
         # current banishment/hand zone while the target window is open, then
         # move it to the controller's hand only when the player confirms.
         free_target = self._free_play_target_spec(state, owner, code)
-        if data["type"] == "spell" and free_target is not None and free_target["candidates"]:
-            payment = []
-            if ignore_energy:
-                choices = self._payments(state, owner, 0, data["domains"], data["power_cost"], spell=True)
-                if not choices:
-                    return
-                payment = choices[0]
+        if (data["type"] == "spell" and free_target is not None
+                and free_target.get("kind") == "field"):
+            state["decision"] = {
+                "kind": "field", "player": owner,
+                "fields": list(free_target.get("fields", [])),
+                "x_choice": bool(free_target.get("x_choice")),
+                "x_max": len(row.get("power", [])),
+                "free_play_field": {
+                    "owner": owner, "card": card,
+                    "card_owner": card_owner if card_owner is not None else owner,
+                    "parent": parent,
+                    # Power payment is deliberately deferred until after the
+                    # battlefield is selected, matching ordinary target
+                    # spells and keeping all free-play targets interactive.
+                    "payment": None if ignore_energy and not free_all else [],
+                    "ignore_energy": ignore_energy, "free_all": free_all,
+                    "fields": list(free_target.get("fields", [])),
+                    "x_choice": bool(free_target.get("x_choice")), "field": None,
+                    "x": 0,
+                },
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", owner, 0
+            return
+        if (data["type"] == "spell" and free_target is not None
+                and (free_target["candidates"] or free_target.get("min", 1) == 0)):
+            # With no legal target, keep the card in the ordinary free-play
+            # path with an empty target list so it can resolve/fizzle and move
+            # to its normal destination.  Never substitute an arbitrary unit.
+            payment = None if ignore_energy and not free_all else []
+            # For a free target spell, Deflect depends on the final target
+            # selection.  Compute its payment only after the target window is
+            # confirmed in ``_complete_free_play_target``.
+            if ignore_energy and free_all:
+                payment = []
             state["decision"] = {
                 "kind": "target", "player": owner,
                 "targets": free_target["candidates"],
-                "multi": free_target["max"] != 1 or free_target.get("allow_repeat", False),
+                "multi": (free_target["max"] != 1 or free_target.get("allow_repeat", False)
+                          or free_target.get("min", 1) == 0),
                 "min": free_target["min"], "max": free_target["max"],
                 "selected": [], "allow_repeat": free_target.get("allow_repeat", False),
                 "target_pairs": free_target.get("target_pairs"),
@@ -805,8 +834,8 @@ class OriginsRules:
                     row["hand"].remove(card)
                     row["banishment"].append(card)
                     return
-                payment = choices[0]
-                if len(choices) > 1:
+                payment = [] if free_all else choices[0]
+                if len(choices) > 1 and not free_all:
                     state["decision"] = {
                         "kind": "free_play_payment", "player": owner,
                         "payments": choices, "targets": [],
@@ -842,7 +871,20 @@ class OriginsRules:
                     row["hand"].remove(card)
                     row["banishment"].append(card)
                     return
-                payment = choices[0]
+                payment = [] if free_all else choices[0]
+                if len(choices) > 1 and not free_all:
+                    state["decision"] = {
+                        "kind": "free_play_payment", "player": owner,
+                        "payments": choices, "targets": [],
+                        "free_play_gear": {
+                            "owner": owner, "card": card,
+                            "card_owner": card_owner if card_owner is not None else owner,
+                            "parent": parent, "payment": None,
+                            "ignore_energy": ignore_energy, "free_all": free_all,
+                        },
+                    }
+                    state["phase"], state["actor"], state["passes"] = "decision", owner, 0
+                    return
             self.apply(state, Action.make("play_gear", card=card, payment=payment,
                                           ignore_cost=(not ignore_energy or free_all),
                                           card_owner=card_owner,
@@ -852,35 +894,6 @@ class OriginsRules:
                 state["phase"], state["actor"], state["passes"] = (
                     "chain", state["chain"][-1]["owner"], 0)
             return
-        # The simple, no-target path covers all direct effects.  Targeted
-        # cards use their legacy action shape with a deterministic legal target
-        # when one exists; normal hand plays still expose the interactive target
-        # window for these same cards.
-        targets = []
-        destination = None
-        if code in SIMPLE_TARGET_SPELLS:
-            candidates = [u for u in state["units"]
-                          if code not in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085"}
-                          or self._is_field(state, u["location"])]
-            targets = [candidates[0]["id"]] if candidates else []
-        elif code in PAIR_TARGET_SPELLS:
-            pair = next(((a["id"], b["id"]) for a in self._units(state, owner)
-                         for b in self._units(state, 1 - owner)), None)
-            targets = list(pair) if pair else []
-        elif code == "OGN-029":
-            ids = [u["id"] for u in state["units"]]
-            targets = (ids[:2] if len(ids) >= 2 else ids * 2)
-        elif code == "OGN-248":
-            ids = [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
-            targets = (ids * 6)[:6]
-        elif code in DESTINATION_TARGET_SPELLS:
-            target = next((u for u in state["units"] if u["owner"] != owner), None)
-            if target is None:
-                target = next(iter(state["units"]), None)
-            if target is not None:
-                targets = [target["id"]]
-                destination = next((d for d in (f"base:{target['owner']}", *range(len(state["fields"])))
-                                    if d != target["location"]), None)
         payment = []
         if ignore_energy:
             choices = self._payments(state, owner, 0, data["domains"], data["power_cost"], spell=True)
@@ -888,10 +901,25 @@ class OriginsRules:
                 row["hand"].remove(card)
                 row["banishment"].append(card)
                 return
-            payment = choices[0]
-        self.apply(state, Action.make("play_spell", card=card, targets=targets,
-                                      destination=destination, spend_buff=None,
-                                      payment=payment, ignore_cost=not ignore_energy,
+            payment = [] if free_all else choices[0]
+            if len(choices) > 1 and not free_all:
+                state["decision"] = {
+                    "kind": "free_play_payment", "player": owner,
+                    "payments": choices, "targets": [],
+                    "free_play_spell": {
+                        "owner": owner, "card": card,
+                        "card_owner": card_owner if card_owner is not None else owner,
+                        "parent": parent, "payment": None,
+                        "ignore_energy": ignore_energy, "free_all": free_all,
+                        "selected": [], "destination": None,
+                        "deck_options": [],
+                    },
+                }
+                state["phase"], state["actor"], state["passes"] = "decision", owner, 0
+                return
+        self.apply(state, Action.make("play_spell", card=card, targets=[],
+                                      destination=None, spend_buff=None,
+                                      payment=payment, ignore_cost=(not ignore_energy or free_all),
                                       card_owner=card_owner,
                                       ignore_energy=ignore_energy), rng)
         if parent is not None and parent.get("effect") == "kaisa_replay_spell":
@@ -906,17 +934,21 @@ class OriginsRules:
             return {"candidates": [u["id"] for u in self._units(state, owner)]}
         return None
 
-    def _free_play_target_spec(self, state, owner, code):
-        """Return the interactive target shape for a free-play spell.
+    def _spell_target_spec(self, state, owner, code):
+        """Return the canonical interactive target specification for a spell.
 
-        This intentionally mirrors the GUI target windows used for ordinary
-        hand plays.  A ``None`` result means the spell has no target window;
-        callers retain the existing direct resolution path for those cards.
+        Ordinary hand plays and replacement/free plays must use the same
+        target restrictions.  Keeping this shape in one helper prevents a
+        free replay from silently selecting a different target class (or
+        skipping a required field/target window) than a normal play.
         """
         targeted = (SIMPLE_TARGET_SPELLS | PAIR_TARGET_SPELLS |
                     DESTINATION_TARGET_SPELLS | OPTIONAL_TARGET_SPELLS |
                     CONSTRAINED_MULTI_TARGET_SPELLS | {"OGN-029", "OGN-104",
                     "OGN-105", "OGN-183", "OGN-206", "OGN-248"})
+        if code in FIELD_TARGET_SPELLS or code == "OGN-268":
+            return {"kind": "field", "fields": list(range(len(state["fields"]))),
+                    "x_choice": code == "OGN-268"}
         if code not in targeted:
             return None
         if code == "OGN-183":
@@ -925,7 +957,13 @@ class OriginsRules:
                     "max": 1, "deck_options": options}
         if code == "OGN-104":
             candidates = [u["id"] for u in self._units(state, owner)]
-            return {"candidates": candidates, "min": 1 if candidates else 0, "max": 1}
+            return {"candidates": candidates, "min": 1, "max": 1}
+        if code == "OGN-206":
+            candidates = [u["id"] for u in self._units(state, owner)]
+            pairs = [[a["id"], b["id"]] for a in self._units(state, owner)
+                     for b in self._units(state, owner) if a["id"] != b["id"]]
+            return {"candidates": candidates, "min": 2, "max": 2,
+                    "multi": True, "target_pairs": pairs}
         if code in PAIR_TARGET_SPELLS:
             pairs = []
             if code == "OGN-108":
@@ -935,15 +973,20 @@ class OriginsRules:
                 pairs = [[a["id"], b["id"]] for a in self._units(state, owner)
                          for b in self._units(state, 1 - owner)
                          if self._is_field(state, b["location"])]
+            elif code == "OGN-220":
+                pairs = [[a["id"], b["id"]]
+                         for field in range(len(state["fields"]))
+                         for a in self._units(state, owner, field)
+                         for b in self._units(state, 1 - owner, field)]
             else:
                 pairs = [[a["id"], b["id"]] for a in self._units(state, owner)
                          for b in self._units(state, 1 - owner)]
             return {"candidates": sorted({uid for pair in pairs for uid in pair}, key=str),
-                    "min": 2 if pairs else 0, "max": 2,
+                    "min": 2, "max": 2, "multi": True,
                     "target_pairs": pairs}
         if code == "OGN-029":
             candidates = [u["id"] for u in state["units"]]
-            return {"candidates": candidates, "min": 2 if candidates else 0,
+            return {"candidates": candidates, "min": 2,
                     "max": 2, "allow_repeat": True}
         if code == "OGN-105":
             candidates = [u["id"] for u in state["units"]]
@@ -951,7 +994,7 @@ class OriginsRules:
         if code == "OGN-248":
             candidates = [u["id"] for u in state["units"]
                           if self._is_field(state, u["location"])]
-            return {"candidates": candidates, "min": 6 if candidates else 0,
+            return {"candidates": candidates, "min": 6,
                     "max": 6, "allow_repeat": True}
         if code in OPTIONAL_TARGET_SPELLS:
             candidates = [u["id"] for u in self._units(state, owner) if not u["exhausted"]]
@@ -963,12 +1006,30 @@ class OriginsRules:
         if code == "OGN-180":
             candidates = ([u["id"] for u in state["units"] if self._is_field(state, u["location"])]
                           + [gear["id"] for row in state["players"] for gear in row["gear"]])
-            return {"candidates": candidates, "min": 1 if candidates else 0, "max": 1}
+            return {"candidates": candidates, "min": 1, "max": 1}
+        if code == "OGN-203":
+            candidates = [u["id"] for u in self._units(state, 1 - owner)
+                          if self._is_field(state, u["location"])]
+            return {"candidates": candidates, "min": 1, "max": 1}
+        if code in {"OGN-008", "OGN-057", "OGN-168"}:
+            candidates = [u["id"] for u in state["units"]
+                          if self._is_field(state, u["location"])]
+            return {"candidates": candidates, "min": 1, "max": 1}
+        if code in {"OGN-033"}:
+            candidates = [u["id"] for u in self._units(state, 1 - owner)]
+            return {"candidates": candidates, "min": 1, "max": 1}
+        if code in {"OGN-046", "OGN-053", "OGN-069", "OGN-102", "OGN-146", "OGN-207"}:
+            candidates = [u["id"] for u in self._units(state, owner)]
+            return {"candidates": candidates, "min": 1, "max": 1}
+        if code == "OGN-262":
+            candidates = [u["id"] for u in self._units(state, 1 - owner)
+                          if self._is_field(state, u["location"])]
+            return {"candidates": candidates, "min": 1, "max": 1}
         if code in {"OGN-169", "OGN-172", "OGN-213"}:
             candidates = [u["id"] for u in state["units"]
                           if self._is_field(state, u["location"])
                           and (code != "OGN-169" or self.might(state, u) <= 3)]
-            return {"candidates": candidates, "min": 1 if candidates else 0, "max": 1}
+            return {"candidates": candidates, "min": 1, "max": 1}
         if code in DESTINATION_TARGET_SPELLS:
             candidates = []
             for unit in state["units"]:
@@ -982,12 +1043,16 @@ class OriginsRules:
                 if code == "OGN-258" and unit["owner"] == owner:
                     continue
                 candidates.append(unit["id"])
-            return {"candidates": candidates, "min": 1 if candidates else 0,
+            return {"candidates": candidates, "min": 1,
                     "max": 1, "destination_select": True}
         candidates = [u["id"] for u in state["units"]
                       if code not in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085"}
                       or self._is_field(state, u["location"])]
-        return {"candidates": candidates, "min": 1 if candidates else 0, "max": 1}
+        return {"candidates": candidates, "min": 1, "max": 1}
+
+    # Kept as a compatibility alias for callers and older replay fixtures.
+    def _free_play_target_spec(self, state, owner, code):
+        return self._spell_target_spec(state, owner, code)
 
     def _finish_reveal(self, state, selected, rng):
         reveal = state.get("reveal")
@@ -1047,8 +1112,13 @@ class OriginsRules:
                 state["chain"].append(item)
                 state["reveal"] = None
                 state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                # Blind Fury explicitly says to play the revealed card while
+                # ignoring its cost (Energy and Power).  Preserve the normal
+                # target/entry windows, but mark this replacement as a full
+                # cost waiver rather than the Promising Future-style
+                # Energy-only waiver.
                 self._free_play_revealed_card(state, item["owner"], chosen, item, rng,
-                                              card_owner=owner)
+                                              free_all=True, card_owner=owner)
                 return
         if effect == "promising_future":
             owner = reveal["owner"]
@@ -2625,6 +2695,13 @@ class OriginsRules:
                 targets = [[u["id"]] for u in state["units"]
                            if code not in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085", "OGN-105"}
                            or self._is_field(state, u["location"])]
+            spec = self._spell_target_spec(state, player, code)
+            if (spec is not None and spec.get("kind") != "field"
+                    and not spec.get("candidates") and int(spec.get("min", 1)) > 0):
+                # Required target spells are unavailable when no legal target
+                # exists; do not expose a legacy action that would only fizzle
+                # or leave an interactive target window with zero choices.
+                continue
             if code == "OGN-268":
                 # Keep the expanded form for non-GUI policies and replay
                 # compatibility; the GUI prefers play_field_targeted.
@@ -2677,47 +2754,37 @@ class OriginsRules:
                             # fully-expanded actions.  Existing agents remain
                             # compatible while interactive clients can select and
                             # confirm targets one at a time.
-                            if code in (SIMPLE_TARGET_SPELLS | PAIR_TARGET_SPELLS | DESTINATION_TARGET_SPELLS | OPTIONAL_TARGET_SPELLS | CONSTRAINED_MULTI_TARGET_SPELLS | {"OGN-029", "OGN-104", "OGN-105", "OGN-183", "OGN-206", "OGN-248"}) and not targeted_added:
-                                candidates = ([u["id"] for u in self._units(state, player)]
-                                              if code == "OGN-104" else
-                                              list(row["main"][:3])
-                                              if code == "OGN-183" else
-                                              [u["id"] for u in state["units"]]
-                                              if code == "OGN-029" else
-                                              sorted({uid for pair in targets for uid in pair})
-                                              if code in PAIR_TARGET_SPELLS else
-                                              sorted({selected[0] for selected in targets if selected})
-                                              if code in OPTIONAL_TARGET_SPELLS else
-                                              sorted({u["id"] for u in state["units"] if self._is_field(state, u["location"])})
-                                              if code in CONSTRAINED_MULTI_TARGET_SPELLS else
-                                              sorted({selected[0] for selected in targets if selected})
-                                              if code in DESTINATION_TARGET_SPELLS else
-                                              sorted({selected[0] for selected in targets if selected})
-                                              if code in SIMPLE_TARGET_SPELLS else
-                                              [u["id"] for u in state["units"]]
-                                               if code == "OGN-105" else
-                                              [u["id"] for u in state["units"]
-                                               if self._is_field(state, u["location"])]
-                                               if code == "OGN-248" else
-                                              [u["id"] for u in self._units(state, player)])
-                                target_count = (6 if code == "OGN-248" else
-                                                2 if code in (PAIR_TARGET_SPELLS | {"OGN-029", "OGN-206"}) else
-                                                1 if code in (SIMPLE_TARGET_SPELLS | {"OGN-104", "OGN-183"}) else
-                                                1 if code in DESTINATION_TARGET_SPELLS else
-                                                0)
-                                target_pairs = [list(pair) for pair in targets] if code in PAIR_TARGET_SPELLS else None
+                            if (code in (SIMPLE_TARGET_SPELLS | PAIR_TARGET_SPELLS |
+                                         DESTINATION_TARGET_SPELLS | OPTIONAL_TARGET_SPELLS |
+                                         CONSTRAINED_MULTI_TARGET_SPELLS |
+                                         {"OGN-029", "OGN-104", "OGN-105", "OGN-183",
+                                          "OGN-206", "OGN-248"}) and not targeted_added):
+                                spec = self._spell_target_spec(state, player, code)
+                                if spec is None or spec.get("kind") == "field":
+                                    continue
+                                candidates = list(spec.get("candidates", []))
+                                target_count = int(spec.get("min", 1))
+                                target_pairs = [list(pair) for pair in spec.get("target_pairs", [])]
                                 target_min = (0 if code in (OPTIONAL_TARGET_SPELLS | CONSTRAINED_MULTI_TARGET_SPELLS)
                                               else target_count if code != "OGN-105" else 0)
-                                target_max = (1 if code in OPTIONAL_TARGET_SPELLS else
-                                              len(candidates) if code in CONSTRAINED_MULTI_TARGET_SPELLS else
-                                              target_count if code not in {"OGN-105", "OGN-206"} else 2)
+                                target_max = int(spec.get("max", target_count))
+                                # Do not expose a targeted play transaction
+                                # when the mandatory target shape has no legal
+                                # candidates.  Otherwise the card enters a
+                                # dead target decision with zero actions after
+                                # it has already been paid for (for example a
+                                # Call to Glory with no friendly units).
+                                if target_min and not candidates:
+                                    continue
+                                if target_min and spec.get("target_pairs") is not None and not target_pairs:
+                                    continue
                                 result.append(Action.make(
                                     "play_spell_targeted", card=card,
                                     target_candidates=candidates,
                                     target_min=target_min,
                                     target_max=target_max,
-                                    allow_repeat=code in {"OGN-029", "OGN-248"},
-                                    target_pairs=target_pairs,
+                                    allow_repeat=bool(spec.get("allow_repeat", False)),
+                                    target_pairs=target_pairs or None,
                                     ordered_pairs=code in {"OGN-108", "OGN-128", "OGN-260"},
                                     target_might_limit=4 if code in CONSTRAINED_MULTI_TARGET_SPELLS else None,
                                     same_location=code in CONSTRAINED_MULTI_TARGET_SPELLS,
@@ -3720,6 +3787,52 @@ class OriginsRules:
         """
         info = decision["free_play"]
         owner, card = info["owner"], info["card"]
+        if (info.get("ignore_energy") and not info.get("free_all")
+                and info.get("payment") is None):
+            deflect = sum(
+                self._deflect(state, target)
+                for uid in selected
+                for target in [self._unit(state, uid)]
+                if target is not None and target["owner"] != owner)
+            data = self.cards[state["cards"][card]["code"]]
+            payment_options = [(None, self._payments(
+                state, owner, 0, data["domains"], data["power_cost"],
+                deflect, spell=True))]
+            if data["code"] in {"OGN-146", "OGN-207"}:
+                payment_options.extend(
+                    (uid, self._payments(state, owner, 0, data["domains"], 0,
+                                         deflect, spell=True))
+                    for uid in [u["id"] for u in self._units(state, owner) if u["buff"]])
+            payment_options = [(spend, choices) for spend, choices in payment_options if choices]
+            if not payment_options:
+                self._abandon_free_play(state, info)
+                return
+            if len(payment_options) > 1:
+                options = ["power"] + [f"buff:{spend}" for spend, _ in payment_options[1:]]
+                state["decision"] = {
+                    "kind": "choice", "player": owner, "options": options,
+                    "free_play_buff": {
+                        **info, "selected": list(selected),
+                        "payment_options": {"power": payment_options[0][1],
+                                             **{f"buff:{spend}": choices
+                                                for spend, choices in payment_options[1:]}},
+                    },
+                }
+                state["phase"], state["actor"], state["passes"] = "decision", owner, 0
+                return
+            spend_buff, choices = payment_options[0]
+            if len(choices) > 1:
+                state["decision"] = {
+                    "kind": "free_play_payment", "player": owner,
+                    "payments": choices, "targets": list(selected),
+                    "free_play_spell": {
+                        **info, "payment": None, "spend_buff": spend_buff,
+                        "selected": list(selected),
+                    },
+                }
+                state["phase"], state["actor"], state["passes"] = "decision", owner, 0
+                return
+            info["payment"], info["spend_buff"] = choices[0], spend_buff
         physical = state["players"][info.get("card_owner", owner)]
         row = state["players"][owner]
         if card in physical.get("banishment", []):
@@ -3731,20 +3844,89 @@ class OriginsRules:
         # other reveal replacements are already resolving inside their parent
         # Chain item.  Preserve that return phase so an empty nested Chain does
         # not leave the engine stuck in ``phase=chain``.
-        resume_phase = "main" if info.get("parent", {}).get("effect") == "kaisa_replay_spell" else "chain"
+        parent = info.get("parent") or {}
+        resume_phase = "main" if parent.get("effect") == "kaisa_replay_spell" else "chain"
         state["phase"], state["actor"], state["passes"] = resume_phase, owner, 0
         self.apply(state, Action.make(
             "play_spell", card=card, targets=list(selected),
-            destination=info.get("destination"), spend_buff=None,
-            payment=list(info.get("payment", [])), ignore_cost=True,
-            ignore_energy=bool(info.get("ignore_energy")),
+            destination=info.get("destination"), spend_buff=info.get("spend_buff"),
+            payment=list(info.get("payment", [])),
+            ignore_cost=(not bool(info.get("ignore_energy")) or bool(info.get("free_all"))),
+            ignore_energy=bool(info.get("ignore_energy")) or bool(info.get("free_all")),
             deck_options=list(info.get("deck_options", [])),
             free_play_parent=True), rng)
-        if info.get("parent", {}).get("effect") == "kaisa_replay_spell":
+        if parent.get("effect") == "kaisa_replay_spell":
             for entry in reversed(state.get("chain", [])):
                 if entry.get("card") == card:
                     entry["recycle_after"] = True
                     break
+
+    def _complete_free_play_field(self, state, info, rng):
+        """Finish a free replay whose spell chooses a battlefield (and X)."""
+        owner, card = info["owner"], info["card"]
+        field = info.get("field")
+        if field not in info.get("fields", []):
+            raise ValueError("free-play battlefield is unavailable")
+        if (info.get("ignore_energy") and not info.get("free_all")
+                and info.get("payment") is None):
+            data = self.cards[state["cards"][card]["code"]]
+            choices = self._payments(
+                state, owner, 0, data["domains"], data["power_cost"], spell=True)
+            if not choices:
+                self._abandon_free_play(state, info)
+                return
+            if len(choices) > 1:
+                state["decision"] = {
+                    "kind": "free_play_payment", "player": owner,
+                    "payments": choices, "targets": [],
+                    "free_play_field": {**info, "payment": None},
+                }
+                state["phase"], state["actor"], state["passes"] = "decision", owner, 0
+                return
+            info["payment"] = choices[0]
+        x = int(info.get("x", 0))
+        row = state["players"][owner]
+        if x < 0 or x > len(row.get("power", [])):
+            raise ValueError("invalid free-play X payment")
+        if x:
+            self._pay(row, 0, list(range(x)))
+        physical = state["players"][info.get("card_owner", owner)]
+        if card in physical.get("banishment", []):
+            physical["banishment"].remove(card)
+        if card not in row["hand"]:
+            row["hand"].append(card)
+        state["decision"] = None
+        parent = info.get("parent") or {}
+        resume_phase = "main" if parent.get("effect") == "kaisa_replay_spell" else "chain"
+        state["phase"], state["actor"], state["passes"] = resume_phase, owner, 0
+        self.apply(state, Action.make(
+            "play_spell", card=card, targets=[], destination=None,
+            field=field, x=x, spend_buff=None,
+            payment=list(info.get("payment") or []),
+            ignore_cost=(not bool(info.get("ignore_energy")) or bool(info.get("free_all"))),
+            ignore_energy=bool(info.get("ignore_energy")) or bool(info.get("free_all")),
+            free_play_parent=True), rng)
+        if parent.get("effect") == "kaisa_replay_spell":
+            for entry in reversed(state.get("chain", [])):
+                if entry.get("card") == card:
+                    entry["recycle_after"] = True
+                    break
+
+    @staticmethod
+    def _abandon_free_play(state, info):
+        """Close an unpayable free-play window without inventing a payment.
+
+        The replacement card remains in its current physical zone.  The
+        parent Chain (or Kai'Sa's Main-phase continuation) resumes normally,
+        so an unavailable Power/Deflect payment cannot strand the game in a
+        decision with no legal actions.
+        """
+        parent = info.get("parent") or {}
+        state["decision"] = None
+        state["phase"] = ("main" if parent.get("effect") == "kaisa_replay_spell"
+                           or not state.get("chain") else "chain")
+        state["actor"] = info.get("owner", state.get("turn_player", 0))
+        state["passes"] = 0
 
     def _effect_kill_target(self, state, item, rng):
         if item.get("target") is None:
@@ -4244,6 +4426,27 @@ class OriginsRules:
             return {"targets": [u["id"] for u in state["units"]
                                 if u["owner"] != item["owner"]],
                     "multi": False, "min": 1, "max": 1}
+        canonical = self._spell_target_spec(state, item["owner"], code)
+        if canonical is not None:
+            if canonical.get("kind") == "field":
+                return {"kind": "field", "fields": list(canonical.get("fields", [])),
+                        "x_choice": bool(canonical.get("x_choice")),
+                        "x_max": len(state["players"][item["owner"]].get("power", []))}
+            maximum = int(canonical.get("max", 1))
+            minimum = int(canonical.get("min", 1))
+            return {
+                "targets": list(canonical.get("candidates", [])),
+                "multi": bool(canonical.get("multi", maximum != 1 or minimum == 0
+                                             or canonical.get("allow_repeat")
+                                             or canonical.get("target_pairs"))),
+                "min": minimum, "max": maximum,
+                "allow_repeat": bool(canonical.get("allow_repeat", False)),
+                "target_pairs": [list(pair) for pair in canonical.get("target_pairs", [])],
+                "ordered_pairs": code in {"OGN-108", "OGN-128", "OGN-260"},
+                "target_might_limit": canonical.get("target_might_limit"),
+                "same_location": bool(canonical.get("same_location", False)),
+                "destination_select": bool(canonical.get("destination_select", False)),
+            }
         if code == "OGN-029":
             return {"targets": [u["id"] for u in state["units"]],
                     "multi": True, "min": 2, "max": 2, "allow_repeat": True}
@@ -5072,6 +5275,19 @@ class OriginsRules:
             if (not decision or decision.get("kind") != "field"
                     or field not in decision.get("fields", [])):
                 raise ValueError("field target selection is unavailable")
+            if decision.get("free_play_field"):
+                info = dict(decision["free_play_field"])
+                info["field"] = field
+                if decision.get("x_choice"):
+                    state["decision"] = {
+                        "kind": "choice", "player": player,
+                        "options": list(range(decision.get("x_max", 0) + 1)),
+                        "x_choice": True, "free_play_field": info,
+                    }
+                    state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                else:
+                    self._complete_free_play_field(state, info, rng)
+                return
             item = decision["item"]
             item["field"] = field
             if decision.get("x_choice"):
@@ -5110,6 +5326,43 @@ class OriginsRules:
                         or player != decision.get("player")
                         or payment not in [list(option) for option in decision.get("payments", [])]):
                     raise ValueError("free-play payment choice is unavailable")
+                if "free_play_spell" in decision:
+                    info = dict(decision["free_play_spell"])
+                    info["payment"] = payment
+                    self._complete_free_play_target(
+                        state, {"free_play": info},
+                        list(info.get("selected", decision.get("targets", []))), rng)
+                    return
+                if "free_play_field" in decision:
+                    info = dict(decision["free_play_field"])
+                    info["payment"] = payment
+                    # The battlefield was already selected before this
+                    # payment window; continue directly rather than forcing
+                    # the player to click the same field again.
+                    self._complete_free_play_field(state, info, rng)
+                    return
+                if "free_play_gear" in decision:
+                    info = dict(decision["free_play_gear"])
+                    owner, card = info["owner"], info["card"]
+                    physical = state["players"][info.get("card_owner", owner)]
+                    row = state["players"][owner]
+                    if card in physical.get("banishment", []):
+                        physical["banishment"].remove(card)
+                    if card not in row["hand"]:
+                        row["hand"].append(card)
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", owner, 0
+                    self.apply(state, Action.make(
+                        "play_gear", card=card, payment=payment,
+                        ignore_cost=bool(info.get("free_all")),
+                        card_owner=info.get("card_owner"),
+                        ignore_energy=bool(info.get("ignore_energy")),
+                        free_play_parent=True), rng)
+                    parent = info.get("parent")
+                    if (parent is not None and parent in state.get("chain", [])
+                            and state.get("phase") == "main"):
+                        state["phase"], state["actor"] = "chain", state["chain"][-1]["owner"]
+                    return
                 info = dict(decision["free_play_unit"])
                 info["payment"] = payment
                 if not decision.get("targets"):
@@ -5150,6 +5403,35 @@ class OriginsRules:
                 if not decision or decision.get("kind") != "choice" or args.get("option") not in decision.get("options", []):
                     raise ValueError("invalid choice option")
                 option = args["option"]
+                if decision.get("free_play_field"):
+                    info = dict(decision["free_play_field"])
+                    x = int(option)
+                    if x < 0 or x > len(row.get("power", [])):
+                        raise ValueError("invalid free-play X payment")
+                    info["x"] = x
+                    self._complete_free_play_field(state, info, rng)
+                    return
+                if decision.get("free_play_buff"):
+                    info = dict(decision["free_play_buff"])
+                    options = info.get("payment_options", {})
+                    if option not in options:
+                        raise ValueError("invalid free-play resource choice")
+                    choices = [list(choice) for choice in options[option]]
+                    spend_buff = None if option == "power" else option.split(":", 1)[1]
+                    info.pop("payment_options", None)
+                    info["spend_buff"] = spend_buff
+                    if len(choices) > 1:
+                        state["decision"] = {
+                            "kind": "free_play_payment", "player": player,
+                            "payments": choices, "targets": list(info.get("selected", [])),
+                            "free_play_spell": {**info, "payment": None},
+                        }
+                        state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                        return
+                    info["payment"] = choices[0]
+                    self._complete_free_play_target(
+                        state, {"free_play": info}, list(info.get("selected", [])), rng)
+                    return
                 if decision.get("nocturne_reveal"):
                     reveal = state.get("reveal")
                     card = decision["nocturne_reveal"]["card"]
@@ -6768,6 +7050,7 @@ class OriginsRules:
                                "card_owner": self._card_owner(state, card, player),
                                "code": code, "targets": args["targets"],
                                "destination": args.get("destination"),
+                               "field": args.get("field"),
                                "x": args.get("x", 0),
                                "legion": was_legion,
                                "hidden_field": args.get("hidden_field")}

@@ -1043,6 +1043,10 @@ class OriginsGUI(tk.Tk):
             if args.get("shakedown"):
                 text = {"draw": "让施法者抽两张 / Draw 2",
                         "damage": "承受 6 点伤害 / Take 6 damage"}.get(args.get("option"), text)
+            elif isinstance(args.get("option"), str) and args["option"] == "power":
+                text = "支付牌面符能 / Pay Power"
+            elif isinstance(args.get("option"), str) and args["option"].startswith("buff:"):
+                text = "消耗目标增益支付法术 / Spend a buff to pay"
             else:
                 text = {"draw": "抽一张牌 / Draw 1", "channel": "横置引导一枚符文 / Channel rune",
                     "accelerate": "加速：支付额外费用并活跃 / Accelerate: pay and enter ready",
@@ -1705,7 +1709,9 @@ class OriginsGUI(tk.Tk):
         elif kind == "hand_card":
             prompt = "选择要从手牌免费打出的 Hidden 牌"
         elif kind == "free_play_payment":
-            prompt = "选择单位打出的支付资源：点击一项完成 Energy/Power 支付"
+            prompt = "选择免费施放的支付资源：点击一项完成 Power/Deflect 支付"
+        elif kind == "choice" and decision.get("free_play_buff"):
+            prompt = "选择免费施放的资源方式：支付牌面符能，或消耗一个单位上的增益"
         elif decision.get("accelerate"):
             domains = "/".join(decision["accelerate"].get("domains", []))
             prompt = (f"加速待支付：请直接在符文区横置/回收符文，或发动下方资源能力；"

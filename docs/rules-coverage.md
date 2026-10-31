@@ -25,7 +25,7 @@
 | 得分与终局 | 469–474、487 | 征服/据守、每战场每玩家每回合一次、最后一分替代抽牌、领先才胜利 |
 | 抽空牌库 | 414、432 | 回收弃牌、对手得分、继续抽牌、空弃牌重复 Burn Out 即时终局 |
 | 卡牌效果 | 支持表 | 298 张显式处理器，覆盖基础伤害、减益、抽牌、目标选择、Stun、攻击触发、静态单位、Gear、符文、Hidden、牌库/弃牌区选择、公开展示、反制链和复杂多目标窗口；Falling Star、Icathian Rain、Bullet Time、Mystic Reversal、Dragon's Rage 等保留有序目标/重选窗口；Promising Future、Blind Fury、Dazzling Aurora、Baited Hook 等牌库选择效果进入统一 reveal/play 流程；复杂替代效果、复制能力和部分跨区域选择仍按开发日志中的受限路径处理。 |
-| Gear 基础原语 | 148.1、149、359.2.d | `core.GearZone` 已验证只进控制者 Base 且进入 Ready；具体 Origins Gear 牌区尚未接入 |
+| Gear 基础原语 | 148.1、149、359.2.d | Origins Gear 区已接入，装备只能进入控制者 Base，默认 Ready；已覆盖的装备能力仍受支持表与开发日志中的复杂互动限制 |
 | 隐藏信息 | 107.3、108、128、422、811 | 手牌仅本人可见，牌库顺序双方不可见；Hidden facedown 区支持单卡占位、下回合 0 费打出、控制方正面查看与对手牌背显示；Noxus Saboteur 会阻止对应战场的对手揭示/打出，Bandle Tree 允许第二张，Tideturner 适用异地目标例外 |
 
 通用模块测试使用合成元数据；真实 Origins 卡牌与完整游戏测试在 tests/test_origins.py。三张无主动效果的战场分别调整胜利分数、单位力量、Ganking，相关效果同时作用于双方。
@@ -33,6 +33,8 @@
 ## 当前限制
 
 Origins 第一弹卡牌编号已全部注册；Dazzling Aurora/Nocturne 的停止与放逐判例按 [Origins FAQ](https://riftbound.leagueoflegends.com/en-us/news/rules-and-releases/riftbound-origins-faq) 执行；其他系列、多局 Match、多人模式仍不支持。Heimerdinger 通过统一 `AbilityRegistry` 复制所有已注册且明确需要横置的单位、传奇和装备能力；注册表同时保留触发型/替代型横置能力的时机、来源和事件组元数据。多个 Ready Heimer 或原生/复制来源同时触发时，控制者可用 `order_optional` 排序。非横置能力（Vi、Udyr、Nocturne、Zhonya）不会进入复制候选。Nocturne 从牌库顶触发的替代窗口已覆盖 Vision、批量 reveal 和 Dazzling Aurora 的公共查看流程；Aurora 逐张公开到单位并通过普通免费出牌和 Chain continuation 继续。免费打出的目标法术与已覆盖的单位入场目标使用点击窗口。单位/装备/法术保留 `card_owner` 与控制者，跨控制回手、死亡、牺牲和清除按物理牌主处理。Volibear 已用五次可重复点击完成 5 点分配。代码不根据自然语言猜测效果，也不静默跳过未知关键词。
+
+当前仍需单独完成的高优先规则项：Falling Star 与 Icathian Rain 需要从“施放时选目标”迁移为“法术完成后创建 Reflexive Trigger，再逐个选目标”；Shakedown 的对手抽牌/承受伤害选择窗口尚未独立建模；少数 AbilityRegistry 的替代、递归复制和复杂事件能力尚未完整裁判化；部分跨区域控制权、复杂嵌套免费打出和战场可选效果仍缺少完整差分测试。`status` 中的 `full_origins_supported=false` 仍然有效：298 张代表目录、构筑和显式处理器覆盖，不代表每张牌都已完成官方裁判级验证。
 
 测试通过只证明已执行的场景及不变量，没有官方裁判或另一套独立引擎的差分认证。当前训练文件用于有限卡池实验，不代表完整 Riftbound。引擎另外保留不进入普通观察和 GUI 的 `internal_event_log`，用于记录复杂结算的私有前后状态并验证回放。Greedy 与 Random 只是基准策略，不代表竞技水平。
 

@@ -235,7 +235,7 @@
 | OGN-073 | Sona, Harmonious | unit | At end of your turn, ready 4 friendly runes. |
 | OGN-091 | Pit Crew | unit | When you play a gear, ready me. |
 | OGN-140 | Herald of Scales | unit | Your Dragons' Energy costs are reduced by 2, to a minimum of 1. |
-支持的规则仅就这套封闭卡池验证。Recruit 是衍生物，不可放入构筑主牌库。隐蔽、装备、死亡触发、卡牌反制、控制权改变等机制尚未开放；它们对应卡牌会被拒绝，不会当作白板处理。
+支持的规则仅就这套封闭卡池验证。Recruit 是衍生物，不可放入构筑主牌库。Hidden、装备、死亡触发、卡牌反制和部分控制权改变已经接入；复杂替代效果、递归复制和少数跨区域互动仍按开发日志中的限制处理，不会静默当作白板。
 
 扩展卡牌：OGN-039 Kai'Sa, Survivor 支持 Accelerate（额外支付 1 energy 与 fury power 后准备进入），并在征服时每张触发抽 1。可用符文目录现覆盖六个基础 domain（Fury、Calm、Mind、Body、Chaos、Order）；符文资源验证和回收会保留这些 domain。
 

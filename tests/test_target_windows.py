@@ -319,5 +319,149 @@ class TargetWindowMigrationTests(unittest.TestCase):
         self.assertEqual(target["damage"], 2)
 
 
+class FoxFireResolutionTests(unittest.TestCase):
+    def setUp(self):
+        self.rules = OriginsRules()
+        self.state = self.rules.initial_state(random.Random(702))
+        self.state.update(phase="main", actor=0, turn_player=0, turn=3)
+        self.state["players"][0]["energy"] = 20
+        self.state["players"][0]["power"] = ["mind", "fury", "body", "order"] * 2
+
+    def spare(self, code):
+        row = self.state["players"][0]
+        uid = row["main"].pop()
+        self.state["cards"][uid]["code"] = code
+        row["hand"].append(uid)
+        return uid
+
+    def _pass_chain(self):
+        for _ in range(2):
+            action = next(a for a in self.rules.legal_actions(self.state) if a.kind == "pass")
+            self.rules.apply(self.state, action, random.Random(703))
+
+    def _play_four_recruits(self):
+        card = self.spare("OGN-256")
+        units = [self.rules._new_unit(self.state, "OGN-271", 1, 0, exhausted=False)
+                 for _ in range(4)]
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell_targeted" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(703))
+        for unit in units:
+            self.rules.apply(
+                self.state,
+                next(a for a in self.rules.legal_actions(self.state)
+                     if a.kind == "choose_target" and unit["id"] in a.arguments),
+                random.Random(703),
+            )
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "confirm_targets"), random.Random(703))
+        return units
+
+    def test_reaction_might_increase_reopens_original_subset_selection(self):
+        units = self._play_four_recruits()
+        # A reaction has increased one selected unit to 2 Might. The initial
+        # four-unit group was legal, but the resolving group is now 5 Might.
+        units[0]["temporary"] += 1
+        self._pass_chain()
+        decision = self.state["decision"]
+        self.assertTrue(decision.get("fox_fire_resolution"))
+        self.assertEqual(set(decision["targets"]), {unit["id"] for unit in units})
+        # The player can choose a legal subset of the original targets only.
+        for unit in units[1:]:
+            self.rules.apply(
+                self.state,
+                next(a for a in self.rules.legal_actions(self.state)
+                     if a.kind == "choose_target" and unit["id"] in a.arguments),
+                random.Random(703),
+            )
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "confirm_targets"), random.Random(703))
+        self.assertIn(units[0], self.state["units"])
+        self.assertTrue(all(unit not in self.state["units"] for unit in units[1:]))
+
+    def test_reaction_might_increase_does_not_add_new_targets(self):
+        units = self._play_four_recruits()
+        extra = self.rules._new_unit(self.state, "OGN-271", 1, 0, exhausted=False)
+        units[0]["temporary"] += 1
+        self._pass_chain()
+        self.assertNotIn(extra["id"], self.state["decision"]["targets"])
+        # The resolver requires the maximum legal cardinality (three), so the
+        # player must choose three of the four original targets. The new unit
+        # is never offered as a replacement target.
+        for unit in units[1:]:
+            self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                              if a.kind == "choose_target" and unit["id"] in a.arguments),
+                             random.Random(703))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "confirm_targets"), random.Random(703))
+        self.assertIn(extra, self.state["units"])
+        self.assertIn(units[0], self.state["units"])
+
+    def test_no_valid_subset_after_reaction_is_no_op(self):
+        units = self._play_four_recruits()
+        for unit in units:
+            unit["temporary"] += 6
+        self._pass_chain()
+        self.assertIsNone(self.state.get("decision"))
+        self.assertTrue(all(unit in self.state["units"] for unit in units))
+
+    def test_moved_original_target_is_not_replaced_or_killed(self):
+        units = self._play_four_recruits()
+        units[0]["location"] = "base:1"
+        self._pass_chain()
+        # Only the remaining original targets are eligible; the moved one is
+        # excluded and no newly arrived unit can be selected. The controller
+        # must still confirm the maximum legal subset.
+        self.assertIn(units[0], self.state["units"])
+        self.assertTrue(self.state["decision"].get("fox_fire_resolution"))
+        for unit in units[1:]:
+            self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                              if a.kind == "choose_target" and unit["id"] in a.arguments),
+                             random.Random(703))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "confirm_targets"), random.Random(703))
+        self.assertTrue(all(unit not in self.state["units"] for unit in units[1:]))
+
+    def test_original_targets_moving_together_to_new_battlefield_remain_legal(self):
+        units = self._play_four_recruits()
+        for unit in units:
+            unit["location"] = 1
+        self._pass_chain()
+        self.assertIsNone(self.state.get("decision"))
+        self.assertTrue(all(unit not in self.state["units"] for unit in units))
+
+
+class ResolutionLegalityTests(unittest.TestCase):
+    def setUp(self):
+        self.rules = OriginsRules()
+        self.state = self.rules.initial_state(random.Random(811))
+        self.state.update(phase="chain", actor=0, turn_player=0, turn=3)
+
+    def test_gust_rechecks_might_at_resolution(self):
+        target = self.rules._new_unit(self.state, "OGN-271", 1, 0, exhausted=False)
+        target["temporary"] += 5
+        item = {"effect": "spell", "owner": 0, "code": "OGN-169",
+                "targets": [target["id"]]}
+        self.rules._effect_spell(self.state, item, random.Random(811))
+        self.assertIn(target, self.state["units"])
+
+    def test_facebreaker_requires_the_pair_to_remain_at_one_battlefield(self):
+        friendly = self.rules._new_unit(self.state, "OGN-271", 0, 0, exhausted=False)
+        enemy = self.rules._new_unit(self.state, "OGN-271", 1, 0, exhausted=False)
+        enemy["location"] = 1
+        item = {"effect": "spell", "owner": 0, "code": "OGN-220",
+                "targets": [friendly["id"], enemy["id"]]}
+        self.rules._effect_spell(self.state, item, random.Random(811))
+        self.assertFalse(friendly["stunned"])
+        self.assertFalse(enemy["stunned"])
+
+    def test_singularity_can_resolve_against_a_base_unit(self):
+        target = self.rules._new_unit(self.state, "OGN-271", 1, "base:1", exhausted=False)
+        item = {"effect": "spell", "owner": 0, "code": "OGN-105",
+                "targets": [target["id"]]}
+        self.rules._effect_spell(self.state, item, random.Random(811))
+        self.assertEqual(target["damage"], 6)
+
+
 if __name__ == "__main__":
     unittest.main()

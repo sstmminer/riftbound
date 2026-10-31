@@ -262,6 +262,13 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
   多层嵌套仍需继续用官方 FAQ 场景做差分测试。
 - 内部事件日志已可记录复杂 optional/replacement/reveal 链，但仍需要独立裁判或第二套引擎做差分认证。
 
+### Fox-Fire 与动态目标结算审计（2026-10-31）
+
+- 对照 [RUP5 Core Rules](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf) 355.11、355.11.b、355.11.b.1、359.3.e.2–e.8，以及 [Origins FAQ](https://riftbound.leagueoflegends.com/en-us/news/rules-and-releases/riftbound-origins-faq) 的 Fox-Fire 条目，确认 OGN-256 属于“目标组整体合法性”特例。反应结算后若原目标组总 Might 超过 4，必须从原目标中选择满足条件的**最大数量**合法子集；不能加入未选单位；原目标一起移动到另一座战场时仍可作为同组目标，进入基地、手牌或弃牌区则不可用；没有合法非空子集时不执行。
+- OGN-256 现在在结算时枚举当前原目标的合法分组，只有在原组失效时打开不重新让过优先权的多选窗口，并强制最大目标数。Hidden 版本保留隐藏战场的目标限制。新增反应增益、禁止补选新单位、全员超限、目标移动、目标一起移动到新战场和 Hidden 多选回归测试。
+- 同步重检了容易受反应影响的普通目标：Gust 结算时重新检查 Might≤3；Get Excited、Rebuke、Fading Memories、Hidden Blade 等“at a battlefield”目标离场后不再执行；Singularity 可以合法选择基地单位；Facebreaker 的友军/敌军同场配对失效时不再单独眩晕剩余单位；Back to Back、Challenge、Last Breath、Zenith Blade、Shakedown、Meditation 等路径重新检查控制者、准备状态和战场限制。
+- 仍需单独迁移的高优先机制是 Falling Comet（FAQ 中的 Falling Star）与 Icathian Rain：当前牌池仍沿用旧的目标窗口，而官方 FAQ 已将它们解释为无目标法术结算后创建 Reflexive Trigger。迁移方案是先完成法术本体，再逐个创建统一目标触发；这项工作未在本轮混入 Fox-Fire 修复，避免把两种时点模型混在一起。
+
 ### 本轮优先完成的三项
 
 - **Mystic Reversal 的非目标选项重选**：OGN-080 接管法术后会清除原法术的目标、领域、X 值和旧选择，并把新控制者重新带入该法术的统一选择窗口。Party Favors（OGN-071）重新选择 cards/runes；Whirlwind（OGN-187）先选择 return/skip，选择 return 后再通过同一个目标窗口点选单位；King's Edict 及已支持的多目标、场地、目的地法术继续复用同一规格。

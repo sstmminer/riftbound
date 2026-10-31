@@ -868,7 +868,7 @@ class OriginsRules:
         targeted = (SIMPLE_TARGET_SPELLS | PAIR_TARGET_SPELLS |
                     DESTINATION_TARGET_SPELLS | OPTIONAL_TARGET_SPELLS |
                     CONSTRAINED_MULTI_TARGET_SPELLS | {"OGN-029", "OGN-104",
-                    "OGN-183", "OGN-206", "OGN-248"})
+                    "OGN-105", "OGN-183", "OGN-206", "OGN-248"})
         if code not in targeted:
             return None
         if code == "OGN-183":
@@ -897,6 +897,9 @@ class OriginsRules:
             candidates = [u["id"] for u in state["units"]]
             return {"candidates": candidates, "min": 2 if candidates else 0,
                     "max": 2, "allow_repeat": True}
+        if code == "OGN-105":
+            candidates = [u["id"] for u in state["units"]]
+            return {"candidates": candidates, "min": 0, "max": 2}
         if code == "OGN-248":
             candidates = [u["id"] for u in state["units"]
                           if self._is_field(state, u["location"])]
@@ -912,6 +915,11 @@ class OriginsRules:
         if code == "OGN-180":
             candidates = ([u["id"] for u in state["units"] if self._is_field(state, u["location"])]
                           + [gear["id"] for row in state["players"] for gear in row["gear"]])
+            return {"candidates": candidates, "min": 1 if candidates else 0, "max": 1}
+        if code in {"OGN-169", "OGN-172", "OGN-213"}:
+            candidates = [u["id"] for u in state["units"]
+                          if self._is_field(state, u["location"])
+                          and (code != "OGN-169" or self.might(state, u) <= 3)]
             return {"candidates": candidates, "min": 1 if candidates else 0, "max": 1}
         if code in DESTINATION_TARGET_SPELLS:
             candidates = []
@@ -1690,6 +1698,20 @@ class OriginsRules:
                         "play_hidden_targeted", card=hidden["id"], field=field,
                         target_candidates=candidates, target_min=2, target_max=2,
                         target_pairs=pairs))
+            elif code == "OGN-256":
+                # Fox-Fire is a Hidden multi-target spell. Its initial target
+                # choices are restricted to the battlefield where it was
+                # hidden; resolution applies the ordinary Fox-Fire group
+                # recheck to those original targets.
+                candidates = [u["id"] for u in self._units(state, location=field)]
+                if candidates:
+                    result.append(Action.make(
+                        "play_hidden_targeted", card=hidden["id"], field=field,
+                        target_candidates=candidates, target_min=0,
+                        target_max=len(candidates), multi=True,
+                        target_might_limit=4, same_location=True))
+                else:
+                    result.append(Action.make("play_hidden", card=hidden["id"], field=field, targets=[]))
             else:
                 result.append(Action.make("play_hidden", card=hidden["id"], field=field, targets=[]))
         return result
@@ -2389,9 +2411,9 @@ class OriginsRules:
                            if self._is_field(state, friendly["location"])
                            for enemy in self._units(state, 1-player, friendly["location"])]
             elif code == "OGN-105":
-                field_units = [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
-                targets = [[]] + [[uid] for uid in field_units]
-                targets += [list(pair) for pair in combinations(field_units, 2)]
+                all_units = [u["id"] for u in state["units"]]
+                targets = [[]] + [[uid] for uid in all_units]
+                targets += [list(pair) for pair in combinations(all_units, 2)]
             elif code == "OGN-029":
                 targets = [[a, b] for a in [u["id"] for u in state["units"]]
                            for b in [u["id"] for u in state["units"]]]
@@ -2476,9 +2498,11 @@ class OriginsRules:
                                               if code in DESTINATION_TARGET_SPELLS else
                                               sorted({selected[0] for selected in targets if selected})
                                               if code in SIMPLE_TARGET_SPELLS else
+                                              [u["id"] for u in state["units"]]
+                                               if code == "OGN-105" else
                                               [u["id"] for u in state["units"]
                                                if self._is_field(state, u["location"])]
-                                               if code in {"OGN-105", "OGN-248"} else
+                                               if code == "OGN-248" else
                                               [u["id"] for u in self._units(state, player)])
                                 target_count = (6 if code == "OGN-248" else
                                                 2 if code in (PAIR_TARGET_SPELLS | {"OGN-029", "OGN-206"}) else
@@ -4018,8 +4042,12 @@ class OriginsRules:
         if code == "OGN-048":
             candidates = [u["id"] for u in self._units(state, item["owner"]) if not u["exhausted"]]
             return {"targets": candidates, "multi": True, "min": 0, "max": 1}
-        if code in {"OGN-005", "OGN-008", "OGN-009", "OGN-014", "OGN-024", "OGN-085", "OGN-168"}:
+        if code in {"OGN-005", "OGN-008", "OGN-009", "OGN-014", "OGN-024", "OGN-085", "OGN-168", "OGN-172", "OGN-213"}:
             candidates = [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
+        elif code == "OGN-169":
+            candidates = [u["id"] for u in state["units"]
+                          if self._is_field(state, u["location"])
+                          and self.might(state, u) <= 3]
         elif code == "OGN-180":
             candidates = ([u["id"] for u in state["units"] if self._is_field(state, u["location"])]
                           + [gear["id"] for row in state["players"] for gear in row["gear"]])
@@ -4106,6 +4134,39 @@ class OriginsRules:
             self._trigger_recycle_event(state, recycle_player)
         state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
         self._finish_resolution(state)
+
+    def _fox_fire_legal_subsets(self, state, item):
+        """Return maximum-cardinality legal subsets of Fox-Fire's targets.
+
+        RUP5 355.11.b/.b.1 treats Fox-Fire as a group target. Reactions can
+        make the original group illegal, but resolution may only choose from
+        those original targets and must keep the largest legal subset. A
+        target that left the board is unavailable; targets that moved together
+        to another battlefield remain eligible.
+        """
+        original = list(dict.fromkeys(item.get("fox_fire_initial_targets",
+                                             item.get("targets", []))))
+        groups = {}
+        hidden_field = item.get("hidden_field")
+        for uid in original:
+            unit = self._unit(state, uid)
+            if unit is None or not self._is_field(state, unit.get("location")):
+                continue
+            if hidden_field is not None and unit["location"] != hidden_field:
+                continue
+            groups.setdefault(unit["location"], []).append(unit)
+        legal = []
+        for units in groups.values():
+            for count in range(1, len(units) + 1):
+                for subset in combinations(units, count):
+                    if sum(self.might(state, unit) for unit in subset) <= 4:
+                        legal.append(tuple(unit["id"] for unit in subset))
+        if not legal:
+            return original, 0, []
+        maximum = max(len(subset) for subset in legal)
+        best = [subset for subset in legal if len(subset) == maximum]
+        candidates = sorted({uid for subset in best for uid in subset}, key=str)
+        return original, maximum, candidates
 
     def _effect_spell(self, state, item, rng):
         code, owner = item["code"], item["owner"]
@@ -4220,6 +4281,48 @@ class OriginsRules:
             if second is not None:
                 self._deal_damage(state, first, self.might(state, second))
                 self._deal_damage(state, second, self.might(state, first))
+        if code == "OGN-256" and not item.get("fox_fire_resolution_done"):
+            # Fox-Fire's group restriction is checked again after reactions.
+            # If the original group is no longer legal, the controller must
+            # choose a maximum-cardinality legal subset from those same targets.
+            initial_ids, maximum, candidates = self._fox_fire_legal_subsets(state, item)
+            if not initial_ids or maximum == 0:
+                item["targets"] = []
+                item["fox_fire_resolution_done"] = True
+            elif maximum == len(initial_ids):
+                item["targets"] = list(initial_ids)
+                item["fox_fire_resolution_done"] = True
+            else:
+                state["chain"].append(item)
+                state["decision"] = {
+                    "kind": "target", "player": owner,
+                    "targets": candidates, "item": item, "multi": True,
+                    "min": maximum, "max": maximum, "selected": [],
+                    "allow_repeat": False, "same_location": True,
+                    "target_might_limit": 4, "fox_fire_resolution": True,
+                }
+                state["phase"], state["actor"], state["passes"] = (
+                    "decision", owner, 0)
+                return False
+        if code == "OGN-220":
+            # Facebreaker is a paired instruction: it needs one currently
+            # friendly and one currently enemy unit at the same battlefield.
+            # If a reaction breaks that pair, neither target is affected.
+            pair = [self._unit(state, uid) for uid in item.get("targets", [])]
+            friendly = next((unit for unit in pair
+                             if unit is not None and unit["owner"] == owner), None)
+            enemy = next((unit for unit in pair
+                          if unit is not None and unit["owner"] != owner), None)
+            same_field = (friendly is not None and enemy is not None
+                          and self._is_field(state, friendly["location"])
+                          and friendly["location"] == enemy["location"]
+                          and (item.get("hidden_field") is None
+                               or friendly["location"] == item["hidden_field"]))
+            if same_field:
+                friendly["stunned"] = True
+                enemy["stunned"] = True
+            item["targets"] = []
+
         for uid in item["targets"]:
             unit = self._unit(state, uid)
             if unit is None and code == "OGN-180":
@@ -4228,8 +4331,16 @@ class OriginsRules:
                 if gear is not None:
                     gear["temporary"] = True
                 continue
-            if unit is None or (code in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085", "OGN-105"}
-                                and not self._is_field(state, unit["location"])):
+            if unit is None or (code in {"OGN-005", "OGN-008", "OGN-009", "OGN-014",
+                                          "OGN-024", "OGN-085", "OGN-169", "OGN-172",
+                                          "OGN-180", "OGN-203", "OGN-213", "OGN-256", "OGN-262"}
+                                and (not self._is_field(state, unit["location"])
+                                     or (item.get("hidden_field") is not None
+                                         and code in {"OGN-213", "OGN-256"}
+                                         and unit["location"] != item["hidden_field"]))):
+                continue
+            if item.get("hidden_field") is not None and code in {"OGN-057", "OGN-220"} \
+                    and unit["location"] != item["hidden_field"]:
                 continue
             if code == "OGN-237":
                 unit["damage"] = max(unit["damage"], self.might(state, unit))
@@ -4290,13 +4401,15 @@ class OriginsRules:
                     unit["location"] = f"base:{owner}"
                     unit["exhausted"] = True
             elif code == "OGN-053":
-                state["players"][owner]["buff_bonus"] = 1
-                self._apply_buff(state, unit)
+                if unit["owner"] == owner:
+                    state["players"][owner]["buff_bonus"] = 1
+                    self._apply_buff(state, unit)
             elif code == "OGN-069":
                 # Last Stand doubles the unit's current Might for this turn;
                 # the temporary marker is removed at the next Beginning Phase.
-                unit["temporary"] += self.might(state, unit)
-                unit["temporary_unit"] = True
+                if unit["owner"] == owner:
+                    unit["temporary"] += self.might(state, unit)
+                    unit["temporary_unit"] = True
             elif code == "OGN-180":
                 gear = next((gear for row in state["players"] for gear in row["gear"]
                              if gear["id"] == uid), None)
@@ -4305,7 +4418,8 @@ class OriginsRules:
                 else:
                     unit["temporary_unit"] = True
             elif code in {"OGN-206", "OGN-207"}:
-                unit["temporary"] += 2 if code == "OGN-206" else 3
+                if code != "OGN-206" or unit["owner"] == owner:
+                    unit["temporary"] += 2 if code == "OGN-206" else 3
             elif code == "OGN-008":
                 discarded = item.get("discarded_card")
                 if discarded is not None:
@@ -4338,11 +4452,13 @@ class OriginsRules:
             elif code == "OGN-154":
                 unit["temporary"] += 7
             elif code == "OGN-046":
-                unit["temporary"] += 1
-                if len(self._units(state, owner, unit["location"])) == 1:
+                if unit["owner"] == owner:
                     unit["temporary"] += 1
+                    if len(self._units(state, owner, unit["location"])) == 1:
+                        unit["temporary"] += 1
             elif code in {"OGN-104", "OGN-169", "OGN-172"}:
-                returned.append(unit)
+                if code != "OGN-169" or self.might(state, unit) <= 3:
+                    returned.append(unit)
             elif code == "OGN-213":
                 killed_by_hidden_blade = unit["owner"]
                 unit["damage"] = max(unit["damage"], self.might(state, unit))
@@ -4353,9 +4469,10 @@ class OriginsRules:
             elif code == "OGN-252":
                 self._deal_damage(state, unit, 5)
             elif code == "OGN-033":
-                self._deal_damage(state, unit, 6)
+                if unit["owner"] != owner:
+                    self._deal_damage(state, unit, 6)
             elif code == "OGN-262":
-                if self._is_field(state, unit["location"]):
+                if unit["owner"] != owner and self._is_field(state, unit["location"]):
                     unit["stunned"] = True
             elif code == "OGN-266" and item.get("field") is None:
                 field = unit["location"]
@@ -4364,21 +4481,24 @@ class OriginsRules:
                 for enemy in self._units(state, 1-owner, field):
                     enemy["temporary"] -= 1
             elif code == "OGN-108" and item["targets"] and item["targets"][0] == uid:
-                if len(item["targets"]) >= 2:
+                if unit["owner"] == owner and len(item["targets"]) >= 2:
                     other = self._unit(state, item["targets"][1])
                     if other is not None and other["owner"] == owner:
                         unit["temporary"] += self.might(state, other) - self.might(state, unit)
             elif code == "OGN-128" and item["targets"] and item["targets"][0] == uid and len(item["targets"]) >= 2:
                 other = self._unit(state, item["targets"][1])
-                if other is not None:
+                if unit["owner"] == owner and other is not None and other["owner"] != owner:
                     self._deal_damage(state, unit, self.might(state, other))
                     self._deal_damage(state, other, self.might(state, unit))
             elif code == "OGN-209":
                 unit["damage"] = max(unit["damage"], self.might(state, unit))
             elif code == "OGN-260" and item["targets"] and item["targets"][0] == uid and len(item["targets"]) >= 2:
-                unit["exhausted"] = False
                 other = self._unit(state, item["targets"][1])
-                if other is not None:
+                if unit["owner"] == owner:
+                    unit["exhausted"] = False
+                if (unit["owner"] == owner and other is not None
+                        and other["owner"] != owner
+                        and self._is_field(state, other["location"])):
                     self._deal_damage(state, other, self.might(state, unit))
         for unit in returned:
             if unit not in state["units"]:
@@ -4393,11 +4513,13 @@ class OriginsRules:
             if code == "OGN-104":
                 self._channel_rune(state, unit["owner"], exhausted=True)
         if code == "OGN-048":
+            drawn = False
             if item["targets"]:
                 target = self._unit(state, item["targets"][0])
-                if target is not None:
+                if target is not None and target["owner"] == owner and not target["exhausted"]:
                     target["exhausted"] = True
-            self._draw(state, owner, 2 if item["targets"] else 1, rng)
+                    drawn = True
+            self._draw(state, owner, 2 if drawn else 1, rng)
         elif code == "OGN-144":
             self._draw(state, owner, 2, rng)
         elif code == "OGN-224":
@@ -5464,9 +5586,21 @@ class OriginsRules:
                     total = sum(self.might(state, unit) for unit in units if unit is not None)
                     if total > int(decision["target_might_limit"]):
                         raise ValueError("selected targets exceed the total Might limit")
+                if decision.get("fox_fire_resolution"):
+                    item = decision["item"]
+                    item["targets"] = selected
+                    item["fox_fire_resolution_done"] = True
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                    # Continue the same resolving item without reopening
+                    # priority; this selection is part of Fox-Fire's effect.
+                    self._resolve_chain_item(state, rng)
+                    return
                 if decision.get("counter_retarget"):
                     item = decision["item"]
                     item["targets"] = selected
+                    if item.get("code") == "OGN-256":
+                        item["fox_fire_initial_targets"] = list(selected)
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                     return
@@ -5502,6 +5636,8 @@ class OriginsRules:
                     for entry in reversed(state["chain"]):
                         if entry.get("card") == item.get("card"):
                             entry["targets"] = selected
+                            if item.get("code") == "OGN-256":
+                                entry["fox_fire_initial_targets"] = list(selected)
                             break
                 else:
                     self.effects.dispatch(item["effect"], state, item, rng)
@@ -5633,10 +5769,13 @@ class OriginsRules:
                 raise ValueError("Hidden card is not ready")
             state["decision"] = {"kind": "target", "player": player,
                                   "targets": list(args["target_candidates"]),
-                                  "multi": args.get("target_max", 1) > 1,
+                                  "multi": bool(args.get("multi")) or args.get("target_max", 1) > 1,
                                   "min": args.get("target_min", 1),
                                   "max": args.get("target_max", 1), "selected": [],
+                                  "allow_repeat": bool(args.get("allow_repeat", False)),
                                   "target_pairs": [list(pair) for pair in args.get("target_pairs", [])],
+                                  "target_might_limit": args.get("target_might_limit"),
+                                  "same_location": bool(args.get("same_location", False)),
                                   "item": {"effect": "hidden_play", "owner": player},
                                   "play_hidden_targeted": True,
                                   "hidden": {"card": hidden["id"], "field": hidden["field"],
@@ -6295,7 +6434,10 @@ class OriginsRules:
                                "code": code, "targets": args["targets"],
                                "destination": args.get("destination"),
                                "x": args.get("x", 0),
-                               "legion": was_legion}
+                               "legion": was_legion,
+                               "hidden_field": args.get("hidden_field")}
+                if code == "OGN-256":
+                    spell_item["fox_fire_initial_targets"] = list(args["targets"])
                 if code == "OGN-183":
                     spell_item["deck_options"] = list(args.get("deck_options", []))
                 if code in SPELL_CODES:

@@ -110,6 +110,26 @@ class HiddenTests(unittest.TestCase):
         self.assertTrue(friendly["stunned"])
         self.assertTrue(enemy["stunned"])
 
+    def test_hidden_fox_fire_uses_multi_target_window(self):
+        card = self.card("OGN-256")
+        hide = next(a for a in self.rules.legal_actions(self.state)
+                    if a.kind == "hide_card" and card in a.arguments)
+        self.rules.apply(self.state, hide, random.Random(3))
+        self.state["turn"] = 3
+        first = self.rules._new_unit(self.state, "OGN-271", 1, 0, exhausted=False)
+        second = self.rules._new_unit(self.state, "OGN-271", 1, 0, exhausted=False)
+        play = next(a for a in self.rules.legal_actions(self.state)
+                    if a.kind == "play_hidden_targeted" and card in a.arguments)
+        self.rules.apply(self.state, play, random.Random(3))
+        self.assertTrue(self.state["decision"].get("multi"))
+        for target in (first, second):
+            self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                              if a.kind == "choose_target" and target["id"] in a.arguments),
+                             random.Random(3))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "confirm_targets"), random.Random(3))
+        self.assertEqual(self.state["phase"], "chain")
+
 
 if __name__ == "__main__":
     unittest.main()

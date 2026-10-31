@@ -238,6 +238,18 @@ class SpellExpansionNewTests(unittest.TestCase):
         self.drain()
         self.assertTrue(next(item for item in row["gear"] if item["id"] == gear)["temporary"])
 
+    def test_temporary_gear_is_removed_at_controller_beginning(self):
+        row = self.state["players"][0]
+        gear = row["main"].pop()
+        self.state["cards"][gear]["code"] = "OGN-017"
+        row["gear"].append({"id": gear, "card": gear, "code": "OGN-017",
+                             "owner": 0, "card_owner": 0, "location": "base:0",
+                             "exhausted": False, "temporary": True})
+        self.state["turn_player"] = 0
+        self.rules._start_turn(self.state, random.Random(9))
+        self.assertNotIn(gear, [item["id"] for item in row["gear"]])
+        self.assertIn(gear, row["trash"])
+
     def test_block_grants_shield_three_and_temporary_tank(self):
         card = self.spare("OGN-057")
         self.state["players"][0]["power"] = ["calm"] * 4

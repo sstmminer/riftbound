@@ -15,3 +15,21 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - run: python -m riftbound simulate --games 2 --seed 42 --output artifacts/ci-run
       - run: python -m riftbound replay artifacts/ci-run/replay-0000.json
+  stable-baseline:
+    name: Stable baseline gate
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install .
+      - name: Run deterministic stability audit
+        run: python tools/stable_baseline.py --seeds 10 --output artifacts/stable-baseline.json
+      - name: Upload stability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stable-baseline-report
+          path: artifacts/stable-baseline.json

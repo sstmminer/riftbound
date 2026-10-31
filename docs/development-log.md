@@ -221,6 +221,19 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 
 本批仍保留两项明确限制：Volibear（OGN-041）现在以五次可重复点击逐点分配 5 点伤害，已能表达任意分配，但没有单独的数字分配面板；Heimerdinger（OGN-111）通过 `AbilityRegistry` 按 `requires_exhaust=True` 自动发现单位、传奇和装备的横置能力，Vi/Udyr 等没有横置符号的能力以及 Nocturne/Zhonya 的非横置替代效果会被排除。Solari Shrine、Mistfall、The Boss 等事件型横置能力也使用同一注册表和事件窗口。Nocturne（OGN-194）的 Ganking 与牌库顶查看窗口均已接入：Vision 查看顶牌时由查看者私下选择放弃或支付一枚 [A]，支付后先放逐该物理牌，再通过普通单位出牌状态机以零费用打出；无可支付符能时不会暴露不可用选项。Teemo 的防守触发只在实际进入防守战斗时生成，不会因从 Hidden 打出就提前触发。
 
+## RUP5/官方勘误与裁判级审计（2026-10-31）
+
+本次联网核对到的权威来源为：[Core Rules RUP5 PDF](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)、[Tournament Rules PDF](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/861752822d217edf37d9febaeaf77a7d924c1bb6.pdf)、[Origins Errata](https://riftbound.leagueoflegends.com/en-us/news/rules-and-releases/riftbound-origins-card-errata/)、[Core Rules Patch Notes](https://riftbound.leagueoflegends.com/en-us/news/rules-and-releases/riftbound-core-rules-patch-notes/) 和 [Radiance Patch Notes/官方裁定](https://playriftbound.com/en-us/news/announcements/core-rules-radiance-patch-notes-effective-october-16-2026/)。官方 Origins 勘误页面解析到 31 个卡名；其中 Dark Child/Highlander 不在本 Origins 298 张目录，Dragon's Rage/Lee Sin 存在目录别名。官方 Radiance 页面明确了“新选择全部重做、目标触发重新触发、pending 项不可选为目标、Negated 与 Ignored 的区别，以及多领域/无领域 Accelerate 的 [C]→[A] 处理”。官方页面同时说明后续 FAQ 仍会追加，因此目前不能声称公开裁判判例库已经完整。
+
+本次审计确认的剩余结算漏洞和受限事项：
+
+- Nocturne 的替代窗口目前只接入 Vision；Reinforce、Blind Fury、Promising Future、Stacked Deck、Baited Hook、Teemo、Dazzling Aurora 等其他牌库查看/展示入口尚未统一接入逐张 replacement queue。
+- Blind Fury 会改写对手牌库物理牌的 `owner`，Possession 也把控制者和牌主共用一个 `owner` 字段；跨玩家控制单位的死亡、回手和回收可能进入错误牌区。
+- Stealthy Pursuer 的“may 跟随移动”仍自动接受；Targon's Peak 的符文准备时机提前；Candlelit Sanctum、Navori Fighting Pit、Monastery of Hirana、Zaun Warrens 等仍存在取第一张/第一个目标的简化路径。
+- Baited Hook、Dazzling Aurora 和部分免费打出法术仍可能绕过完整入场触发或后续目标窗口；多个死亡替代同时存在时仍使用硬编码优先顺序。
+- Reaction 型横置能力在 Heimer 路径中仍可能暴露在过宽时机；多个 Heimer 或原生/复制来源同时触发时的顺序还没有完整裁判化。
+- 复杂 optional/replacement 嵌套后的 event log/replay、跨区域选择和所有 look/reveal 入口仍缺少独立裁判差分测试。
+
 ## 尚未完成
 
 - 第一弹 298 张均已注册并可进入构筑校验；完整规则差分验证、多人模式和训练基准仍未完成。

@@ -285,17 +285,15 @@ class OriginsRules:
         if bonus:
             unit["temporary"] += bonus
         # Mistfall's E is an optional response to a friendly unit being buffed.
-        # Heimer receives that E through the same registry and is offered the
-        # same payment/ready decision when a copied source is available.
+        # Native Mistfall and each eligible copied source use the same
+        # registry-driven optional window.
         owner = unit["owner"]
         row = state["players"][owner]
-        if (self._heimer_has_copy(state, owner, "gear", "OGN-152")
-                and any(power == "body" or power == "any" for power in row["power"])):
-            for heimer in self._units(state, owner):
-                if heimer["code"] == "OGN-111" and not heimer["exhausted"]:
-                    self._queue_optional(state, owner, "heimer_mistfall_ready",
-                                         source=heimer["id"], target=unit["id"])
-                    break
+        if any(power == "body" or power == "any" for power in row["power"]):
+            for source in self._registry_event_sources(state, owner, "gear.mistfall_ready"):
+                self._queue_optional(state, owner, "mistfall_ready",
+                                     source=source["id"], copied=source["copied"],
+                                     target=unit["id"])
 
     def _radiant_stun_trigger(self, state, player):
         if state["players"][player]["legend"] != "OGN-261":
@@ -396,13 +394,17 @@ class OriginsRules:
                 # preserved and a declined choice lets lethal cleanup proceed.
                 if (unit.get("death_replacement") is None and unit.get("buff")
                         and any(power in DOMAINS or power == "any"
-                                for power in state["players"][unit["owner"]]["power"])
-                        and state["players"][unit["owner"]]["legend"] == "OGN-269"
-                        and self._heimer_has_copy(state, unit["owner"], "legend", "OGN-269")):
-                    unit["death_replacement"] = {"kind": "heimer_boss", "turn": state["turn"],
-                                                   "prompted": True}
-                    self._queue_optional(state, unit["owner"], "heimer_boss_save", target=unit["id"])
-                    return
+                                for power in state["players"][unit["owner"]]["power"])):
+                    boss_sources = self._registry_event_sources(
+                        state, unit["owner"], "legend.the_boss_save")
+                    if boss_sources:
+                        unit["death_replacement"] = {"kind": "boss", "turn": state["turn"],
+                                                       "prompted": True}
+                        for source in boss_sources:
+                            self._queue_optional(state, unit["owner"], "boss_save",
+                                                 target=unit["id"], source=source["id"],
+                                                 copied=source["copied"])
+                        return
                 replacement = unit.get("death_replacement")
                 if replacement and replacement.get("turn") == state.get("turn"):
                     if replacement.get("kind") == "armory":
@@ -902,11 +904,13 @@ class OriginsRules:
                 gear["exhausted"] = True
             self._draw(state, player, 1, rng)
             return True
-        if effect == "heimer_mistfall_ready":
+        if effect in {"mistfall_ready", "heimer_mistfall_ready"}:
             target = self._unit(state, item.get("target"))
-            source = self._unit(state, item.get("source"))
             row = state["players"][player]
-            if target is None or source is None or source["code"] != "OGN-111" or source["exhausted"]:
+            source = (self._unit(state, item.get("source")) if item.get("copied") else
+                      next((gear for gear in row["gear"]
+                            if gear["id"] == item.get("source") and gear["code"] == "OGN-152"), None))
+            if target is None or source is None or source.get("exhausted"):
                 return True
             power_index = next((index for index, power in enumerate(row["power"])
                                 if power in {"body", "any"}), None)
@@ -916,7 +920,7 @@ class OriginsRules:
             source["exhausted"] = True
             target["exhausted"] = False
             return True
-        if effect == "heimer_boss_save":
+        if effect in {"boss_save", "heimer_boss_save"}:
             target = self._unit(state, item.get("target"))
             row = state["players"][player]
             if target is None or target.get("buff", 0) <= 0:
@@ -925,13 +929,20 @@ class OriginsRules:
                                 if power in DOMAINS or power == "any"), None)
             if power_index is None:
                 return True
-            source = next((unit for unit in self._units(state, player)
-                           if unit["code"] == "OGN-111" and not unit["exhausted"]), None)
-            if source is None:
-                return True
+            if item.get("copied"):
+                source = self._unit(state, item.get("source"))
+                if source is None or source["code"] != "OGN-111" or source["exhausted"]:
+                    return True
+            else:
+                source = state["players"][player]
+                if source["legend"] != "OGN-269" or source["legend_exhausted"]:
+                    return True
             target.pop("death_replacement", None)
             row["power"].pop(power_index)
-            source["exhausted"] = True
+            if item.get("copied"):
+                source["exhausted"] = True
+            else:
+                row["legend_exhausted"] = True
             target["buff"] = 0
             target["damage"] = 0
             target["location"] = f"base:{player}"
@@ -2315,9 +2326,15 @@ class OriginsRules:
                     row = state["players"][player]
                     domains = set(decision["accelerate"].get("domains", []))
                     can_energy = row["energy"] >= 1 or any(not rune["exhausted"] for rune in row["runes"])
-                    can_power = any(power in domains or power == "any" for power in row["power"]) or any(
-                        domains.intersection(self.cards[rune["code"]]["domains"])
-                        for rune in row["runes"])
+                    if len(domains) == 1:
+                        can_power = any(power in domains or power == "any" for power in row["power"]) or any(
+                            domains.intersection(self.cards[rune["code"]]["domains"])
+                            for rune in row["runes"])
+                    else:
+                        # Radiance patch: [C] becomes [A] when the accelerated
+                        # unit has no or multiple domains, so any one power is
+                        # a legal payment after resource activation.
+                        can_power = bool(row["power"]) or bool(row["runes"])
                     if not (can_energy and can_power):
                         actions = [action for action in actions
                                    if json.loads(action.arguments).get("option") != "accelerate"]
@@ -4026,7 +4043,13 @@ class OriginsRules:
             spec = self.abilities.get(args.get("ability_id"))
             if not spec.copyable:
                 raise ValueError("ability is not copyable by Heimerdinger")
-            self._resolve_registry_copy(state, player, args, rng)
+            snapshot = copy.deepcopy(state)
+            try:
+                self._resolve_registry_copy(state, player, args, rng)
+            except Exception:
+                state.clear()
+                state.update(snapshot)
+                raise
             state["passes"] = 0
             return
         if kind == "ability_targeted":
@@ -4138,8 +4161,11 @@ class OriginsRules:
                     if option == "accelerate":
                         row = state["players"][player]
                         domains = set(pending.get("domains", []))
-                        power_index = next((index for index, power in enumerate(row["power"])
-                                            if power in domains or power == "any"), None)
+                        if len(domains) == 1:
+                            power_index = next((index for index, power in enumerate(row["power"])
+                                                if power in domains or power == "any"), None)
+                        else:
+                            power_index = 0 if row["power"] else None
                         if row["energy"] < 1 or power_index is None:
                             raise ValueError("Accelerate requires 1 energy and one matching domain power")
                         row["energy"] -= 1
@@ -4307,7 +4333,13 @@ class OriginsRules:
                 if decision.get("registry_ability"):
                     item = dict(decision["item"])
                     state["decision"] = None
-                    self._resolve_registry_copy(state, player, item, rng, target=args["target"])
+                    snapshot = copy.deepcopy(state)
+                    try:
+                        self._resolve_registry_copy(state, player, item, rng, target=args["target"])
+                    except Exception:
+                        state.clear()
+                        state.update(snapshot)
+                        raise
                     if state.get("decision") is None and state.get("reveal") is None:
                         state["phase"], state["actor"], state["passes"] = "main", player, 0
                     return

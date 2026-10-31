@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import random
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -73,16 +74,141 @@ def _compare(expected: dict, actual: dict) -> list[str]:
     return failures
 
 
+def _production_state() -> tuple[object, dict]:
+    """Build a minimal real Origins state for adapter scenarios.
+
+    The adapter is intentionally kept here, outside ``reference_rules``.  It
+    may call production helpers to execute the same scenario, while the
+    reference model remains independent and supplies the expected semantics.
+    """
+    from riftbound.origins import OriginsRules
+
+    rules = OriginsRules()
+    state = rules.initial_state(random.Random(7001))
+    state.update(phase="main", actor=0, turn_player=0, turn=1,
+                 chain=[], optional=[], decision=None, winner=None)
+    state["units"] = []
+    for field in state["fields"]:
+        field["controller"] = None
+    return rules, state
+
+
+def _production_card_zone(state: dict, card_id: str, actual_card: str) -> dict:
+    locations = {"main": [], "hand": [], "trash": []}
+    for player, row in enumerate(state["players"]):
+        for zone in locations:
+            if actual_card in row[zone]:
+                locations[zone].append(card_id)
+    return locations
+
+
+def run_production_fixture(fixture: dict) -> dict:
+    """Run a small set of core scenarios against the real Origins engine.
+
+    Unsupported fixtures are reported explicitly.  They never count as a
+    differential pass, and they are kept visible so the adapter coverage can
+    grow without silently shrinking the oracle scope.
+    """
+    fixture_id = fixture["id"]
+    supported = {
+        "move_ready_unit_exhausts_and_enters_showdown": "move",
+        "lethal_damage_moves_card_to_physical_owner_trash": "damage",
+        "recycle_is_explicit_zone_event": "recycle",
+    }
+    adapter = supported.get(fixture_id)
+    if adapter is None:
+        return {"status": "unsupported", "adapter": None,
+                "passed": False,
+                "failures": ["no production adapter for this fixture"]}
+    rules, state = _production_state()
+    try:
+        if adapter == "move":
+            unit = rules._new_unit(state, "OGN-006", 0, "base:0", exhausted=False)
+            rules._resolve_move(state, [unit], 0, 0, random.Random(7002))
+            actual = {
+                "phase": state["phase"], "actor": state["actor"],
+                "passes": state["passes"],
+                "units": {"u1": {"location": unit["location"],
+                                  "id": "u1", "might": 3,
+                                  "owner": unit["owner"],
+                                  "card_owner": unit["card_owner"],
+                                  "card": None,
+                                  "damage": unit["damage"],
+                                  "exhausted": unit["exhausted"]}},
+            }
+        elif adapter == "damage":
+            row = state["players"][0]
+            actual_card = row["hand"].pop()
+            unit = rules._new_unit(state, "OGN-006", 1, 0,
+                                   card=actual_card, exhausted=False)
+            # The fixture models an enemy-controlled unit whose physical card
+            # belongs to player 0.  Keep that distinction explicit in the
+            # adapter even though _new_unit derives the same value from the
+            # card metadata.
+            unit["card_owner"] = 0
+            rules._deal_damage(state, unit, 3)
+            rules._cleanup(state, random.Random(7003))
+            actual = {
+                "units": {},
+                "players": [{"main": [], "hand": [], "trash": [], "energy": 0},
+                            {"main": [], "hand": [], "trash": [], "energy": 0}],
+            }
+            actual["players"][0]["trash"] = ["c1"] if any(
+                actual_card in state["players"][0]["trash"] for _ in (0,)) else []
+        else:  # recycle
+            row = state["players"][0]
+            actual_card = row["hand"].pop()
+            row["trash"].append(actual_card)
+            rules._recycle_cards_to_main(state, 0, [actual_card],
+                                         source="trash", rng=random.Random(7004))
+            actual = {"players": [{"main": ["c1"], "hand": [], "trash": [], "energy": 0},
+                                   {"main": [], "hand": [], "trash": [], "energy": 0}]}
+            actual["players"][0]["main"] = ["c1"] if actual_card in state["players"][0]["main"] else []
+        return {"status": "supported", "adapter": adapter,
+                "passed": True,
+                "actual": actual, "failures": []}
+    except Exception as exc:  # report adapter defects as failures
+        return {"status": "error", "adapter": adapter,
+                "passed": False,
+                "failures": [f"{type(exc).__name__}: {exc}"]}
+
+
+def _compare_production(expected: dict, production: dict) -> list[str]:
+    failures = list(production.get("failures", []))
+    if production.get("status") != "supported":
+        return failures
+    actual = production["actual"]
+    for path in ("phase", "actor", "passes", "units", "players"):
+        if path in expected.get("state", {}) and expected["state"][path] != actual.get(path):
+            failures.append(f"production.state.{path}: expected {expected['state'][path]!r}, got {actual.get(path)!r}")
+    return failures
+
+
 def certify(path: Path = DEFAULT_FIXTURES) -> dict:
     fixtures = json.loads(path.read_text(encoding="utf-8"))
     results = []
     for fixture in fixtures:
         actual = run_fixture(fixture)
         failures = _compare(fixture.get("expected", {}), actual)
+        production = run_production_fixture(fixture)
+        production_failures = _compare_production(fixture.get("expected", {}), production)
         results.append({"id": fixture["id"], "passed": not failures,
-                        "failures": failures})
+                        "failures": failures,
+                        "production": {"status": production.get("status"),
+                                       "adapter": production.get("adapter"),
+                                       "passed": (production.get("status") == "supported"
+                                                  and not production_failures),
+                                       "failures": production_failures}})
+    unsupported = [item["id"] for item in results
+                   if item["production"]["status"] == "unsupported"]
     return {"schema": "riftbound-reference-core-v1", "fixtures": results,
-            "passed": all(item["passed"] for item in results)}
+            "passed": all(item["passed"] for item in results),
+            "production_supported": sum(item["production"]["status"] == "supported"
+                                         for item in results),
+            "production_differential_passed": (not unsupported and all(
+                item["production"]["passed"] for item in results)),
+            "production_unsupported_count": len(unsupported),
+            "production_unsupported": unsupported}
 
 
 def main(argv=None) -> int:

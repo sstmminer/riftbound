@@ -11,6 +11,9 @@ class ReferenceRulesTests(unittest.TestCase):
         report = certify(Path(__file__).parent / "golden" / "core_scenarios.json")
         self.assertTrue(report["passed"], report)
         self.assertEqual(len(report["fixtures"]), 7)
+        self.assertEqual(report["production_supported"], 3)
+        self.assertFalse(report["production_differential_passed"])
+        self.assertEqual(report["production_unsupported_count"], 4)
 
     def test_reference_model_does_not_share_production_imports(self):
         module_text = Path("tools/reference_rules.py").read_text(encoding="utf-8")

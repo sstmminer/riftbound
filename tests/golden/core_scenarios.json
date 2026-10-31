@@ -9,7 +9,7 @@
     ],
     "expected": {
       "state": {
-        "phase": "main",
+        "phase": "showdown",
         "actor": 0,
         "passes": 0,
         "units": {"u1": {"id": "u1", "owner": 0, "card_owner": 0,
@@ -17,7 +17,8 @@
           "exhausted": true}},
         "events": [
           {"kind": "move", "unit": "u1", "origin": "base:0",
-           "destination": 0, "actor": 0}
+           "destination": 0, "actor": 0},
+          {"kind": "showdown", "field": 0, "actor": 0}
         ]
       }
     }

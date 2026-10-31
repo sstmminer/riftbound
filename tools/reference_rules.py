@@ -94,7 +94,7 @@ class ReferenceRules:
         if isinstance(destination, int):
             enemies = [unit for unit in state["units"].values()
                        if unit["owner"] != actor and unit["location"] == destination]
-            if enemies:
+            if state["fields"][destination]["controller"] != actor or enemies:
                 state["phase"] = "showdown"
                 state["actor"] = actor
                 self._event(state, "showdown", field=destination, actor=actor)

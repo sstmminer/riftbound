@@ -564,6 +564,34 @@ class OriginsTests(unittest.TestCase):
         self.assertTrue(state["decision"].get("accelerate"))
         self.act(state, "choose_option", option="skip")
 
+    def test_hand_of_noxus_does_not_count_the_pending_accelerate_card(self):
+        state = self.scenario()
+        row = state["players"][0]
+        row["legend"] = "OGN-253"
+        row["legend_exhausted"] = False
+        row["played"] = 0
+        uid = self.hand(state, "OGN-010")
+        self.act(state, "play_unit", card=uid, location="base:0")
+        self.assertTrue(state["decision"].get("accelerate"))
+        self.assertFalse(any(action.kind == "legend_energy"
+                             for action in self.rules.legal_actions(state)))
+        self.act(state, "choose_option", option="skip")
+        self.assertTrue(any(action.kind == "legend_energy"
+                            for action in self.rules.legal_actions(state)))
+
+    def test_accelerate_after_finalized_card_allows_hand_of_noxus(self):
+        """After a different card has finalized, Legion is active for Accelerate."""
+        state = self.scenario()
+        row = state["players"][0]
+        row["legend"] = "OGN-253"
+        row["legend_exhausted"] = False
+        row["played"] = 1
+        uid = self.hand(state, "OGN-010")
+        self.act(state, "play_unit", card=uid, location="base:0")
+        self.assertTrue(state["decision"].get("accelerate"))
+        self.assertIn("legend_energy",
+                      {action.kind for action in self.rules.legal_actions(state)})
+
     def test_magma_wurm_only_other_units_enter_ready(self):
         state = self.scenario()
         uid = self.hand(state, "OGN-011")

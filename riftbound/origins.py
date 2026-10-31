@@ -1835,7 +1835,7 @@ class OriginsRules:
         row = state["players"][player]
         if spec.action_kind == "unit_caitlyn" and not self._is_field(state, heimer["location"]):
             return False
-        if spec.action_kind == "legend_energy" and not row["played"]:
+        if spec.action_kind == "legend_energy" and not self._played_for_legion(state, player):
             return False
         if spec.action_kind == "legend_channel":
             if not row["rune_deck"] or not any(option["owner"] == player for option in state.get("legend_options", [])):
@@ -1942,8 +1942,12 @@ class OriginsRules:
         if spec.timing == "reaction" and state.get("phase") not in {"chain", "showdown"} \
                 and not accelerate_window:
             raise ValueError("copied Reaction ability is unavailable outside a reaction window")
-        action = spec.action_kind
         row = state["players"][player]
+        if (spec.action_kind == "legend_energy"
+                and (row["legend"] != "OGN-253" or row["legend_exhausted"]
+                     or not self._played_for_legion(state, player))):
+            raise ValueError("copied Hand of Noxus Legion ability is unavailable")
+        action = spec.action_kind
         # Every copied ability exhausts the activating Heimer exactly once.
         source["exhausted"] = True
         if action == "unit_caitlyn":
@@ -1969,6 +1973,9 @@ class OriginsRules:
         elif action == "unit_buff":
             source["buff"] += 1
         elif action == "legend_energy":
+            if (row["legend"] != "OGN-253" or row["legend_exhausted"]
+                    or not self._played_for_legion(state, player)):
+                raise ValueError("copied Hand of Noxus Legion ability is unavailable")
             row["energy"] += 1
         elif action == "legend_spell_power":
             row["power"].append("spell_any")
@@ -2255,7 +2262,13 @@ class OriginsRules:
                 # registry.  This deliberately excludes non-E abilities such
                 # as Vi/Udyr and automatically picks up future registrations.
                 result.extend(self._heimer_registry_actions(state, player, unit))
-        if row["legend"] == "OGN-253" and not row["legend_exhausted"] and row["played"]:
+        # During an Accelerate payment window the unit being played has been
+        # removed from hand and is represented on the Board, but its play
+        # process has not completed. Hand of Noxus' Legion condition must use
+        # the number of cards played before this pending unit, rather than the
+        # provisional row["played"] count that includes it.
+        played_for_legion = self._played_for_legion(state, player)
+        if row["legend"] == "OGN-253" and not row["legend_exhausted"] and played_for_legion:
             result.append(Action.make("legend_energy"))
         if row["legend"] == "OGN-247" and not row["legend_exhausted"]:
             result.append(Action.make("legend_spell_power"))
@@ -2297,6 +2310,21 @@ class OriginsRules:
                            for u in self._units(state, player)
                            if u["code"] == "OGN-121")
         return result
+
+    def _played_for_legion(self, state, player):
+        """Return cards finalized before the currently pending play.
+
+        ``players[player]['played']`` is a turn-local process counter and is
+        incremented when a card enters the play path. During Accelerate the
+        current unit is still Pending, so Legion must use the saved count from
+        before that unit entered the process (RUP5 350.1, 420.4.b, 812.1.c).
+        """
+        row = state["players"][player]
+        count = row.get("played", 0)
+        pending = (state.get("decision") or {}).get("accelerate")
+        if pending and pending.get("player", player) == player:
+            return int(pending.get("played_before", max(0, count - 1)))
+        return count
 
     def _accelerate_resource_actions(self, state, player):
         """Resource Add abilities legal while paying an Accelerate cost.
@@ -5927,6 +5955,9 @@ class OriginsRules:
             state["optional_ordered"] = True
             state["passes"] = 0
         elif kind == "legend_energy":
+            if (row["legend"] != "OGN-253" or row["legend_exhausted"]
+                    or not self._played_for_legion(state, player)):
+                raise ValueError("Hand of Noxus Legion ability is unavailable")
             row["legend_exhausted"] = True
             row["energy"] += 1
             state["passes"] = 0
@@ -6237,7 +6268,8 @@ class OriginsRules:
             card = args["card"]
             code = state["cards"][card]["code"]
             data = self.cards[code]
-            was_legion = row["played"] > 0
+            played_before = row["played"]
+            was_legion = played_before > 0
             if kind == "play_unit":
                 ignore_cost = bool(args.get("ignore_cost"))
                 additional_cost = bool(args.get("additional_cost"))
@@ -6416,6 +6448,7 @@ class OriginsRules:
                         "accelerate": {
                             "unit": unit["id"], "player": player,
                             "code": code, "location": args["location"],
+                            "played_before": played_before,
                             "domains": list(data["domains"]),
                             "triggers": copy.deepcopy(triggers),
                             "scrapyard_discard": code == "OGN-020" and was_legion,

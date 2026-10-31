@@ -269,7 +269,7 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 - 同步重检了容易受反应影响的普通目标：Gust 结算时重新检查 Might≤3；Get Excited、Rebuke、Fading Memories、Hidden Blade 等“at a battlefield”目标离场后不再执行；Singularity 可以合法选择基地单位；Facebreaker 的友军/敌军同场配对失效时不再单独眩晕剩余单位；Back to Back、Challenge、Last Breath、Zenith Blade、Shakedown、Meditation 等路径重新检查控制者、准备状态和战场限制。
 - 仍需单独迁移的高优先机制是 Falling Comet（FAQ 中的 Falling Star）与 Icathian Rain：当前牌池仍沿用旧的目标窗口，而官方 FAQ 已将它们解释为无目标法术结算后创建 Reflexive Trigger。迁移方案是先完成法术本体，再逐个创建统一目标触发；这项工作未在本轮混入 Fox-Fire 修复，避免把两种时点模型混在一起。
 - GUI 目标交互审计：普通目标、Hidden 目标、装备/单位技能目标、战场目标和结算链目标均通过左键选择；多目标使用统一的临时目标序列窗口并要求“确认目标”，可取消重选，重复分配按顺序记录。决策窗口期间右键不会再偷偷改变目标，也不会打开复杂组合菜单；Hidden 和装备能力可用左键启动，符文在目标窗口中也优先作为目标处理。右键保留给非决策状态下的区域操作和资源菜单。
-- Accelerate 时序按 RUP5 355.1.a、357.1.a、357.2、430.2/430.3、445.2.c、805.1/805.2/805.6 修正：这是打出单位过程中的 Pay Costs 临时窗口，不是普通优先权窗口。只有带 Reaction 的 Add-resource 能力可以在此时立即结算；Hand of Noxus、Seal/Energy Conduit 和 Heimer 复制的资源能力现在可用，Daughter of the Void 因“仅用于打出法术”不会出现。普通 Reaction 法术不能在这里响应；支付完成后由 Accelerate 的延迟替代效果使单位直接以就绪状态进入，之后才恢复正常优先权。GUI 底部不再列出横置/回收符文按钮，符文区直接操作，底部只保留加速/跳过和资源能力按钮。
+- Accelerate 时序按 RUP5 355.1.a、357.1.a、357.2、430.2/430.3、445.2.c、805.1/805.2/805.6 修正：这是打出单位过程中的 Pay Costs 临时窗口，不是普通优先权窗口。只有带 Reaction 的 Add-resource 能力可以在此时立即结算；Hand of Noxus、Seal/Energy Conduit 和 Heimer 复制的资源能力现在可用，Daughter of the Void 因“仅用于打出法术”不会出现。普通 Reaction 法术不能在这里响应；支付完成后由 Accelerate 的延迟替代效果使单位直接以就绪状态进入，之后才恢复正常优先权。GUI 底部不再列出横置/回收符文按钮，符文区直接操作，底部只保留加速/跳过和资源能力按钮。根据 RUP5 350.1、420.4.b、812.1.c，支付中的当前单位仍是 Pending，不能满足 Hand of Noxus 的 Legion；只有本回合更早已 Finalized 的另一张牌才会开放该能力。
 
 ### 本轮优先完成的三项
 

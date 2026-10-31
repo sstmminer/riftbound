@@ -740,6 +740,29 @@ class OriginsRules:
             "id": f"o{state['next_object']}", "player": player, "effect": effect, **payload
         })
 
+    def _queue_battlefield_optional(self, state, player, effect, **payload):
+        """Queue a battlefield may-effect after one score event completes.
+
+        Beginning Phase scoring can inspect more than one controlled
+        battlefield.  Collecting these triggers until all score events have
+        been generated prevents the first field from opening a decision window
+        while the remaining fields are still being evaluated.  The normal
+        optional queue then applies the same ordering window (RUP5 383.3.d/e)
+        to the collected abilities.
+        """
+        if state.get("collecting_battlefield_triggers"):
+            state.setdefault("deferred_battlefield_optionals", []).append(
+                {"player": player, "effect": effect, **payload})
+            return
+        self._queue_optional(state, player, effect, **payload)
+
+    def _flush_deferred_battlefield_optionals(self, state):
+        deferred = state.pop("deferred_battlefield_optionals", [])
+        for trigger in deferred:
+            trigger = dict(trigger)
+            self._queue_optional(state, trigger.pop("player"),
+                                 trigger.pop("effect"), **trigger)
+
     def _complete_death_replacement(self, state, target_id):
         """Consume a chosen death replacement and discard sibling choices."""
         pending = state.get("death_pending")
@@ -835,29 +858,6 @@ class OriginsRules:
         if data["type"] == "unit" and unit_target is not None:
             candidates = list(unit_target.get("candidates", []))
             if candidates:
-                payment = []
-                required_energy = 0 if ignore_energy else max(0, data["energy"] - energy_reduction)
-                if not free_all:
-                    choices = self._payments(state, owner, required_energy,
-                                             data["domains"], data["power_cost"])
-                    if not choices:
-                        return
-                    payment = choices[0]
-                    if len(choices) > 1:
-                        state["decision"] = {
-                            "kind": "free_play_payment", "player": owner,
-                            "payments": choices,
-                            "targets": candidates,
-                            "free_play_unit": {
-                                "owner": owner, "card": card,
-                                "card_owner": card_owner if card_owner is not None else owner,
-                                "parent": parent, "ignore_energy": ignore_energy,
-                                "free_all": free_all, "payment": None,
-                                "energy_reduction": energy_reduction,
-                            },
-                        }
-                        state["phase"], state["actor"], state["passes"] = "decision", owner, 0
-                        return
                 state["decision"] = {
                     "kind": "target", "player": owner,
                     "targets": candidates, "item": parent,
@@ -865,7 +865,12 @@ class OriginsRules:
                         "owner": owner, "card": card,
                         "card_owner": card_owner if card_owner is not None else owner,
                         "parent": parent, "ignore_energy": ignore_energy,
-                        "free_all": free_all, "payment": payment,
+                        "free_all": free_all,
+                        # Entry target selection precedes the resource window.
+                        # This mirrors ordinary targeted plays and prevents a
+                        # nested free play from exposing payment choices before
+                        # the player has confirmed the actual target.
+                        "payment": [] if free_all else None,
                         "energy_reduction": energy_reduction,
                     },
                 }
@@ -1812,14 +1817,15 @@ class OriginsRules:
                 candidate = next((uid for uid in row["trash"]
                                   if state["cards"][uid]["code"] == chosen), None)
                 if candidate is not None:
-                    self._queue_optional(state, player, "return_champion", candidate=candidate)
+                    self._queue_battlefield_optional(
+                        state, player, "return_champion", candidate=candidate)
             elif code == "OGN-286":
                 for _ in range(sum(u["code"] == "OGN-039" for u in self._units(state, player, field))):
                     self._draw(state, player, 1, rng)
             elif code == "OGN-293" and len(self._units(state, player, field)) >= 7:
                 state["winner"] = player
             elif code == "OGN-288" and state["players"][player]["rune_deck"]:
-                self._queue_optional(state, player, "channel_rune")
+                self._queue_battlefield_optional(state, player, "channel_rune")
         if result in {"point", "draw"} and method == "hold":
             for unit in list(self._units(state, player, field)):
                 if unit["code"] == "OGN-067":
@@ -1841,7 +1847,7 @@ class OriginsRules:
                 # when more than one legal unit exists (and also handles the
                 # single-target case consistently).
                 if any(u["buff"] for u in self._units(state, player, field)):
-                    self._queue_optional(state, player, "spend_buff_draw")
+                    self._queue_battlefield_optional(state, player, "spend_buff_draw")
             elif code == "OGN-287":
                 self._recycle_one_rune(state, player)
             elif code == "OGN-289":
@@ -1850,7 +1856,7 @@ class OriginsRules:
                 # the effect cannot ready runes immediately during scoring.
                 state.setdefault("targon_pending", []).append(player)
             elif code == "OGN-291":
-                self._queue_optional(state, player, "recycle_top_two")
+                self._queue_battlefield_optional(state, player, "recycle_top_two")
             elif code == "OGN-298":  # Zaun Warrens
                 row = state["players"][player]
                 if row["hand"]:
@@ -1917,11 +1923,21 @@ class OriginsRules:
             self._cleanup(state, rng)
             if state["winner"] is not None:
                 return
-        for field, obj in enumerate(state["fields"]):
-            if obj["controller"] == player:
-                self._score(state, player, field, "hold", rng)
-                if state["winner"] is not None:
-                    return
+        # A player may control multiple battlefields whose Hold abilities
+        # trigger from this Beginning Phase.  Generate all of those score
+        # events before exposing any optional decision so the player can order
+        # the simultaneous abilities in one window.
+        state["collecting_battlefield_triggers"] = True
+        try:
+            for field, obj in enumerate(state["fields"]):
+                if obj["controller"] == player:
+                    self._score(state, player, field, "hold", rng)
+                    if state["winner"] is not None:
+                        return
+        finally:
+            state.pop("collecting_battlefield_triggers", None)
+        if state.get("decision") is None and state.get("reveal") is None:
+            self._flush_deferred_battlefield_optionals(state)
         # Mushroom Pouch checks the facedown zone at the beginning of its
         # controller's turn, after beginning-of-turn cleanup and before draw.
         if any(g["code"] == "OGN-101" for g in row["gear"]):
@@ -4034,6 +4050,65 @@ class OriginsRules:
         state["phase"], state["actor"] = "decision", item["owner"]
         return False
 
+    def _complete_free_play_unit_target(self, state, info, target, rng,
+                                        payment_override=None):
+        """Finish a free unit play after its entry target is confirmed.
+
+        Target selection is a part of the play process.  Keep the physical
+        card in its source zone until both the target and any required
+        payment are confirmed; this is especially important for nested free
+        plays because an aborted child must leave its parent continuation
+        intact.
+        """
+        owner, card = info["owner"], info["card"]
+        data = self.cards[state["cards"][card]["code"]]
+        payment = payment_override
+        if payment is None:
+            if info.get("free_all"):
+                payment = []
+            else:
+                required_energy = (0 if info.get("ignore_energy") else
+                                   max(0, data["energy"] - int(info.get("energy_reduction", 0))))
+                choices = self._payments(state, owner, required_energy,
+                                         data["domains"], data["power_cost"])
+                if not choices:
+                    self._abandon_free_play(state, info)
+                    return
+                if len(choices) > 1:
+                    state["decision"] = {
+                        "kind": "free_play_payment", "player": owner,
+                        "payments": choices, "targets": [target],
+                        "free_play_unit": {
+                            **info, "payment": None, "enter_target": target,
+                        },
+                    }
+                    state["phase"], state["actor"], state["passes"] = (
+                        "decision", owner, 0)
+                    return
+                payment = choices[0]
+        physical = state["players"][info.get("card_owner", owner)]
+        row = state["players"][owner]
+        if card in physical.get("banishment", []):
+            physical["banishment"].remove(card)
+        if card not in row["hand"]:
+            row["hand"].append(card)
+        state["decision"] = None
+        state["phase"], state["actor"], state["passes"] = "chain", owner, 0
+        self.apply(state, Action.make(
+            "play_unit", card=card, location=f"base:{owner}",
+            accelerate=False, payment=list(payment or []),
+            enter_target=target,
+            ignore_cost=((not info.get("ignore_energy")
+                          and not info.get("energy_reduction"))
+                         or bool(info.get("free_all"))),
+            ignore_energy=bool(info.get("ignore_energy")) or bool(info.get("free_all")),
+            energy_reduction=int(info.get("energy_reduction", 0)),
+            free_play_parent=True), rng)
+        parent = info.get("parent")
+        if (parent is not None and parent in state.get("chain", [])
+                and state.get("phase") == "main"):
+            state["phase"], state["actor"] = "chain", state["chain"][-1]["owner"]
+
     def _complete_free_play_target(self, state, decision, selected, rng):
         """Move a revealed card into the controller's hand and play it.
 
@@ -5672,6 +5747,11 @@ class OriginsRules:
                             and state.get("phase") == "main"):
                         state["phase"], state["actor"] = "chain", state["chain"][-1]["owner"]
                     return
+                if info.get("enter_target") is not None:
+                    self._complete_free_play_unit_target(
+                        state, info, info["enter_target"], rng,
+                        payment_override=payment)
+                    return
                 state["decision"] = {
                     "kind": "target", "player": player,
                     "targets": list(decision.get("targets", [])),
@@ -5894,6 +5974,8 @@ class OriginsRules:
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "main", player, 0
                     self._cleanup(state, rng)
+                    if state.get("decision") is None and state.get("reveal") is None:
+                        self._flush_deferred_battlefield_optionals(state)
                     return
                 if decision.get("counter_retarget_choice"):
                     item = decision["item"]
@@ -6401,32 +6483,10 @@ class OriginsRules:
                                                    enter_target=args["target"]), rng)
                     return
                 if decision.get("free_play_unit"):
-                    info = decision["free_play_unit"]
-                    owner = info["owner"]
-                    card = info["card"]
-                    physical = state["players"][info.get("card_owner", owner)]
-                    row = state["players"][owner]
-                    if card in physical.get("banishment", []):
-                        physical["banishment"].remove(card)
-                    if card not in row["hand"]:
-                        row["hand"].append(card)
-                    state["decision"] = None
-                    state["phase"], state["actor"], state["passes"] = "chain", owner, 0
-                    self.apply(state, Action.make(
-                        "play_unit", card=card, location=f"base:{owner}",
-                        accelerate=False, payment=list(info.get("payment", [])),
-                        enter_target=args["target"],
-                        ignore_cost=((not info.get("ignore_energy")
-                                      and not info.get("energy_reduction") )
-                                     or bool(info.get("free_all"))),
-                        ignore_energy=bool(info.get("ignore_energy")) or bool(info.get("free_all")),
-                        energy_reduction=int(info.get("energy_reduction", 0)),
-                        free_play_parent=True), rng)
-                    parent = info.get("parent")
-                    if (parent is not None and parent in state.get("chain", [])
-                            and state.get("phase") == "main"):
-                        state["phase"], state["actor"], state["passes"] = (
-                            "chain", state["chain"][-1]["owner"], 0)
+                    info = dict(decision["free_play_unit"])
+                    info["enter_target"] = args["target"]
+                    self._complete_free_play_unit_target(
+                        state, info, args["target"], rng)
                     return
                 if decision.get("multi"):
                     selected = decision.setdefault("selected", [])

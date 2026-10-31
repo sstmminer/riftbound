@@ -112,6 +112,41 @@ class CrossRegionInteractionTests(unittest.TestCase):
         self.assertEqual(self.state["chain"][-1]["targets"], [target["id"]])
         self.assertEqual(self.state["chain"][-2]["code"], "OGN-115")
 
+    def test_nested_free_unit_target_precedes_payment_and_preserves_parent(self):
+        """A targeted child play must not expose payment before its target.
+
+        Dangerous Duo is the current unit example with a Legion entry target.
+        The real card has no Power cost, so the fixture gives it a temporary
+        one solely to force multiple legal payment combinations and exercise
+        the shared payment continuation.
+        """
+        row = self.state["players"][0]
+        row["finalized_played"] = 1
+        row["played"] = 1
+        self.rules.cards["OGN-016"]["power_cost"] = 1
+        card = self.card(0, "OGN-016")
+        row["banishment"].append(card)
+        target = self.unit(0, location=0)
+        parent = {"effect": "spell", "owner": 0, "code": "OGN-115", "card": None}
+        self.state["chain"] = [parent]
+        self.state["phase"], self.state["actor"] = "chain", 0
+
+        self.rules._free_play_revealed_card(
+            self.state, 0, card, parent, random.Random(101),
+            card_owner=0)
+        self.assertEqual(self.state["decision"]["kind"], "target")
+        self.assertEqual(self.state["decision"]["targets"], [target["id"]])
+
+        self.apply("choose_target", target=target["id"])
+        self.assertEqual(self.state["decision"]["kind"], "free_play_payment")
+        self.assertEqual(
+            self.state["decision"]["free_play_unit"]["enter_target"], target["id"])
+
+        payment = self.state["decision"]["payments"][0]
+        self.apply("choose_payment", payment=payment)
+        self.assertTrue(any(unit.get("card") == card for unit in self.state["units"]))
+        self.assertEqual(sum(entry is parent for entry in self.state["chain"]), 1)
+
     def test_recycle_event_exposes_karma_target_and_hides_it_from_opponent(self):
         karma_card = self.card(0, "OGN-235")
         karma = self.rules._new_unit(

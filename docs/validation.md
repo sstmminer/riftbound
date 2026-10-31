@@ -29,5 +29,8 @@ python tools/stable_baseline.py --seeds 10 --output artifacts/stable-baseline.js
 
 最近一次单种子烟雾结果：388 项测试通过，贪心/随机各 1 局均正常终局，0 死锁、0 截断、2/2 回放校验通过；随机局记录 27 次语义状态重复，均来自可逆符文操作。
 
+最终 10 种子稳定门（贪心与随机各 10 局）共 20/20 局正常终局，0 死锁、0 截断、0 Replay mismatch；
+该运行使用 `--max-steps 3000 --skip-tests`，单元测试另行通过 388 项。
+
 完整认证门（`python tools/full_certification.py --seeds 1 --max-steps 300 --skip-tests`）的目录分区、AbilityRegistry、独立结构契约和稳定运行检查均通过；报告仍为
 `certified=false`，因为独立规则裁判、复杂跨区域/嵌套结算、递归复制/替代效果和部分战场交互矩阵尚未达到裁判级差分覆盖。

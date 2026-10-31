@@ -657,7 +657,8 @@ class OriginsRules:
         state["decision"] = {
             "kind": "choice", "player": owner,
             "options": ["nocturne_banish", "nocturne_skip"],
-            "nocturne_reveal": {"card": card, "owner": owner},
+            "nocturne_reveal": {"card": card, "owner": owner,
+                                "aurora_stop": reveal.get("effect") == "dazzling_aurora"},
         }
         state["phase"], state["actor"], state["passes"] = "decision", owner, 0
         return True
@@ -4633,14 +4634,18 @@ class OriginsRules:
                             raise ValueError("Nocturne is no longer in the revealed deck segment")
                         row["main"].remove(card)
                         row["banishment"].append(card)
-                        if reveal is not None and card in reveal.get("cards", []):
+                        aurora_stop = decision["nocturne_reveal"].get("aurora_stop", False)
+                        if reveal is not None and card in reveal.get("cards", []) and not aurora_stop:
                             reveal["cards"].remove(card)
                         if reveal is not None and card in reveal.get("choices", []):
                             reveal["choices"].remove(card)
+                        if reveal is not None and aurora_stop:
+                            reveal["aurora_nocturne_banished"] = card
                         state["decision"] = {
                             "kind": "choice", "player": owner,
                             "options": ["nocturne_play", "nocturne_leave"],
-                            "nocturne_play": {"card": card, "owner": owner},
+                            "nocturne_play": {"card": card, "owner": owner,
+                                               "aurora_stop": aurora_stop},
                         }
                         return
                     raise ValueError("invalid Nocturne replacement choice")
@@ -4649,6 +4654,9 @@ class OriginsRules:
                     owner = decision["nocturne_play"]["owner"]
                     row = state["players"][owner]
                     if option == "nocturne_leave":
+                        if decision["nocturne_play"].get("aurora_stop"):
+                            self._finish_reveal(state, [], rng)
+                            return
                         self._resume_reveal_after_nocturne(state)
                         return
                     if option != "nocturne_play":
@@ -4661,6 +4669,16 @@ class OriginsRules:
                         raise ValueError("Nocturne is no longer in Banishment")
                     row["banishment"].remove(card)
                     row["hand"].append(card)
+                    if decision["nocturne_play"].get("aurora_stop"):
+                        reveal = state.get("reveal")
+                        parent = reveal.get("item") if reveal is not None else {
+                            "effect": "dazzling_aurora_continue", "owner": owner}
+                        state["decision"] = None
+                        state["reveal"] = None
+                        self._free_play_revealed_card(
+                            state, owner, card, parent, rng, free_all=True,
+                            card_owner=owner)
+                        return
                     self.apply(state, Action.make("play_unit", card=card,
                                                   location=f"base:{owner}", accelerate=False,
                                                   payment=[], enter_target=None,
@@ -6525,13 +6543,11 @@ class OriginsRules:
             return {"id": uid, "code": state["cards"][uid]["code"]}
         reveal = copy.deepcopy(state.get("reveal"))
         if reveal is not None:
-            if not (state.get("decision", {}).get("nocturne_reveal")
-                    and state["decision"].get("player") != player):
-                reveal["cards"] = [card(uid) for uid in reveal.get("cards", [])]
-                reveal["selected"] = [card(uid) for uid in reveal.get("selected", [])]
-            else:
-                reveal["cards"] = []
-                reveal["selected"] = []
+            # Public reveal means every player may look at the front faces.
+            # Nocturne's replacement choice belongs to the deck owner, but
+            # it does not hide a card that the effect has revealed.
+            reveal["cards"] = [card(uid) for uid in reveal.get("cards", [])]
+            reveal["selected"] = [card(uid) for uid in reveal.get("selected", [])]
         public_players = []
         for index, row in enumerate(state["players"]):
             public_players.append({"hand_count": len(row["hand"]), "main_count": len(row["main"]),

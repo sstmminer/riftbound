@@ -57,6 +57,10 @@ class OriginsGUI(tk.Tk):
         self._preview = None
         self._decision_signature = None
         self._reveal_window = None
+        # Aurora remains one-card-at-a-time in the backend; the GUI batches
+        # public non-unit cards into one recycle confirmation.
+        self._aurora_batch_cards = []
+        self._aurora_batch_job = None
         self._target_window = None
         self._opponent_job = None
         self._winner_announced = False
@@ -1185,6 +1189,13 @@ class OriginsGUI(tk.Tk):
 
     def render(self):
         obs = self.env.observe(0)
+        self._schedule_human_aurora_batch(obs)
+        if not obs.get("reveal") and obs.get("phase") != "reveal":
+            chain_effects = {item.get("effect") for item in (obs.get("chain") or [])}
+            pending_effects = {item.get("effect") for item in (obs.get("pending") or [])}
+            if not ({"dazzling_aurora_continue", "dazzling_aurora"}
+                    & (chain_effects | pending_effects)):
+                self._aurora_batch_cards.clear()
         if obs["phase"] != "main" or obs["to_act"] != 0:
             self.selected_units.clear()
         if obs["phase"] != "mulligan" or obs["to_act"] != 0:
@@ -1211,6 +1222,47 @@ class OriginsGUI(tk.Tk):
         if obs["winner"] is not None and not self._winner_announced:
             self._winner_announced = True
             messagebox.showinfo("对局结束", f"玩家 {obs['winner']} 获胜。")
+
+    def _schedule_human_aurora_batch(self, obs):
+        """Batch non-unit Aurora reveals even when the human is the closer."""
+        reveal = obs.get("reveal")
+        if (self._aurora_batch_job is not None
+                or self.env.done
+                or self.env.current_player != 0
+                or not reveal
+                or reveal.get("kind") != "display"
+                or reveal.get("effect") != "dazzling_aurora"):
+            return
+        cards = reveal.get("cards", [])
+        code = cards[0].get("code") if len(cards) == 1 else None
+        if code is None or self.rules.cards.get(code, {}).get("type") == "unit":
+            return
+        self._aurora_batch_job = self.after_idle(self._batch_human_aurora_nonunits)
+
+    def _batch_human_aurora_nonunits(self):
+        self._aurora_batch_job = None
+        for _ in range(64):
+            if self.env.done or self.env.current_player != 0:
+                break
+            obs = self.env.observe(0)
+            reveal = obs.get("reveal") or {}
+            cards = reveal.get("cards", [])
+            code = cards[0].get("code") if len(cards) == 1 else None
+            if (reveal.get("kind") != "display"
+                    or reveal.get("effect") != "dazzling_aurora"
+                    or code is None
+                    or self.rules.cards.get(code, {}).get("type") == "unit"):
+                break
+            self._aurora_batch_cards.append(cards[0])
+            action = next((a for a in self.env.legal_actions()
+                           if a.kind == "end_reveal"), None)
+            if action is None:
+                break
+            before_obs = self.env.observe(0)
+            self.env.step(action)
+            self.log_add("玩家：Aurora 批量确认非单位牌 " + self._card_name(code))
+            self._log_transition(before_obs, self.env.observe(0))
+        self.render()
 
     def render_opponent(self, obs):
         body = self._clear("opponent")
@@ -1422,6 +1474,8 @@ class OriginsGUI(tk.Tk):
         reveal = obs.get("reveal")
         if reveal:
             self._render_reveal_bar(reveal, legal)
+            if self.env.current_player != 0 and self._opponent_job is None:
+                self._opponent_job = self.after(300, self.opponent_step)
             return
         optional = obs.get("optional") or []
         if optional and self.env.current_player == 0:
@@ -1517,6 +1571,15 @@ class OriginsGUI(tk.Tk):
         selected = {card["id"] for card in reveal.get("selected", [])}
         legal = self.env.legal_actions()
         actions = {json.loads(a.arguments).get("card"): a for a in legal if a.kind == "choose_revealed"}
+        batch = (self._aurora_batch_cards
+                 if reveal.get("effect") == "dazzling_aurora" else [])
+        if batch:
+            tk.Label(popup, text="Aurora 已翻出的非单位牌（将统一回收）",
+                     bg="#101b2b", fg="#d8e9ff", padx=8, pady=4).pack(fill="x")
+            for card in batch:
+                self._image_card(body, card["code"], uid=None, factor=3,
+                                 selected=False, click=False,
+                                 compact_label="待统一回收 · " + self._card_name(card["code"]))
         for card in reveal.get("cards", []):
             wrapper = self._image_card(body, card["code"], uid=None, factor=3,
                                        selected=card["id"] in selected, click=False,
@@ -1644,6 +1707,35 @@ class OriginsGUI(tk.Tk):
         legal = self.env.legal_actions()
         if not legal:
             return
+        obs = self.env.observe(0)
+        reveal = obs.get("reveal")
+        if (obs.get("phase") == "reveal" and reveal
+                and reveal.get("kind") == "display"
+                and reveal.get("effect") == "dazzling_aurora"):
+            cards = reveal.get("cards", [])
+            code = cards[0].get("code") if cards else None
+            if code is not None and self.rules.cards.get(code, {}).get("type") != "unit":
+                for _ in range(64):
+                    current = self.env.observe(0)
+                    reveal = current.get("reveal") or {}
+                    cards = reveal.get("cards", [])
+                    code = cards[0].get("code") if cards else None
+                    if (reveal.get("kind") != "display"
+                            or reveal.get("effect") != "dazzling_aurora"
+                            or code is None
+                            or self.rules.cards.get(code, {}).get("type") == "unit"):
+                        break
+                    self._aurora_batch_cards.append(cards[0])
+                    action = next((a for a in self.env.legal_actions()
+                                   if a.kind == "end_reveal"), None)
+                    if action is None:
+                        break
+                    before_obs = self.env.observe(0)
+                    self.env.step(action)
+                    self.log_add("对手：Aurora 批量确认非单位牌 " + self._card_name(code))
+                    self._log_transition(before_obs, self.env.observe(0))
+                self.render()
+                return
         action = self.opponent.choose(self.env.observe(1), legal) if self.opponent else legal[0]
         try:
             before_obs = self.env.observe(0)

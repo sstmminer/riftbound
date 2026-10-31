@@ -168,7 +168,11 @@ class NocturneRevealTests(unittest.TestCase):
                                 mode="select", chooser=0, minimum=0, maximum=1,
                                 effect="reinforce", choices=[other], rng=random.Random(1))
         self.assertEqual(self.state["phase"], "decision")
-        self.assertEqual(self.rules.observe(self.state, 1)["reveal"]["cards"], [])
+        # A reveal is public under the Origins FAQ; only the replacement
+        # decision belongs exclusively to the deck owner.
+        self.assertEqual(self.rules.observe(self.state, 1)["reveal"]["cards"],
+                         [{"id": self.card, "code": "OGN-194"},
+                          {"id": other, "code": self.state["cards"][other]["code"]}])
         skip = next(a for a in self.rules.legal_actions(self.state)
                     if json.loads(a.arguments).get("option") == "nocturne_skip")
         self.rules.apply(self.state, skip, random.Random(1))

@@ -265,8 +265,9 @@ class GearBatchTests(unittest.TestCase):
         self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
                                           if "nocturne_leave" in a.arguments), random.Random(4))
         self.assertIn(nocturne, row["banishment"])
-        self.finish_aurora(unit)
-        self.assertTrue(any(u.get("card") == unit for u in self.state["units"]))
+        # Official Origins FAQ: Aurora stops when it reveals Nocturne, even
+        # if Nocturne is banished and the [A] play is declined.
+        self.assertFalse(any(u.get("card") == unit for u in self.state["units"]))
 
 
 if __name__ == "__main__":

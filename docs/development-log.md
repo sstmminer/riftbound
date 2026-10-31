@@ -223,7 +223,7 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 
 ## RUP5/官方勘误与裁判级审计（2026-10-31）
 
-本次联网核对到的权威来源为：[Core Rules RUP5 PDF](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)、[Tournament Rules PDF](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/861752822d217edf37d9febaeaf77a7d924c1bb6.pdf)、[Origins Errata](https://riftbound.leagueoflegends.com/en-us/news/rules-and-releases/riftbound-origins-card-errata/)、[Core Rules Patch Notes](https://riftbound.leagueoflegends.com/en-us/news/rules-and-releases/riftbound-core-rules-patch-notes/) 和 [Radiance Patch Notes/官方裁定](https://playriftbound.com/en-us/news/announcements/core-rules-radiance-patch-notes-effective-october-16-2026/)。官方 Origins 勘误页面解析到 31 个卡名；其中 Dark Child/Highlander 不在本 Origins 298 张目录，Dragon's Rage/Lee Sin 存在目录别名。官方 Radiance 页面明确了“新选择全部重做、目标触发重新触发、pending 项不可选为目标、Negated 与 Ignored 的区别，以及多领域/无领域 Accelerate 的 [C]→[A] 处理”。官方页面同时说明后续 FAQ 仍会追加，因此目前不能声称公开裁判判例库已经完整。
+本次联网核对到的权威来源为：[Core Rules RUP5 PDF](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/5c7946f7c3b8c6e0faff85ab6dadc6d2e721ea94.pdf)、[Tournament Rules PDF](https://cmsassets.rgpub.io/sanity/files/dsfx7636/news_live/861752822d217edf37d9febaeaf77a7d924c1bb6.pdf)、[Origins Errata](https://riftbound.leagueoflegends.com/en-us/news/rules-and-releases/riftbound-origins-card-errata/)、[Origins FAQ](https://riftbound.leagueoflegends.com/en-us/news/rules-and-releases/riftbound-origins-faq)、[Core Rules Patch Notes](https://riftbound.leagueoflegends.com/en-us/news/rules-and-releases/riftbound-core-rules-patch-notes/) 和 [Radiance Patch Notes/官方裁定](https://playriftbound.com/en-us/news/announcements/core-rules-radiance-patch-notes-effective-october-16-2026/)。官方 Origins 勘误页面解析到 31 个卡名；其中 Dark Child/Highlander 不在本 Origins 298 张目录，Dragon's Rage/Lee Sin 存在目录别名。官方 Radiance 页面明确了“新选择全部重做、目标触发重新触发、pending 项不可选为目标、Negated 与 Ignored 的区别，以及多领域/无领域 Accelerate 的 [C]→[A] 处理”。官方页面同时说明后续 FAQ 仍会追加，因此目前不能声称公开裁判判例库已经完整。
 
 本次审计确认的剩余结算漏洞和受限事项：
 
@@ -237,6 +237,7 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
   接受后再点选要消耗 Buff 的友军；The Candlelit Sanctum（OGN-291）允许回收顶两张中的
   0/1/2 张，保留两张时额外打开排列顺序窗口。GUI 与事件日志均显示这些中间选择。
 
+- 按 Origins FAQ 的 Aurora/Nocturne 判例修正：Aurora 翻到 Nocturne 时即停止；Nocturne 可选择放逐并支付 [A] 打出，或不放逐而由 Aurora 免费打出，不能在之后继续翻牌。
 - 重做 Dazzling Aurora（OGN-160）流程：每张牌都通过统一公开 reveal 窗口逐张展示，由对手结束展示；
   非单位牌通过统一回收事件处理，单位牌进入普通免费出牌流程，入场触发、目标选择、Nocturne 替代和
   Karma 回收都在同一条 Chain continuation 中恢复。移除了原先直接创建单位的 Aurora 专用结算路径。

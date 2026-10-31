@@ -962,6 +962,10 @@ class OriginsGUI(tk.Tk):
         self.perform(action)
 
     def rune_menu(self, event, uid):
+        obs = self.env.observe(0) if self.env.current_player == 0 else None
+        if obs and obs.get("phase") == "decision" and obs.get("decision"):
+            self.set_notice("当前正在选择目标，请左键点选；右键菜单暂不可用。")
+            return
         menu = tk.Menu(self, tearoff=False)
         actions = [a for a in self.env.legal_actions()
                    if json.loads(a.arguments).get("rune") == uid]

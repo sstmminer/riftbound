@@ -4679,6 +4679,7 @@ class OriginsRules:
                         parent["advance_gear"] = True
                         state["decision"] = None
                         state["reveal"] = None
+                        state["phase"], state["actor"], state["passes"] = "chain", owner, 0
                         self._free_play_revealed_card(
                             state, owner, card, parent, rng, free_all=True,
                             card_owner=owner)

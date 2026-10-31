@@ -298,7 +298,8 @@ class OriginsRules:
         owner = unit["owner"]
         row = state["players"][owner]
         if any(power == "body" or power == "any" for power in row["power"]):
-            for source in self._registry_event_sources(state, owner, "gear.mistfall_ready"):
+            for source in self._registry_event_sources_for_event(
+                    state, owner, "friendly_unit_buffed"):
                 self._queue_optional(state, owner, "mistfall_ready",
                                      source=source["id"], copied=source["copied"],
                                      target=unit["id"],
@@ -456,7 +457,10 @@ class OriginsRules:
                     optional_specs.append({"effect": "armory_save", "target": unit["id"]})
                 if (unit.get("buff") and any(power in DOMAINS or power == "any"
                                               for power in row["power"])):
-                    for source in self._registry_event_sources(state, owner, "legend.the_boss_save"):
+                    for source in self._registry_event_sources_for_event(
+                            state, owner, "friendly_unit_would_die", timing="replacement"):
+                        if source.get("continuation") != "boss_save":
+                            continue
                         optional_specs.append({
                             "effect": "boss_save", "target": unit["id"],
                             "source": source["id"], "copied": source["copied"],
@@ -508,8 +512,10 @@ class OriginsRules:
                 if unit.get("stunned"):
                     for player in (0, 1):
                         if player != unit["owner"]:
-                            shrine_sources = self._registry_event_sources(
-                                state, player, "gear.solari_shrine_draw")
+                            shrine_sources = self._registry_event_sources_for_event(
+                                state, player, "stunned_enemy_destroyed")
+                            shrine_sources = [source for source in shrine_sources
+                                              if source.get("continuation") == "solari_shrine_draw"]
                             for shrine in shrine_sources:
                                 self._queue_optional(
                                     state, player, "solari_shrine_draw",
@@ -2240,6 +2246,19 @@ class OriginsRules:
         # optional-order window so the player may choose a different order.
         return sorted(sources, key=lambda source: (bool(source["copied"]), str(source["id"])))
 
+    def _registry_event_sources_for_event(self, state, player, event, *, timing=None):
+        """Resolve all registered sources subscribed to an event.
+
+        Event subscriptions are queried from the registry rather than from a
+        card-specific list.  This is the common path for native and Heimer
+        copies, including replacement effects; adding a new registered source
+        therefore does not require another branch in cleanup or trigger code.
+        """
+        sources = []
+        for spec in self.abilities.for_event(event, timing=timing):
+            sources.extend(self._registry_event_sources(state, player, spec.ability_id))
+        return sources
+
     def _resolve_registry_copy(self, state, player, args, rng, target=None):
         """Resolve a Heimer copied ability through its registered action kind."""
         spec = self.abilities.get(args["ability_id"])
@@ -3305,15 +3324,47 @@ class OriginsRules:
         state["phase"], state["actor"], state["passes"] = "chain", items[-1]["owner"], 0
         self._arm_chain_top(state)
 
-    def _triggers(self, state, triggers):
+    def _triggers(self, state, triggers, *, preserve_context=False):
+        """Put simultaneous triggered abilities on the Chain in rule order.
+
+        RUP5 383.3.d--e requires one controller to order their own
+        simultaneous triggers, then proceeds from the Turn Player in Turn
+        Order when multiple players control triggers.  The old implementation
+        exposed one permutation window for all owners, allowing the first
+        owner to put the opponent's triggers on the Chain.  Grouping by owner
+        keeps each choice private and appends the groups in APNAP/turn order;
+        the last group added remains the first to resolve from the Chain.
+        """
+        triggers = list(triggers or [])
         if not triggers:
             return
         if len(triggers) == 1:
-            self._enter_chain(state, triggers)
-        else:
-            state["pending"] = triggers
-            state["order_return"] = state["phase"]
-            state["phase"], state["actor"] = "trigger_order", triggers[0]["owner"]
+            self._enter_chain(state, triggers, preserve_context=preserve_context)
+            return
+        turn_player = state.get("turn_player", 0)
+        owner_order = [turn_player, 1 - turn_player]
+        groups = []
+        for owner in owner_order:
+            group = [item for item in triggers if item.get("owner", owner) == owner]
+            if group:
+                groups.append(group)
+        # Preserve malformed/future-source trigger records without silently
+        # dropping them; unknown owners are assigned after the two players and
+        # remain orderable by the turn player.
+        known = {id(item) for group in groups for item in group}
+        remainder = [item for item in triggers if id(item) not in known]
+        if remainder:
+            groups.append(remainder)
+        if len(groups) == 1 and len(groups[0]) == 1:
+            self._enter_chain(state, groups[0], preserve_context=preserve_context)
+            return
+        state["pending_trigger_groups"] = groups[1:]
+        state["pending"] = groups[0]
+        state["ordered_triggers"] = []
+        state["order_return"] = state["phase"]
+        state["preserve_chain_context"] = preserve_context
+        state["phase"], state["actor"] = "trigger_order", groups[0][0].get("owner", turn_player)
+        state["passes"] = 0
 
     def _trigger_target_candidates(self, state, item):
         """Return targets for a triggered ability during its finalization.
@@ -7360,12 +7411,26 @@ class OriginsRules:
                 self._cleanup(state, rng)
                 self._triggers(state, triggers)
         elif kind == "order_triggers":
-            pending = state["pending"]
+            pending = list(state.get("pending", []))
+            order = list(args.get("order", []))
+            if sorted(order) != list(range(len(pending))):
+                raise ValueError("trigger order must contain each pending trigger exactly once")
+            state.setdefault("ordered_triggers", []).extend(pending[i] for i in order)
+            groups = list(state.get("pending_trigger_groups", []))
+            if groups:
+                next_group = groups.pop(0)
+                state["pending_trigger_groups"] = groups
+                state["pending"] = next_group
+                state["phase"], state["actor"] = (
+                    "trigger_order", next_group[0].get("owner", state["turn_player"]))
+                state["passes"] = 0
+                return
+            ordered = state.pop("ordered_triggers", [])
             state["pending"] = []
+            state.pop("pending_trigger_groups", None)
             state["phase"] = state["order_return"]
             preserve_context = state.pop("preserve_chain_context", False)
-            self._enter_chain(state, [pending[i] for i in args["order"]],
-                              preserve_context=preserve_context)
+            self._enter_chain(state, ordered, preserve_context=preserve_context)
         elif kind == "begin_move":
             state["selection"] = {"destination": args["destination"], "units": []}
             state["phase"] = "move_select"
@@ -7472,15 +7537,8 @@ class OriginsRules:
                             if source["code"] == "OGN-117"
                         )
                 if generated:
-                    if len(generated) == 1:
-                        state["chain"].extend(generated)
-                        state["phase"], state["actor"], state["passes"] = "chain", generated[0]["owner"], 0
-                        self._arm_chain_top(state)
-                    else:
-                        state["pending"] = generated
-                        state["order_return"] = "chain"
-                        state["preserve_chain_context"] = True
-                        state["phase"], state["actor"] = "trigger_order", generated[0]["owner"]
+                    self._triggers(state, generated, preserve_context=True)
+                    if state.get("phase") == "trigger_order":
                         return
             # An effect may queue an optional trigger while resolving.  Keep
             # the explicit optional window open instead of letting chain

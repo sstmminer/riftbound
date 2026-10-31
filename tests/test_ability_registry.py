@@ -149,6 +149,19 @@ class AbilityRegistryTests(unittest.TestCase):
             self.assertTrue(spec.target_spec)
             self.assertTrue(spec.copyable)
 
+    def test_registry_event_query_is_deterministic_and_priority_ordered(self):
+        replacement = ORIGINS_ABILITIES.for_event(
+            "friendly_unit_would_die", timing="replacement")
+        self.assertEqual(
+            [spec.ability_id for spec in replacement],
+            ["legend.the_boss_save"],
+        )
+        triggered = ORIGINS_ABILITIES.for_event("friendly_unit_buffed")
+        self.assertEqual(
+            [spec.ability_id for spec in triggered],
+            ["gear.mistfall_ready"],
+        )
+
     def test_extended_registry_metadata_rejects_invalid_values(self):
         with self.assertRaisesRegex(ValueError, "invalid replacement priority"):
             AbilitySpec("future.bad_priority", "unit", frozenset({"OGN-998"}),

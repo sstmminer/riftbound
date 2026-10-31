@@ -156,6 +156,22 @@ class AbilityRegistry:
         return self.for_source(source_kind, card_code,
                                requires_exhaust=True, copyable_by_heimer=True)
 
+    def for_event(self, event: str, *, timing: str | None = None) -> tuple[AbilitySpec, ...]:
+        """Return registered abilities subscribed to an event.
+
+        Event-driven and replacement abilities use the same lookup as copied
+        activated abilities.  Keeping this query in the registry prevents the
+        runtime from growing one hard-coded card list per trigger type.
+        Results are ordered by declared replacement priority, then ability id;
+        the player-facing optional queue may still reorder simultaneous
+        choices when the rules allow it.
+        """
+        values = [spec for spec in self._specs.values()
+                  if spec.event == event and (timing is None or spec.timing == timing)]
+        return tuple(sorted(values, key=lambda spec: (
+            spec.replacement_priority if spec.replacement_priority is not None else 10_000,
+            spec.ability_id)))
+
     def as_dict(self) -> list[dict[str, object]]:
         return [{
             "ability_id": spec.ability_id,

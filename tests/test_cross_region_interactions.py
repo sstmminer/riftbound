@@ -131,6 +131,56 @@ class CrossRegionInteractionTests(unittest.TestCase):
         self.assertEqual(target["buff"], 1)
         self.assertIn(recycled, self.state["players"][0]["main"])
 
+    def test_possessed_karma_triggers_for_new_controller(self):
+        """A controlled Karma follows the controller of the live ability.
+
+        The physical Karma card remains owned by player 1, but after
+        Possession its recycle trigger must be offered to player 0.  This is
+        the cross-region case that catches code which keys triggers off
+        ``card_owner`` instead of the live unit controller.
+        """
+        spell = self.card(0, "OGN-203")
+        karma_card = self.card(1, "OGN-235")
+        karma = self.rules._new_unit(
+            self.state, "OGN-235", 1, 0, card=karma_card, exhausted=False)
+        self.state["fields"][0]["controller"] = 1
+        self.state["players"][0]["hand"].append(spell)
+        self.rules.apply(self.state, Action.make(
+            "play_spell", card=spell, targets=[karma["id"]],
+            destination=None, spend_buff=None, payment=[], ignore_cost=True),
+            random.Random(101))
+        self.close_chain()
+        self.assertEqual(karma["owner"], 0)
+        self.assertEqual(karma["card_owner"], 1)
+
+        recycled = self.card(0, "OGN-009")
+        self.state["players"][0]["trash"].append(recycled)
+        self.rules._recycle_cards_to_main(
+            self.state, 0, [recycled], source="trash", rng=random.Random(101))
+        self.assertEqual(self.state["phase"], "decision")
+        self.assertEqual(self.state["decision"]["player"], 0)
+        self.assertIn(karma["id"], self.state["decision"]["targets"])
+
+    def test_possessed_jinx_triggers_for_new_controller(self):
+        """Jinx's discard trigger also follows live control after recall."""
+        spell = self.card(0, "OGN-203")
+        jinx_card = self.card(1, "OGN-202")
+        jinx = self.rules._new_unit(
+            self.state, "OGN-202", 1, 0, card=jinx_card, exhausted=True)
+        self.state["fields"][0]["controller"] = 1
+        self.state["players"][0]["hand"].append(spell)
+        self.rules.apply(self.state, Action.make(
+            "play_spell", card=spell, targets=[jinx["id"]],
+            destination=None, spend_buff=None, payment=[], ignore_cost=True),
+            random.Random(101))
+        self.close_chain()
+        self.assertEqual(jinx["owner"], 0)
+        discarded = self.card(0, "OGN-009")
+        self.state["players"][0]["trash"].append(discarded)
+        self.rules._trigger_jinx_discard(self.state, 0)
+        self.assertEqual(self.state["phase"], "chain")
+        self.assertEqual(self.state["chain"][-1]["source"], jinx["id"])
+
     def test_jinx_discard_trigger_and_battlefield_optional_target_are_visible(self):
         jinx_card = self.card(0, "OGN-202")
         jinx = self.rules._new_unit(

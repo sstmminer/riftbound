@@ -1041,6 +1041,17 @@ class OriginsRules:
                 row["champion"].append(card)
         elif effect == "spend_buff_draw":
             target = self._unit(state, item.get("target"))
+            if target is None:
+                candidates = [unit["id"] for unit in self._units(state, player)
+                              if unit["buff"]]
+                if not candidates:
+                    return True
+                state["decision"] = {"kind": "target", "player": player,
+                                      "targets": candidates,
+                                      "item": {"effect": "spend_buff_draw", "owner": player},
+                                      "optional_target_effect": True}
+                state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                return False
             if target is not None and target["owner"] == player and target["buff"]:
                 target["buff"] = 0
                 self._draw(state, player, 1, rng)
@@ -1119,10 +1130,17 @@ class OriginsRules:
             elif code == "OGN-280":  # Grove of the God-Willow
                 self._draw(state, player, 1, rng)
             elif code == "OGN-283":
-                for unit in self._units(state, player, field):
-                    if not unit["buff"]:
-                        self._apply_buff(state, unit)
-                        break
+                candidates = [unit["id"] for unit in self._units(state, player, field)
+                              if not unit["buff"]]
+                if len(candidates) == 1:
+                    self._apply_buff(state, self._unit(state, candidates[0]))
+                elif len(candidates) > 1:
+                    state["decision"] = {"kind": "target", "player": player,
+                                          "targets": candidates,
+                                          "item": {"effect": "navori_buff", "owner": player},
+                                          "score_target": True}
+                    state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                    return
             elif code == "OGN-281" and not state["players"][player]["champion"]:
                 chosen = self.decks[player]["chosen_champion"]
                 row = state["players"][player]
@@ -4330,6 +4348,15 @@ class OriginsRules:
                 decision = state["decision"]
                 if args["target"] not in decision["targets"]:
                     raise ValueError("invalid target choice")
+                if decision.get("score_target"):
+                    target = self._unit(state, args["target"])
+                    if target is None or target["owner"] != player or target["buff"]:
+                        raise ValueError("score target is no longer legal")
+                    self._apply_buff(state, target)
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "main", player, 0
+                    self._cleanup(state, rng)
+                    return
                 if decision.get("registry_ability"):
                     item = dict(decision["item"])
                     state["decision"] = None

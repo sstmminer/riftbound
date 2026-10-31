@@ -117,6 +117,8 @@ def run_game(rules, policy_name: str, seed: int, max_steps: int) -> dict:
             if not replay_verified:
                 failure = "replay mismatch"
     except Exception as error:  # keep all seeds in the report
+        if isinstance(error, ValueError) and "nonterminal state needs valid legal actions" in str(error):
+            deadlock = True
         failure = f"{type(error).__name__}: {error}"
 
     result = {

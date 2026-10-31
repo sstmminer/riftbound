@@ -68,6 +68,27 @@ KNOWN_BLOCKERS = (
     },
 )
 
+# Card-level gaps found by the static first pass. These stay separate from
+# mechanism-level blockers: SUPPORTED means a card can enter a legal deck and
+# state, while this list records cards that still need isolated positive and
+# negative interaction scenarios before certification.
+CARD_BEHAVIOR_BLOCKERS = (
+    {"code": "OGN-063", "name": "Spirit's Refuge",
+     "scope": "gear play target and buffed-unit Deflect"},
+    {"code": "OGN-118", "name": "Wraith of Echoes",
+     "scope": "first friendly death each turn draw"},
+    {"code": "OGN-143", "name": "Pirate's Haven",
+     "scope": "friendly ready event grants temporary Might"},
+    {"code": "OGN-162", "name": "Miss Fortune, Captain",
+     "scope": "first move each turn optional ready"},
+    {"code": "OGN-178", "name": "Undercover Agent",
+     "scope": "Deathknell discard two then draw two"},
+    {"code": "OGN-192", "name": "Mindsplitter",
+     "scope": "opponent hand reveal and discard selection"},
+    {"code": "OGN-228", "name": "Vanguard Helm",
+     "scope": "buffed friendly death then another-unit buff"},
+)
+
 
 def catalog_audit() -> dict:
     cards = load_origins()
@@ -135,11 +156,13 @@ def build_certification(*, seeds: int, max_steps: int, policies: tuple[str, ...]
     runtime = build_report(seeds=seeds, max_steps=max_steps, policies=policies,
                            run_tests=run_tests)
     blockers = [dict(item, status="open") for item in KNOWN_BLOCKERS]
+    card_blockers = [dict(item, status="open") for item in CARD_BEHAVIOR_BLOCKERS]
     checks = {
         "catalog_partition": catalog["partition_complete"],
         "ability_registry": registry["integrity"],
         "runtime_gate": runtime["gate"]["passed"],
         "known_blockers_closed": not blockers,
+        "card_behavior_blockers_closed": not card_blockers,
     }
     return {
         "schema": "riftbound-origins-certification-v1",
@@ -149,6 +172,7 @@ def build_certification(*, seeds: int, max_steps: int, policies: tuple[str, ...]
         "ability_registry": registry,
         "runtime": runtime,
         "known_blockers": blockers,
+        "card_behavior_blockers": card_blockers,
         "checks": {**checks, "certified": all(checks.values())},
         "seconds": round(time.monotonic() - started, 3),
     }

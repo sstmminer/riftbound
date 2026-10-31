@@ -1,6 +1,11 @@
 import unittest
 
-from tools.full_certification import build_certification, catalog_audit, registry_audit
+from tools.full_certification import (
+    CARD_BEHAVIOR_BLOCKERS,
+    build_certification,
+    catalog_audit,
+    registry_audit,
+)
 
 
 class FullCertificationTests(unittest.TestCase):
@@ -17,8 +22,13 @@ class FullCertificationTests(unittest.TestCase):
         self.assertTrue(report["checks"]["catalog_partition"])
         self.assertTrue(report["checks"]["ability_registry"])
         self.assertFalse(report["checks"]["known_blockers_closed"])
+        self.assertFalse(report["checks"]["card_behavior_blockers_closed"])
         self.assertFalse(report["checks"]["certified"])
         self.assertGreater(len(report["known_blockers"]), 0)
+        self.assertEqual(
+            {entry["code"] for entry in report["card_behavior_blockers"]},
+            {entry["code"] for entry in CARD_BEHAVIOR_BLOCKERS},
+        )
 
 
 if __name__ == "__main__":

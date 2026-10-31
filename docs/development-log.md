@@ -268,6 +268,7 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 - OGN-256 现在在结算时枚举当前原目标的合法分组，只有在原组失效时打开不重新让过优先权的多选窗口，并强制最大目标数。Hidden 版本保留隐藏战场的目标限制。新增反应增益、禁止补选新单位、全员超限、目标移动、目标一起移动到新战场和 Hidden 多选回归测试。
 - 同步重检了容易受反应影响的普通目标：Gust 结算时重新检查 Might≤3；Get Excited、Rebuke、Fading Memories、Hidden Blade 等“at a battlefield”目标离场后不再执行；Singularity 可以合法选择基地单位；Facebreaker 的友军/敌军同场配对失效时不再单独眩晕剩余单位；Back to Back、Challenge、Last Breath、Zenith Blade、Shakedown、Meditation 等路径重新检查控制者、准备状态和战场限制。
 - 仍需单独迁移的高优先机制是 Falling Comet（FAQ 中的 Falling Star）与 Icathian Rain：当前牌池仍沿用旧的目标窗口，而官方 FAQ 已将它们解释为无目标法术结算后创建 Reflexive Trigger。迁移方案是先完成法术本体，再逐个创建统一目标触发；这项工作未在本轮混入 Fox-Fire 修复，避免把两种时点模型混在一起。
+- GUI 目标交互审计：普通目标、Hidden 目标、装备/单位技能目标、战场目标和结算链目标均通过左键选择；多目标使用统一的临时目标序列窗口并要求“确认目标”，可取消重选，重复分配按顺序记录。决策窗口期间右键不会再偷偷改变目标，也不会打开复杂组合菜单；Hidden 和装备能力可用左键启动，符文在目标窗口中也优先作为目标处理。右键保留给非决策状态下的区域操作和资源菜单。
 
 ### 本轮优先完成的三项
 

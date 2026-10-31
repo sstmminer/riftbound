@@ -5,7 +5,8 @@
 1. 298 张 Origins 目录的哈希、编号和支持表分区；
 2. `AbilityRegistry` 的来源卡牌、横置能力和动作处理器完整性；
 3. 固定种子对局、无动作死锁、步数截断和 Replay 一致性；
-4. 尚未完成的规则差分阻塞项。
+4. 独立的状态结构契约检查（卡牌/符文守恒、阶段和公开状态形状）；
+5. 尚未完成的规则差分阻塞项。
 
 运行：
 
@@ -28,3 +29,11 @@ python tools/stable_baseline.py \
 ```
 
 稳定性门通过只表示已覆盖执行路径没有检测到死锁、截断或回放漂移，不等同于完整 Origins 裁判认证。
+
+独立结构契约可以单独运行：
+
+```bash
+python -m unittest tests.test_contract_invariants -q
+```
+
+该检查不调用 `OriginsRules.validate`，用于捕获状态守恒和可见性形状回归；它不能代替第二套规则引擎或官方裁判判例，因此不会自动关闭 `independent_rules_oracle` 阻塞项。

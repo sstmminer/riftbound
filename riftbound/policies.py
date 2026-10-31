@@ -27,6 +27,10 @@ class GreedyPolicy:
         if phase == "decision":
             if obs["decision"]["kind"] == "predict":
                 return next(a for a, args in options if not args["recycle"])
+            if obs["decision"]["kind"] == "free_play_payment":
+                # Deterministic baseline: choose the first legal resource
+                # combination; interactive clients can select another one.
+                return options[0][0]
             if obs["decision"]["kind"] == "choice":
                 # Accelerate is a play-time payment window.  Resource Add
                 # reactions may be used while it is open, so do not assume

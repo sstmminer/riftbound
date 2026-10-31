@@ -273,6 +273,8 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 
 - 本轮将 Accelerate 修正提升为通用 Finalized play 状态，而不是保留 Hand of Noxus 专用特例。`players[*].played` 继续作为兼容字段，但现在只在统一的 `_mark_play_finalized` 事件中递增；内部同时保留 `finalized_played` 与 `finalized_cards`，观察层只公开计数。单位在 Accelerate/必选入场选择完成后标记，普通、目标、场地和 Counter 法术分别在目标或领域选择完成并挂入 Chain 时标记，装备在支付并进入基地时标记。目标尚未确认、取消打出、以及 Accelerate 支付中的当前单位都不会提前标记；被随后反制的法术仍保留已完成的打出记录。Ravenbloom、Darius、Viktor 的法术后触发统一由 `_spell_post_triggers` 生成，并保留实际打出者归属，避免 Chain item 控制者改变后错误计入对手。
 
+- Reinforce、Flame Chompers 和 The Harrowing 已迁移到统一的 free-unit play continuation。Reinforce 只展示可支付的牌库顶单位，选择后放逐该牌，按 Energy -5、仍支付 Power 的规则进入普通单位打出流程；支付资源有多个合法组合时打开支付选择窗口，单位自身的入场目标和触发继续走普通 Chain。Flame Chompers 从弃牌区移回临时手牌，先支付一枚 Fury 符能，再以忽略 Energy 的普通打出流程处理。The Harrowing 新增弃牌区单位选择窗口，筛掉无法支付 Power 的单位，忽略被选单位的 Energy 费用但保留 Power 支付，并通过 continuation 完成原法术弃置，避免重复结算原法术。三条路径都会统一记录 Finalized，且不再直接创建横置白板单位。
+
 ### 本轮优先完成的三项
 
 - **Mystic Reversal 的非目标选项重选**：OGN-080 接管法术后会清除原法术的目标、领域、X 值和旧选择，并把新控制者重新带入该法术的统一选择窗口。Party Favors（OGN-071）重新选择 cards/runes；Whirlwind（OGN-187）先选择 return/skip，选择 return 后再通过同一个目标窗口点选单位；King's Edict 及已支持的多目标、场地、目的地法术继续复用同一规格。

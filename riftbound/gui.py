@@ -1029,6 +1029,7 @@ class OriginsGUI(tk.Tk):
             "choose_chain_target": "选择结算链目标 / Choose chain target",
             "choose_field": "选择战场 / Choose battlefield",
             "choose_card": "选择手牌 / Choose card",
+            "choose_payment": "选择支付资源 / Choose payment",
             "choose_divine": "审判：选择保留牌 / Divine Judgment: keep card",
             "confirm_divine": "确认审判选择 / Confirm Divine Judgment",
             "confirm_targets": "确认目标 / Confirm targets",
@@ -1048,6 +1049,8 @@ class OriginsGUI(tk.Tk):
                 text = f"选择战场 {option + 1} / Choose battlefield {option + 1}"
             elif isinstance(option, str) and option.startswith("base:"):
                 text = f"移动到基地 {option.split(':', 1)[1]} / Move to base"
+        if action.kind == "choose_payment":
+            text = "支付：" + ",".join(str(index + 1) for index in args.get("payment", []))
         if action.kind in {"exhaust_rune", "recycle_rune"}:
             text += " · " + self._rune_name(args.get("rune"))
         if action.kind == "play_unit":
@@ -1695,6 +1698,8 @@ class OriginsGUI(tk.Tk):
             prompt = "Divine Judgment：每个区域最多保留两张；点击卡牌切换保留状态"
         elif kind == "hand_card":
             prompt = "选择要从手牌免费打出的 Hidden 牌"
+        elif kind == "free_play_payment":
+            prompt = "选择单位打出的支付资源：点击一项完成 Energy/Power 支付"
         elif decision.get("accelerate"):
             domains = "/".join(decision["accelerate"].get("domains", []))
             prompt = (f"加速待支付：请直接在符文区横置/回收符文，或发动下方资源能力；"

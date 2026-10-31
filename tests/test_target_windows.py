@@ -225,6 +225,67 @@ class TargetWindowMigrationTests(unittest.TestCase):
                       if a.kind == "optional_effect" and '"accept":true' in a.arguments)
         self.rules.apply(self.state, accept, random.Random(9))
         self.assertTrue(any(u.get("card") == card for u in self.state["units"]))
+        self.assertNotIn(card, self.state["players"][0]["trash"])
+        self.assertEqual(self.state["players"][0]["power"], [])
+        self.assertEqual(self.state["players"][0]["finalized_played"], 1)
+
+    def test_reinforce_reuses_unit_payment_and_entry_target_window(self):
+        card = self.spare("OGN-062")
+        row = self.state["players"][0]
+        row["power"] = ["body"] * 8
+        unit_card = row["main"][0]
+        self.state["cards"][unit_card]["code"] = "OGN-149"
+        for uid in row["main"][1:5]:
+            self.state["cards"][uid]["code"] = "OGN-122"
+        enemy = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        for _ in range(2):
+            self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                              if a.kind == "pass"), random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_revealed" and unit_card in a.arguments),
+                         random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "confirm_revealed"), random.Random(9))
+        self.assertEqual(self.state["decision"]["kind"], "free_play_payment")
+        self.rules.apply(self.state, self.rules.legal_actions(self.state)[0], random.Random(9))
+        self.assertEqual(self.state["decision"]["targets"], [enemy["id"]])
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and enemy["id"] in a.arguments),
+                         random.Random(9))
+        self.assertEqual(self.state["players"][0]["energy"], 15)
+        self.assertEqual(self.state["players"][0]["power"], ["body"] * 6)
+        self.assertTrue(any(u.get("card") == unit_card for u in self.state["units"]))
+
+    def test_harrowing_ignores_energy_but_pays_power_and_targets_played_unit(self):
+        card = self.spare("OGN-198")
+        row = self.state["players"][0]
+        row["power"] = ["chaos"] * 2 + ["body"] * 2
+        unit_card = row["main"].pop()
+        self.state["cards"][unit_card]["code"] = "OGN-149"
+        row["trash"].append(unit_card)
+        enemy = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        for _ in range(2):
+            self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                              if a.kind == "pass"), random.Random(9))
+        self.assertEqual(self.state["phase"], "reveal")
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_revealed" and unit_card in a.arguments),
+                         random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "confirm_revealed"), random.Random(9))
+        self.assertEqual(self.state["decision"]["targets"], [enemy["id"]])
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and enemy["id"] in a.arguments),
+                         random.Random(9))
+        self.assertEqual(self.state["players"][0]["energy"], 14)
+        self.assertEqual(self.state["players"][0]["power"], [])
+        self.assertTrue(any(u.get("card") == unit_card for u in self.state["units"]))
 
     def test_defy_clicks_a_spell_on_the_live_chain(self):
         counter = self.spare("OGN-045")

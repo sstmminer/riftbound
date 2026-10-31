@@ -249,7 +249,7 @@ class Environment:
             replacement = "death_replacement_window"
         event_type = "action"
         if action.kind in {"choose_target", "confirm_targets", "choose_option",
-                           "choose_revealed", "confirm_revealed", "end_reveal",
+                           "choose_payment", "choose_revealed", "confirm_revealed", "end_reveal",
                            "order_optional", "optional_effect", "order_revealed"}:
             event_type = "choice"
         if added:

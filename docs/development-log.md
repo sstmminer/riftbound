@@ -355,7 +355,7 @@ Promising Future、Blind Fury、The Harrowing、Baited Hook 和反制效果提�
 
 新增 `tools/full_certification.py` 作为可归档认证入口，统一检查 298 张目录与支持表分区、
 AbilityRegistry、独立状态契约、固定种子终局/死锁/截断/Replay，以及明确的规则差分阻塞项。
-当前全量测试为 387 项；单种子贪心/随机对局均终局，0 死锁、0 截断、0 Replay mismatch，
+当前全量测试为 388 项；单种子贪心/随机对局均终局，0 死锁、0 截断、0 Replay mismatch，
 独立契约随机轨迹也通过。七张优先卡（Spirit's Refuge、Wraith、Pirate's Haven、Miss Fortune、
 Undercover Agent、Mindsplitter、Vanguard Helm）已有聚焦回归场景，card-level blocker 已关闭；负向、
 嵌套和替代效果场景仍作为持续覆盖项补充。

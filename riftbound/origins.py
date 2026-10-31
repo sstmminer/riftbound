@@ -3808,14 +3808,16 @@ class OriginsRules:
                 self._abandon_free_play(state, info)
                 return
             if len(payment_options) > 1:
-                options = ["power"] + [f"buff:{spend}" for spend, _ in payment_options[1:]]
+                payment_map = {
+                    ("power" if spend is None else f"buff:{spend}"): choices
+                    for spend, choices in payment_options
+                }
                 state["decision"] = {
-                    "kind": "choice", "player": owner, "options": options,
+                    "kind": "choice", "player": owner,
+                    "options": list(payment_map),
                     "free_play_buff": {
                         **info, "selected": list(selected),
-                        "payment_options": {"power": payment_options[0][1],
-                                             **{f"buff:{spend}": choices
-                                                for spend, choices in payment_options[1:]}},
+                        "payment_options": payment_map,
                     },
                 }
                 state["phase"], state["actor"], state["passes"] = "decision", owner, 0

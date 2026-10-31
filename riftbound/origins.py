@@ -28,7 +28,7 @@ SIMPLE_TARGET_SPELLS = frozenset({
     "OGN-046", "OGN-050", "OGN-057", "OGN-058", "OGN-069", "OGN-085",
     "OGN-093", "OGN-095", "OGN-102", "OGN-146", "OGN-154",
     "OGN-169", "OGN-172", "OGN-203", "OGN-207", "OGN-213",
-    "OGN-229", "OGN-252", "OGN-254", "OGN-262",
+    "OGN-008", "OGN-168", "OGN-229", "OGN-252", "OGN-254", "OGN-262",
 })
 PAIR_TARGET_SPELLS = frozenset({"OGN-108", "OGN-128", "OGN-209", "OGN-220", "OGN-260"})
 DESTINATION_TARGET_SPELLS = frozenset({"OGN-043", "OGN-173", "OGN-250", "OGN-270", "OGN-258"})
@@ -1551,6 +1551,13 @@ class OriginsRules:
             if unit.get("temporary_unit"):
                 state["units"].remove(unit)
                 self._trash_unit_card(state, unit)
+        # Temporary gear follows the same Beginning Phase expiry as temporary
+        # units (RUP5 Temporary): remove it before scoring and return the
+        # physical card to its owner’s trash.
+        for gear in list(row["gear"]):
+            if gear.get("temporary"):
+                row["gear"].remove(gear)
+                self._trash_gear_card(state, gear)
         for rune in row["runes"]:
             rune["exhausted"] = False
         for unit in self._units(state, player):
@@ -2308,9 +2315,9 @@ class OriginsRules:
                 targets = [[friendly["id"], enemy["id"]]
                            for friendly in self._units(state, player)
                            for enemy in self._units(state, 1-player)
-                           if self._is_field(enemy["location"])]
+                           if self._is_field(state, enemy["location"])]
             elif code == "OGN-266":
-                targets = [[u["id"]] for u in state["units"] if self._is_field(u["location"])]
+                targets = [[u["id"]] for u in state["units"] if self._is_field(state, u["location"])]
             elif code == "OGN-250":
                 targets = [[u["id"]] for u in self._units(state, player, f"base:{player}")]
             elif code == "OGN-270":
@@ -2323,6 +2330,9 @@ class OriginsRules:
             elif code in {"OGN-168", "OGN-180"}:
                 targets = [[u["id"]] for u in state["units"]
                            if self._is_field(state, u["location"])]
+                if code == "OGN-180":
+                    targets.extend([[gear["id"]] for owner_row in state["players"]
+                                    for gear in owner_row["gear"]])
             elif code in {"OGN-053", "OGN-069", "OGN-104", "OGN-146"}:
                 targets = [[u["id"]] for u in self._units(state, player)]
             elif code == "OGN-252":
@@ -3941,7 +3951,7 @@ class OriginsRules:
         if code == "OGN-048":
             candidates = [u["id"] for u in self._units(state, item["owner"]) if not u["exhausted"]]
             return {"targets": candidates, "multi": True, "min": 0, "max": 1}
-        if code in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085"}:
+        if code in {"OGN-005", "OGN-008", "OGN-009", "OGN-014", "OGN-024", "OGN-085", "OGN-168"}:
             candidates = [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
         elif code == "OGN-033":
             candidates = [u["id"] for u in self._units(state, 1 - item["owner"])]
@@ -5233,6 +5243,11 @@ class OriginsRules:
                         enter_target=args["target"], ignore_cost=True,
                         ignore_energy=bool(info.get("ignore_energy")) or bool(info.get("free_all")),
                         free_play_parent=True), rng)
+                    parent = info.get("parent")
+                    if (parent is not None and parent in state.get("chain", [])
+                            and state.get("phase") == "main"):
+                        state["phase"], state["actor"], state["passes"] = (
+                            "chain", state["chain"][-1]["owner"], 0)
                     return
                 if decision.get("multi"):
                     selected = decision.setdefault("selected", [])
@@ -5899,6 +5914,16 @@ class OriginsRules:
             # Keep a pending spell item while the player chooses its target;
             # target confirmation fills that item before normal chain resolution.
             self._enter_chain(state, [item])
+            if code == "OGN-008":
+                # Get Excited! has a mandatory discard before its damage
+                # target exists.  Keep the card on the Chain, open the
+                # discard window first, then reuse the normal target-click
+                # decision opened by the discard handler.
+                state["decision"] = {"kind": "discard", "player": player,
+                                      "remaining": 1, "item": item,
+                                      "get_excited_discard": True}
+                state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                return
             state["decision"] = {"kind": "target", "player": player,
                                   "targets": list(args.get("target_candidates", [])),
                                   "multi": code in (PAIR_TARGET_SPELLS | OPTIONAL_TARGET_SPELLS | CONSTRAINED_MULTI_TARGET_SPELLS | {"OGN-029", "OGN-105", "OGN-206", "OGN-248"}), "min": int(args.get("target_min", 1)),

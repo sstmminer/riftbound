@@ -190,6 +190,37 @@ class SpellExpansionNewTests(unittest.TestCase):
         self.assertEqual(target["damage"], 2)
         self.assertIn(discard, self.state["players"][0]["trash"])
 
+    def test_get_excited_targeted_gui_path_discards_before_target_choice(self):
+        card = self.spare("OGN-008")
+        discard = self.state["players"][0]["main"].pop()
+        self.state["cards"][discard]["code"] = "OGN-003"
+        self.state["players"][0]["hand"].append(discard)
+        self.state["players"][0]["power"] = ["fury"] * 4
+        target = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell_targeted" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.assertEqual(self.state["decision"]["kind"], "discard")
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "discard_card" and discard in a.arguments), random.Random(9))
+        self.assertEqual(self.state["decision"]["kind"], "target")
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and target["id"] in a.arguments), random.Random(9))
+        self.drain()
+        self.assertEqual(target["damage"], 2)
+
+    def test_fight_or_flight_uses_field_target_click(self):
+        card = self.spare("OGN-168")
+        self.state["players"][0]["power"] = ["fury"] * 4
+        target = self.rules._new_unit(self.state, "OGN-219", 1, 0, exhausted=False)
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell_targeted" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and target["id"] in a.arguments), random.Random(9))
+        self.drain()
+        self.assertEqual(target["location"], "base:1")
+
     def test_block_grants_shield_three_and_temporary_tank(self):
         card = self.spare("OGN-057")
         self.state["players"][0]["power"] = ["calm"] * 4

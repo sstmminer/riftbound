@@ -206,6 +206,67 @@ class Environment:
                              "selected": [card.get("code") for card in reveal.get("selected", [])]}
                             if reveal else None)}
 
+    @staticmethod
+    def _causal_metadata(before: dict, after: dict, action: Action,
+                         parent_seq: int | None) -> dict:
+        """Build a compact causal index for the privileged trace.
+
+        The full private snapshots remain the source of truth.  This index is
+        deliberately derived from them so replay can verify it without
+        requiring every rules backend to emit a second event protocol.
+        """
+        args = json.loads(action.arguments)
+
+        def item_key(item):
+            return canonical({key: item.get(key) for key in
+                              ("effect", "owner", "source", "target", "card", "code")
+                              if key in item})
+
+        before_chain = {item_key(item) for item in before.get("chain", [])
+                        + before.get("pending", [])}
+        after_chain_items = (after.get("chain", []) + after.get("pending", []))
+        added = [item for item in after_chain_items if item_key(item) not in before_chain]
+        source = next((args[key] for key in
+                       ("source", "gear", "unit", "ability_id", "optional")
+                       if key in args), None)
+        target = next((args[key] for key in
+                       ("target", "targets", "card", "field", "destination")
+                       if key in args), None)
+        before_window = {
+            "phase": before.get("phase"),
+            "decision": (before.get("decision") or {}).get("kind"),
+            "reveal": (before.get("reveal") or {}).get("effect"),
+        }
+        after_window = {
+            "phase": after.get("phase"),
+            "decision": (after.get("decision") or {}).get("kind"),
+            "reveal": (after.get("reveal") or {}).get("effect"),
+        }
+        replacement = None
+        if args.get("effect") in {"armory_save", "boss_save"}:
+            replacement = args["effect"]
+        elif before.get("death_pending") or after.get("death_pending"):
+            replacement = "death_replacement_window"
+        event_type = "action"
+        if action.kind in {"choose_target", "confirm_targets", "choose_option",
+                           "choose_revealed", "confirm_revealed", "end_reveal",
+                           "order_optional", "optional_effect", "order_revealed"}:
+            event_type = "choice"
+        if added:
+            event_type = "trigger" if event_type == "action" else event_type
+        if replacement is not None:
+            event_type = "replacement"
+        return {
+            "event_type": event_type,
+            "parent_seq": parent_seq,
+            "source": copy.deepcopy(source),
+            "target": copy.deepcopy(target),
+            "triggered_effects": [item_key(item) for item in added],
+            "replacement": replacement,
+            "window_before": before_window,
+            "window_after": after_window,
+        }
+
     def legal_actions(self) -> tuple[Action, ...]:
         self._require_reset()
         if self.done:
@@ -254,6 +315,12 @@ class Environment:
             "seq": len(self._internal_events) + 1,
             "action": action.to_dict(),
             "actor": before_player,
+            "causal": self._causal_metadata(
+                internal_before_state, state, action,
+                (self._internal_events[-1]["seq"]
+                 if before_summary.get("phase") in
+                 {"decision", "reveal", "optional", "chain", "showdown"}
+                 and self._internal_events else None)),
             "before_digest": internal_before_digest,
             "after_digest": self._digests[-1],
             "before_state": internal_before_state,

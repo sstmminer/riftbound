@@ -298,6 +298,11 @@ class OriginsRules:
                                      target=unit["id"],
                                      registry_ability=source["ability_id"],
                                      registry_source_kind=source["kind"],
+                                     registry_event=source.get("event"),
+                                     registry_target_spec=source.get("target_spec"),
+                                     registry_continuation=source.get("continuation"),
+                                     registry_replacement_priority=source.get("replacement_priority"),
+                                     registry_copy_policy=source.get("copy_policy"),
                                      event_group=source["ability_id"])
 
     def _radiant_stun_trigger(self, state, player):
@@ -418,6 +423,11 @@ class OriginsRules:
                             "source": source["id"], "copied": source["copied"],
                             "registry_ability": source.get("ability_id"),
                             "registry_source_kind": source.get("kind"),
+                            "registry_event": source.get("event"),
+                            "registry_target_spec": source.get("target_spec"),
+                            "registry_continuation": source.get("continuation"),
+                            "registry_replacement_priority": source.get("replacement_priority"),
+                            "registry_copy_policy": source.get("copy_policy"),
                             "event_group": source.get("ability_id"),
                         })
                 if optional_specs:
@@ -458,6 +468,11 @@ class OriginsRules:
                                     source=shrine["id"], copied=shrine["copied"],
                                     registry_ability=shrine["ability_id"],
                                     registry_source_kind=shrine["kind"],
+                                    registry_event=shrine.get("event"),
+                                    registry_target_spec=shrine.get("target_spec"),
+                                    registry_continuation=shrine.get("continuation"),
+                                    registry_replacement_priority=shrine.get("replacement_priority"),
+                                    registry_copy_policy=shrine.get("copy_policy"),
                                     event_group=shrine["ability_id"])
                             if shrine_sources:
                                 return
@@ -1859,22 +1874,31 @@ class OriginsRules:
         row = state["players"][player]
         sources = []
         source_present = False
+        metadata = {
+            "ability_id": ability_id,
+            "timing": spec.timing,
+            "event": spec.event,
+            "target_spec": dict(spec.target_spec or {}),
+            "continuation": spec.continuation,
+            "replacement_priority": spec.replacement_priority,
+            "copy_policy": spec.copy_policy,
+        }
         if spec.source_kind == "gear":
             source_present = any(gear["code"] in spec.source_codes for gear in row["gear"])
             for gear in row["gear"]:
                 if gear["code"] in spec.source_codes and not gear["exhausted"]:
                     sources.append({"id": gear["id"], "kind": "gear", "copied": False,
-                                    "ability_id": ability_id, "timing": spec.timing})
+                                    **metadata})
         elif spec.source_kind == "legend":
             source_present = row["legend"] in spec.source_codes
             if row["legend"] in spec.source_codes and not row["legend_exhausted"]:
                 sources.append({"id": f"legend:{player}", "kind": "legend", "copied": False,
-                                "ability_id": ability_id, "timing": spec.timing})
+                                **metadata})
         if spec.copyable and source_present:
             for unit in self._units(state, player):
                 if unit["code"] == "OGN-111" and not unit["exhausted"]:
                     sources.append({"id": unit["id"], "kind": "unit", "copied": True,
-                                    "ability_id": ability_id, "timing": spec.timing})
+                                    **metadata})
         # Source order is deterministic for replay.  When several sources
         # belong to the same controller, legal_actions exposes an explicit
         # optional-order window so the player may choose a different order.
@@ -2863,6 +2887,10 @@ class OriginsRules:
             return [u["id"] for u in self._units(state, owner) if u["id"] != source]
         if effect == "kinkou_buff":
             return [u["id"] for u in self._units(state, owner) if u["id"] != source]
+        if effect == "ahri_debuff":
+            field = state.get("battle", {}).get("field")
+            return [u["id"] for u in self._units(state, 1 - owner, field)] \
+                if self._is_field(state, field) else []
         if effect == "karma_recycle":
             return [u["id"] for u in self._units(state, owner)]
         if effect == "blitz_move":
@@ -3893,6 +3921,12 @@ class OriginsRules:
             # resumes.
             state["chain"].remove(target)
             target["targets"] = []
+            # Any target/option selection made before the counter belongs to
+            # the spell's prior controller.  Remove it before presenting the
+            # new controller's window; retaining ``choice_done`` would let
+            # choice spells resolve with a stale option without prompting.
+            target.pop("choice", None)
+            target.pop("choice_done", None)
             target.pop("destination", None)
             target.pop("field", None)
             target.pop("x", None)
@@ -3901,7 +3935,12 @@ class OriginsRules:
                 self._trash_card(state, item.get("card"), item["owner"])
             spec = self._counter_retarget_spec(state, target)
             if spec is not None:
-                if spec.get("kind") == "field":
+                if spec.get("kind") == "choice":
+                    state["decision"] = {"kind": "choice",
+                                          "player": spec.get("player", item["owner"]),
+                                          "options": list(spec["options"]), "item": target,
+                                          "counter_retarget_choice": True}
+                elif spec.get("kind") == "field":
                     state["decision"] = {"kind": "field", "player": item["owner"],
                                           "fields": spec["fields"], "item": target,
                                           "counter_retarget": True,
@@ -3911,9 +3950,10 @@ class OriginsRules:
                     state["decision"] = {"kind": "target", "player": item["owner"],
                                           "targets": spec["targets"], "item": target,
                                           "counter_retarget": True, **spec}
-                if spec.get("kind") != "field":
+                if spec.get("kind") not in {"field", "choice"}:
                     state["decision"]["targets"] = spec["targets"]
-                state["phase"], state["actor"], state["passes"] = "decision", item["owner"], 0
+                state["phase"], state["actor"], state["passes"] = (
+                    "decision", state["decision"].get("player", item["owner"]), 0)
                 return False
             return True
         state["chain"].remove(target)
@@ -3927,6 +3967,28 @@ class OriginsRules:
     def _counter_retarget_spec(self, state, item):
         """Return the immediate target window for a spell retaken by Mystic Reversal."""
         code = item.get("code")
+        if code == "OGN-071":
+            # Party Favors has a non-target choice.  Mystic Reversal's new
+            # controller must make that choice again instead of inheriting the
+            # original controller's selection.
+            # Party Favors says "each other player"; after Mystic Reversal
+            # changes control, the new controller's opponent still makes the
+            # choice.  Keep this chooser explicit so future multiplayer
+            # choice specs do not accidentally default to the spell owner.
+            return {"kind": "choice", "options": ["cards", "runes"],
+                    "player": 1 - item["owner"]}
+        if code == "OGN-187":
+            # Whirlwind starts with the next player, i.e. the opponent of the
+            # current controller in the two-player simulator.
+            options = ["skip"]
+            if state.get("units"):
+                options.insert(0, "return")
+            return {"kind": "choice", "options": options,
+                    "player": 1 - item["owner"]}
+        if code == "OGN-237":
+            return {"targets": [u["id"] for u in state["units"]
+                                if u["owner"] != item["owner"]],
+                    "multi": False, "min": 1, "max": 1}
         if code == "OGN-029":
             return {"targets": [u["id"] for u in state["units"]],
                     "multi": True, "min": 2, "max": 2, "allow_repeat": True}
@@ -4825,6 +4887,27 @@ class OriginsRules:
                     state["phase"], state["actor"], state["passes"] = "main", player, 0
                     self._cleanup(state, rng)
                     return
+                if decision.get("counter_retarget_choice"):
+                    item = decision["item"]
+                    if option not in decision.get("options", []):
+                        raise ValueError("invalid Mystic Reversal choice")
+                    if item.get("code") == "OGN-187" and option == "return":
+                        state["decision"] = {
+                            # The same player who made Whirlwind's option
+                            # choice chooses the unit to return.
+                            "kind": "target", "player": player,
+                            "targets": [u["id"] for u in state["units"]],
+                            "item": item, "whirlwind_target": True,
+                            "counter_retarget": True,
+                        }
+                        state["phase"], state["actor"], state["passes"] = (
+                            "decision", player, 0)
+                        return
+                    item["choice"] = option
+                    item["choice_done"] = True
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                    return
                 if decision.get("party_favors"):
                     item = decision["item"]
                     item["choice"] = option
@@ -5083,6 +5166,17 @@ class OriginsRules:
                     return
                 if decision.get("counter_retarget"):
                     item = decision["item"]
+                    # Some countered spells have an initial non-target choice
+                    # followed by a target window.  Preserve that choice
+                    # context when the target is selected; the generic
+                    # counter retarget path must not consume it early.
+                    if decision.get("whirlwind_target"):
+                        item["targets"] = [args["target"]]
+                        item["choice_done"] = True
+                        state["decision"] = None
+                        state["phase"], state["actor"], state["passes"] = (
+                            "chain", item["owner"], 0)
+                        return
                     item["targets"] = [args["target"]]
                     if decision.get("destination_select"):
                         target = self._unit(state, args["target"])
@@ -6376,7 +6470,11 @@ class OriginsRules:
         while queue:
             item = queue.pop(0)
             field = state["battle"]["field"]
-            if item.get("effect") == "ava_attack":
+            # Twisted Fate must reveal/recycle the top rune before the target
+            # is known; its effect opens the domain-specific target window
+            # during resolution.  Put the trigger on the Chain without an
+            # early designation choice.
+            if item.get("effect") in {"ava_attack", "twisted_fate"}:
                 item["trigger_target_pending"] = False
                 item["trigger_target_finalized"] = True
                 state.setdefault("combat_trigger_selected", []).append(item)

@@ -44,6 +44,13 @@ class AbilitySpec:
     self_reference: str = "activating_source"
     cost: Mapping[str, object] = field(default_factory=dict)
     notes: str = ""
+    # Future-facing rule metadata.  These fields are optional so existing
+    # registrations and positional callers remain source-compatible.
+    event: str | None = None
+    target_spec: Mapping[str, object] | None = None
+    continuation: str | None = None
+    replacement_priority: int | None = None
+    copy_policy: str | None = None
 
     def __post_init__(self) -> None:
         if not self.ability_id or not isinstance(self.ability_id, str):
@@ -54,8 +61,34 @@ class AbilitySpec:
             raise ValueError(f"ability {self.ability_id} needs source card codes")
         if not self.action_kind:
             raise ValueError(f"ability {self.ability_id} needs an action handler")
+        if not isinstance(self.target_mode, str) or not self.target_mode:
+            raise ValueError(f"ability {self.ability_id} needs a target mode")
+        if self.event is not None and (not isinstance(self.event, str) or not self.event):
+            raise ValueError(f"ability {self.ability_id} has an invalid event")
+        if self.continuation is not None and (not isinstance(self.continuation, str)
+                                               or not self.continuation):
+            raise ValueError(f"ability {self.ability_id} has an invalid continuation")
+        if (self.replacement_priority is not None
+                and (type(self.replacement_priority) is not int
+                     or self.replacement_priority < 0)):
+            raise ValueError(f"ability {self.ability_id} has an invalid replacement priority")
+        policy = self.copy_policy
+        if policy is None:
+            policy = "requires_exhaust" if self.requires_exhaust else "never"
+            object.__setattr__(self, "copy_policy", policy)
+        if policy not in {"never", "requires_exhaust", "always"}:
+            raise ValueError(f"ability {self.ability_id} has an invalid copy policy")
+        if policy == "always" and not self.requires_exhaust:
+            raise ValueError(
+                f"ability {self.ability_id} cannot use always copy policy without exhaust cost"
+            )
+        if self.target_spec is None:
+            object.__setattr__(self, "target_spec", {"mode": self.target_mode})
+        elif not isinstance(self.target_spec, Mapping):
+            raise ValueError(f"ability {self.ability_id} has an invalid target specification")
         if self.copyable_by_heimer is None:
-            object.__setattr__(self, "copyable_by_heimer", self.requires_exhaust)
+            object.__setattr__(self, "copyable_by_heimer",
+                               self.requires_exhaust and policy != "never")
         if self.copyable_by_heimer and not self.requires_exhaust:
             raise ValueError(
                 f"ability {self.ability_id} cannot be copied by Heimer without exhaust cost"
@@ -65,7 +98,8 @@ class AbilitySpec:
     def copyable(self) -> bool:
         """Whether Heimer can acquire this ability under its printed rule."""
 
-        return bool(self.requires_exhaust and self.copyable_by_heimer)
+        return bool(self.requires_exhaust and self.copyable_by_heimer
+                    and self.copy_policy != "never")
 
     def matches(self, source_kind: SourceKind, card_code: str) -> bool:
         return self.source_kind == source_kind and card_code in self.source_codes
@@ -135,6 +169,11 @@ class AbilityRegistry:
             "self_reference": spec.self_reference,
             "cost": dict(spec.cost),
             "notes": spec.notes,
+            "event": spec.event,
+            "target_spec": dict(spec.target_spec or {}),
+            "continuation": spec.continuation,
+            "replacement_priority": spec.replacement_priority,
+            "copy_policy": spec.copy_policy,
         } for spec in self.all()]
 
 
@@ -142,13 +181,19 @@ def _spec(ability_id: str, source_kind: SourceKind, codes: Iterable[str],
           action_kind: str, *, target_mode: str = "none", timing: str = "main",
           requires_exhaust: bool = True, copyable_by_heimer: bool | None = None,
           self_reference: str = "activating_source", cost: Mapping[str, object] | None = None,
-          notes: str = "") -> AbilitySpec:
+          notes: str = "", event: str | None = None,
+          target_spec: Mapping[str, object] | None = None,
+          continuation: str | None = None,
+          replacement_priority: int | None = None,
+          copy_policy: str | None = None) -> AbilitySpec:
     return AbilitySpec(
         ability_id=ability_id, source_kind=source_kind,
         source_codes=frozenset(codes), requires_exhaust=requires_exhaust,
         action_kind=action_kind, target_mode=target_mode, timing=timing,
         copyable_by_heimer=copyable_by_heimer, self_reference=self_reference,
-        cost={} if cost is None else dict(cost), notes=notes,
+        cost={} if cost is None else dict(cost), notes=notes, event=event,
+        target_spec=target_spec, continuation=continuation,
+        replacement_priority=replacement_priority, copy_policy=copy_policy,
     )
 
 

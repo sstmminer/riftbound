@@ -68,6 +68,38 @@ class RemainingOriginsUnitTests(unittest.TestCase):
         self.assertEqual(target["damage"], 2)
         self.assertEqual(len(row["main"]), before_main)
 
+    def test_twisted_fate_reveals_rune_before_attack_target_choice(self):
+        card = self._card(0, "OGN-200")
+        source = self.rules._new_unit(self.state, "OGN-200", 0, 0, card=card, exhausted=False)
+        target = self.rules._new_unit(self.state, "OGN-003", 1, 0, exhausted=False)
+        # Force the first revealed rune to Fury so the resolved trigger deals
+        # damage after the target window opens during effect resolution.
+        fury = next(rune for rune in self.state["players"][0]["rune_deck"]
+                    if self.rules.cards[rune["code"]]["domains"] == ["fury"])
+        self.state["players"][0]["rune_deck"].remove(fury)
+        self.state["players"][0]["rune_deck"].insert(0, fury)
+        self.state["fields"][0]["controller"] = 1
+        self.state["battle"] = {"field": 0, "attacker": 0, "combat": True,
+                                 "designation_triggers_added": False}
+        self.state["focus"] = 0
+        self.rules._close_showdown(self.state, random.Random(2))
+        # Twisted Fate has no target until the rune domain is known.
+        self.assertEqual(self.state["phase"], "chain")
+        self.assertFalse(self.state.get("decision"))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(2))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(2))
+        self.assertEqual(self.state["phase"], "decision")
+        self.assertEqual(self.state["decision"]["targets"], [target["id"]])
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and target["id"] in a.arguments), random.Random(2))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(2))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "pass"), random.Random(2))
+        self.assertEqual(target["damage"], 2)
+
 
     def test_kaisa_conquer_replays_low_energy_trash_spell_and_recycles(self):
         self.state.update(phase="main", actor=0, turn_player=0)

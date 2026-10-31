@@ -81,6 +81,65 @@ class AbilityRegistryTests(unittest.TestCase):
         self.assertEqual(row["action_kind"], "gear_armory_protect")
         self.assertEqual(row["target_mode"], "friendly_unit")
 
+    def test_future_registration_preserves_extended_rule_metadata(self):
+        registry = AbilityRegistry()
+        registry.register(AbilitySpec(
+            ability_id="future.replacement",
+            source_kind="gear",
+            source_codes=frozenset({"OGN-999"}),
+            requires_exhaust=True,
+            action_kind="future_resolve",
+            target_mode="unit",
+            timing="replacement",
+            event="unit.would_die",
+            target_spec={"mode": "friendly_unit", "selection": "click"},
+            continuation="future.resume",
+            replacement_priority=10,
+            copy_policy="requires_exhaust",
+            cost={"power": "any"},
+        ))
+        row = registry.as_dict()[0]
+        self.assertEqual(row["event"], "unit.would_die")
+        self.assertEqual(row["target_spec"]["selection"], "click")
+        self.assertEqual(row["continuation"], "future.resume")
+        self.assertEqual(row["replacement_priority"], 10)
+        self.assertEqual(row["copy_policy"], "requires_exhaust")
+
+    def test_event_sources_carry_future_metadata_into_windows(self):
+        registry = AbilityRegistry()
+        registry.register(AbilitySpec(
+            ability_id="future.trigger", source_kind="gear",
+            source_codes=frozenset({"OGN-999"}), requires_exhaust=True,
+            action_kind="future_trigger", timing="reaction",
+            event="unit.enters", target_mode="unit",
+            target_spec={"mode": "enemy_unit", "selection": "click"},
+            continuation="future.continue", replacement_priority=7,
+            copy_policy="requires_exhaust"))
+        rules = OriginsRules()
+        rules.abilities = registry
+        state = rules.initial_state(random.Random(91))
+        state["players"][0]["gear"].append({
+            "id": "gear:future", "card": None, "code": "OGN-999",
+            "owner": 0, "location": "base:0", "exhausted": False,
+        })
+        source = rules._registry_event_sources(state, 0, "future.trigger")[0]
+        self.assertEqual(source["event"], "unit.enters")
+        self.assertEqual(source["target_spec"]["selection"], "click")
+        self.assertEqual(source["continuation"], "future.continue")
+        self.assertEqual(source["replacement_priority"], 7)
+        self.assertEqual(source["copy_policy"], "requires_exhaust")
+
+    def test_extended_registry_metadata_rejects_invalid_values(self):
+        with self.assertRaisesRegex(ValueError, "invalid replacement priority"):
+            AbilitySpec("future.bad_priority", "unit", frozenset({"OGN-998"}),
+                         True, "future", replacement_priority=-1)
+        with self.assertRaisesRegex(ValueError, "invalid copy policy"):
+            AbilitySpec("future.bad_policy", "unit", frozenset({"OGN-997"}),
+                         True, "future", copy_policy="sometimes")
+        with self.assertRaisesRegex(ValueError, "always copy policy"):
+            AbilitySpec("future.bad_always", "unit", frozenset({"OGN-996"}),
+                         False, "future", copy_policy="always")
+
     def test_heimer_discovers_registered_e_abilities_and_excludes_non_e(self):
         rules = OriginsRules()
         state = rules.initial_state(random.Random(19))

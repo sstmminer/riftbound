@@ -28,7 +28,7 @@ SIMPLE_TARGET_SPELLS = frozenset({
     "OGN-046", "OGN-050", "OGN-057", "OGN-058", "OGN-069", "OGN-085",
     "OGN-093", "OGN-095", "OGN-102", "OGN-146", "OGN-154",
     "OGN-169", "OGN-172", "OGN-203", "OGN-207", "OGN-213",
-    "OGN-008", "OGN-168", "OGN-229", "OGN-252", "OGN-254", "OGN-262",
+    "OGN-008", "OGN-168", "OGN-180", "OGN-229", "OGN-252", "OGN-254", "OGN-262",
 })
 PAIR_TARGET_SPELLS = frozenset({"OGN-108", "OGN-128", "OGN-209", "OGN-220", "OGN-260"})
 DESTINATION_TARGET_SPELLS = frozenset({"OGN-043", "OGN-173", "OGN-250", "OGN-270", "OGN-258"})
@@ -894,6 +894,10 @@ class OriginsRules:
             candidates = [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
             return {"candidates": candidates, "min": 0, "max": len(candidates),
                     "target_might_limit": 4, "same_location": True}
+        if code == "OGN-180":
+            candidates = ([u["id"] for u in state["units"] if self._is_field(state, u["location"])]
+                          + [gear["id"] for row in state["players"] for gear in row["gear"]])
+            return {"candidates": candidates, "min": 1 if candidates else 0, "max": 1}
         if code in DESTINATION_TARGET_SPELLS:
             candidates = []
             for unit in state["units"]:
@@ -2402,8 +2406,9 @@ class OriginsRules:
                     destinations = [f"base:{unit['owner']}", *range(len(state["fields"]))]
                     destinations = [destination for destination in destinations
                                     if destination != unit["location"]]
-                deflect = sum(self._deflect(state, self._unit(state, uid)) for uid in selected
-                              if self._unit(state, uid)["owner"] != player)
+                deflect = sum(self._deflect(state, target) for uid in selected
+                              for target in [self._unit(state, uid)]
+                              if target is not None and target["owner"] != player)
                 for destination in destinations:
                     for spend in buffs:
                         energy = 0 if spend is not None else data["energy"]
@@ -3953,6 +3958,9 @@ class OriginsRules:
             return {"targets": candidates, "multi": True, "min": 0, "max": 1}
         if code in {"OGN-005", "OGN-008", "OGN-009", "OGN-014", "OGN-024", "OGN-085", "OGN-168"}:
             candidates = [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
+        elif code == "OGN-180":
+            candidates = ([u["id"] for u in state["units"] if self._is_field(state, u["location"])]
+                          + [gear["id"] for row in state["players"] for gear in row["gear"]])
         elif code == "OGN-033":
             candidates = [u["id"] for u in self._units(state, 1 - item["owner"])]
         elif code in {"OGN-046", "OGN-069", "OGN-102", "OGN-146", "OGN-154", "OGN-207"}:
@@ -4152,6 +4160,12 @@ class OriginsRules:
                 self._deal_damage(state, second, self.might(state, first))
         for uid in item["targets"]:
             unit = self._unit(state, uid)
+            if unit is None and code == "OGN-180":
+                gear = next((gear for row in state["players"] for gear in row["gear"]
+                             if gear["id"] == uid), None)
+                if gear is not None:
+                    gear["temporary"] = True
+                continue
             if unit is None or (code in {"OGN-005", "OGN-009", "OGN-014", "OGN-024", "OGN-085", "OGN-105"}
                                 and not self._is_field(state, unit["location"])):
                 continue
@@ -4222,7 +4236,12 @@ class OriginsRules:
                 unit["temporary"] += self.might(state, unit)
                 unit["temporary_unit"] = True
             elif code == "OGN-180":
-                unit["temporary_unit"] = True
+                gear = next((gear for row in state["players"] for gear in row["gear"]
+                             if gear["id"] == uid), None)
+                if gear is not None:
+                    gear["temporary"] = True
+                else:
+                    unit["temporary_unit"] = True
             elif code in {"OGN-206", "OGN-207"}:
                 unit["temporary"] += 2 if code == "OGN-206" else 3
             elif code == "OGN-008":
@@ -5455,7 +5474,8 @@ class OriginsRules:
                                 "owner": player,
                                 "card_owner": self._card_owner(state, card, player),
                                 "location": f"base:{player}",
-                                "exhausted": code == "OGN-017"})
+                                "exhausted": code == "OGN-017",
+                                "temporary": False})
             if code == "OGN-182":
                 self._draw(state, player, 1, rng)
             elif code == "OGN-212":
@@ -6630,7 +6650,8 @@ class OriginsRules:
                         or gear.get("card") not in state["cards"]
                         or gear.get("card_owner", state["cards"][gear["card"]]["owner"])
                            != state["cards"][gear["card"]]["owner"]
-                        or gear.get("exhausted") not in (True, False)):
+                        or gear.get("exhausted") not in (True, False)
+                        or gear.get("temporary", False) not in (True, False)):
                     raise ValueError("invalid gear state")
                 located.append(gear["card"])
             for hidden in row.get("hidden", []):

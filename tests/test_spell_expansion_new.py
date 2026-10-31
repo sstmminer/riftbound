@@ -221,6 +221,23 @@ class SpellExpansionNewTests(unittest.TestCase):
         self.drain()
         self.assertEqual(target["location"], "base:1")
 
+    def test_fading_memories_can_click_a_gear_target(self):
+        card = self.spare("OGN-180")
+        row = self.state["players"][0]
+        row["energy"], row["power"] = 10, ["chaos"] * 4
+        gear = row["main"].pop()
+        self.state["cards"][gear]["code"] = "OGN-017"
+        row["gear"].append({"id": gear, "card": gear, "code": "OGN-017",
+                             "owner": 0, "card_owner": 0, "location": "base:0",
+                             "exhausted": False, "temporary": False})
+        action = next(a for a in self.rules.legal_actions(self.state)
+                      if a.kind == "play_spell_targeted" and card in a.arguments)
+        self.rules.apply(self.state, action, random.Random(9))
+        self.rules.apply(self.state, next(a for a in self.rules.legal_actions(self.state)
+                                          if a.kind == "choose_target" and gear in a.arguments), random.Random(9))
+        self.drain()
+        self.assertTrue(next(item for item in row["gear"] if item["id"] == gear)["temporary"])
+
     def test_block_grants_shield_three_and_temporary_tank(self):
         card = self.spare("OGN-057")
         self.state["players"][0]["power"] = ["calm"] * 4

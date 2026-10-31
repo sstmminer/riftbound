@@ -119,8 +119,8 @@ Gust、Rebuke、Hidden Blade 和 Facebreaker（OGN-053/069/083/104/169/172/213/2
 持有时引导 1 枚横置符文；Vilemaw's Lair（OGN-295）禁止单位从该战场移动回基地；
 The Arena's Greatest（OGN-290）在每名玩家首次开始阶段给予 1 点；Zaun Warrens
 （OGN-298）征服时弃 1 再抽 1。后三类触发接入统一的 hold/conquer
-计分入口；移动限制在合法移动生成阶段生效。Zaun Warrens 当前在无选择窗口的场景中按
-手牌顺序弃牌，后续若接入通用弃牌选择窗口应替换为显式玩家选择。Startipped Peak
+计分入口；移动限制在合法移动生成阶段生效。Zaun Warrens 现已使用显式手牌弃牌选择窗口，
+并在选择后恢复正常结算。Startipped Peak
 的“may channel”现已进入可选效果确认窗口。
 
 新增法术中带 Hidden 的牌（OGN-053、OGN-213、OGN-220）当前只执行其公开 Action
@@ -133,8 +133,7 @@ Charm/Ride the Wind 使用显式目的地选择并按移动规则横置或准备
 
 本轮同步加入 Vayne、Crackshot Corsair、Soaring Scout、Leona 和 Shen
 （OGN-035/130/216/238/241），覆盖 Assault、攻击触发伤害、Deathknell 引导、Shield
-和 Tank。攻击触发牌在多个合法敌方目标时当前取第一个目标，待通用攻击触发选择窗口
-接入后改为显式选择。
+和 Tank；攻击触发目标已纳入后续统一目标窗口审计。
 
 同时加入 Altar to Unity、Navori Fighting Pit 和 Void Gate
 （OGN-275/283/296）：持有时生成 Recruit、给首个未 Buff 友军加 Buff，以及让法术/能力
@@ -147,8 +146,7 @@ Dawn 在 Stun 后自动 Buff 首个友军，The Boss 当前只实现征服后准
 同时加入 Bandle Tree、Fortified Position、Hallowed Tomb、Monastery of Hirana、
 Obelisk of Power、Reaver's Row、Reckoner's Arena、Sigil of the Storm、Targon's Peak、
 The Candlelit Sanctum、The Dreaming Tree 和 The Grand Plaza
-（OGN-278/279/281/282/284/285/286/287/289/291/292/293）。其中尚未迁移到统一选择
-窗口的复杂效果仍可能采用首个合法目标或自动路径，并已在测试与交接记录中标明；Recruit DE/NX/Sprite 衍生物
+（OGN-278/279/281/282/284/285/286/287/289/291/292/293）。其中复杂效果随后按统一选择窗口逐步迁移，剩余边界记录在本文件末尾；Recruit DE/NX/Sprite 衍生物
 （OGN-271/272/274）也已纳入卡图与构筑禁止校验。
 
 本轮把移动、可选效果和目标选择收拢为统一窗口。普通移动、Charm、Ride the Wind、
@@ -181,8 +179,8 @@ Assault、Reaction、Singularity 和 Reaver's Row 等已完成机制，便于手
 OGN-125/139/151/164/165/218/225/240/243/246/161/174/185/195/239，以及
 OGN-048/123/128/138/146/209/252/260/262/266/270。范围覆盖 Legion/Assault、
 Shield/Tank、Vision、Deathknell、Recruit 生成、目标 Stun、简单伤害、抽牌、准备和移动。
-OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及部分多目标选择仍采用
-简化路径，具体限制已留在对应测试与代码注释中。
+OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及部分多目标选择曾采用
+简化路径，后续已迁移的部分以当前审计段和回归测试为准。
 
 ## 本轮新增规则审计与卡池
 
@@ -217,7 +215,7 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 
 新增流程覆盖死亡替代、装备主动能力、攻击/防守触发、牌库顶牌展示与选择、免费打出、分配伤害和多区域资源选择。每张卡均导入官方标准图、横置图和高清悬浮图；`tools/check_assets.py` 验证 298 张映射完整。
 
-本批法术审计注记：Blind Fury（OGN-025）公开对手牌库顶牌，由施放者选择并把该物理牌转为施放者控制后免费打出；Promising Future（OGN-115）先由下家选择、再由另一玩家选择，按下家顺序逐张打出，忽略 Energy 但仍检查并支付 Power；Divine Judgment（OGN-244）以两个玩家独立的四区选择窗口完成后才发出回收事件，避免 Karma 在第二位玩家选择期间插入。当前免费打出的复杂目标法术仍通过已有 legacy 目标路径取首个合法目标，待统一 free-play 目标窗口后可改为点选序列；这属于明确记录的受限交互路径，不按白板处理。
+本批法术审计注记：Blind Fury（OGN-025）公开对手牌库顶牌，由施放者选择并把该物理牌转为施放者控制后免费打出；Promising Future（OGN-115）先由下家选择、再由另一玩家选择，按下家顺序逐张打出，忽略 Energy 但仍检查并支付 Power；Divine Judgment（OGN-244）以两个玩家独立的四区选择窗口完成后才发出回收事件，避免 Karma 在第二位玩家选择期间插入。免费打出的目标法术和已覆盖的复杂单位入场目标现在通过统一点击窗口处理；剩余限制集中在嵌套免费打出与未来新目标模式。
 
 本批仍保留明确限制：Volibear（OGN-041）现在以五次可重复点击逐点分配 5 点伤害，已能表达任意分配，但没有单独的数字分配面板；Heimerdinger（OGN-111）通过 `AbilityRegistry` 按 `requires_exhaust=True` 自动发现单位、传奇和装备的横置能力，Vi/Udyr 等没有横置符号的能力以及 Nocturne/Zhonya 的非横置替代效果会被排除。Solari Shrine、Mistfall、The Boss 等事件型横置能力也使用同一注册表和事件窗口。Nocturne（OGN-194）的 Ganking 与牌库顶查看窗口均已接入：Vision、批量 reveal 和 Dazzling Aurora 的查看窗口由牌主私下选择跳过或支付一枚 [A]；支付后先放逐该物理牌，再继续对应的免费出牌/翻牌流程；无可支付符能时不会暴露不可用选项。Teemo 的防守触发只在实际进入防守战斗时生成，不会因从 Hidden 打出就提前触发。
 
@@ -273,7 +271,7 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 - Origins 第一弹没有剩余的未注册卡牌编号；`support.py` 与官方卡图映射均覆盖 298 张目录卡。
 - 仍需持续完善的是复杂效果的裁判级边界：多区域同时选择、复制全部能力、少数延迟替代效果、免费打出后的后续目标交互，以及与第二套引擎的差分验证。
 - OGN-271/272/274 已纳入目录、牌图和构筑排除校验；当前效果生成路径使用 Recruit (ZN) 与 Sprite，Recruit (DE/NX) 尚无独立生成来源。OGN-263 Swift Scout 与 OGN-278 Bandle Tree 已纳入支持集。
-- 上述复杂机制不再通过构筑拒绝规避；每张卡都保留显式处理器，无法完全裁判化的分支会在日志和测试中标明受限路径。剩余工作集中在反制、Hidden/reveal 复杂分支、控制权、复杂牌区选择、额外费用、替代效果、分割伤害和多模式能力。已支持的 OGN-147 Wildclaw Shaman 仍把“是否花费 Buff”简化为自动使用首个可用 Buff；OGN-230/235 的多资源/回收触发和部分 Jinx 弃牌来源仍需统一事件窗口。
+- 上述复杂机制不再通过构筑拒绝规避；每张卡都保留显式处理器，无法完全裁判化的分支会在日志和测试中标明受限路径。剩余工作集中在反制、Hidden/reveal 复杂分支、控制权、复杂牌区选择、额外费用、替代效果、分割伤害、多模式能力以及未来新增能力的注册元数据。OGN-230/235 的多资源/回收来源和部分跨机制 Jinx 场景仍需继续统一事件窗口。
 - 当前事件日志是派生调试记录，不是完整裁判级事件溯源；仍需要独立官方裁判或第二套引擎做差分验证。
 
 ## 下一步顺序

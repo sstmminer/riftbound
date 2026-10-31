@@ -573,9 +573,15 @@ class OriginsTests(unittest.TestCase):
         uid = self.hand(state, "OGN-010")
         self.act(state, "play_unit", card=uid, location="base:0")
         self.assertTrue(state["decision"].get("accelerate"))
+        # The current unit is still Pending during Accelerate; the public
+        # played counter changes only when the play process is finalized.
+        self.assertEqual(row["played"], 0)
+        self.assertEqual(row["finalized_played"], 0)
         self.assertFalse(any(action.kind == "legend_energy"
                              for action in self.rules.legal_actions(state)))
         self.act(state, "choose_option", option="skip")
+        self.assertEqual(row["played"], 1)
+        self.assertEqual(row["finalized_played"], 1)
         self.assertTrue(any(action.kind == "legend_energy"
                             for action in self.rules.legal_actions(state)))
 

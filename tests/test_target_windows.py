@@ -28,10 +28,14 @@ class TargetWindowMigrationTests(unittest.TestCase):
         self.rules.apply(self.state, action, random.Random(9))
         self.assertEqual(self.state["phase"], "decision")
         self.assertEqual(self.state["decision"]["targets"], [target["id"]])
+        # A targeted spell is still Pending until its target is confirmed.
+        self.assertEqual(self.state["players"][0]["played"], 0)
+        self.assertEqual(self.state["players"][0]["finalized_played"], 0)
         choose = next(a for a in self.rules.legal_actions(self.state)
                       if a.kind == "choose_target" and target["id"] in a.arguments)
         self.rules.apply(self.state, choose, random.Random(9))
         self.assertEqual(self.state["phase"], "chain")
+        self.assertEqual(self.state["players"][0]["played"], 1)
 
     def test_gear_targeted_ability_opens_click_target_decision(self):
         row = self.state["players"][0]

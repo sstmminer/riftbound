@@ -171,7 +171,8 @@ class OriginsRules:
             state["players"].append({"main": physical[4:], "hand": physical[:4], "champion": [chosen],
                                      "gear": [], "hidden": [], "trash": [], "banishment": [], "rune_deck": runes, "runes": [], "energy": 0,
                                      "power": [], "buff_bonus": 0, "legend": deck["legend"], "legend_exhausted": False,
-                                     "turns": 0, "played": 0, "ready_play": False,
+                                     "turns": 0, "played": 0, "finalized_played": 0,
+                                     "finalized_cards": [], "ready_play": False,
                                      "free_hide_turn": False,
                                      "discarded_this_turn": False, "spell_bonus_damage": 0,
                                      "cards_locked_turn": False, "spell_discount": 0})
@@ -705,7 +706,7 @@ class OriginsRules:
         # Dangerous Duo has an entry target when played as the second card.
         # Free-play effects must expose the same target window instead of
         # silently passing ``enter_target=None``.
-        if data["type"] == "unit" and code == "OGN-016" and row["played"]:
+        if data["type"] == "unit" and code == "OGN-016" and self._played_for_legion(state, owner):
             candidates = [unit["id"] for unit in self._units(state, owner)]
             if candidates:
                 payment = []
@@ -1055,7 +1056,7 @@ class OriginsRules:
                 if self.cards[state["cards"][card]["code"]]["type"] == "unit":
                     self._new_unit(state, state["cards"][card]["code"], owner,
                                    f"base:{owner}", card=card, exhausted=True)
-                    row["played"] += 1
+                    self._mark_play_finalized(state, owner, card)
             item = reveal.get("item")
             if item is not None:
                 item["reveal_done"] = True
@@ -1335,7 +1336,7 @@ class OriginsRules:
             row["power"].pop(power_index)
             row["trash"].remove(card)
             self._new_unit(state, "OGN-006", player, f"base:{player}", card=card, exhausted=True)
-            row["played"] += 1
+            self._mark_play_finalized(state, player, card)
             return True
         if effect == "ava_play_hidden":
             candidates = [uid for uid in item.get("candidates", [])
@@ -1558,6 +1559,8 @@ class OriginsRules:
         state["dreaming_tree_used"] = [False] * len(state["fields"])
         for row in state["players"]:
             row["played"] = 0
+            row["finalized_played"] = 0
+            row["finalized_cards"] = []
             row["ready_play"] = False
             row["buff_bonus"] = 0
             row["discarded_this_turn"] = False
@@ -2262,11 +2265,9 @@ class OriginsRules:
                 # registry.  This deliberately excludes non-E abilities such
                 # as Vi/Udyr and automatically picks up future registrations.
                 result.extend(self._heimer_registry_actions(state, player, unit))
-        # During an Accelerate payment window the unit being played has been
-        # removed from hand and is represented on the Board, but its play
-        # process has not completed. Hand of Noxus' Legion condition must use
-        # the number of cards played before this pending unit, rather than the
-        # provisional row["played"] count that includes it.
+        # During an Accelerate payment window the unit is represented on the
+        # Board but its play process has not completed.  The shared finalized
+        # count therefore excludes it automatically.
         played_for_legion = self._played_for_legion(state, player)
         if row["legend"] == "OGN-253" and not row["legend_exhausted"] and played_for_legion:
             result.append(Action.make("legend_energy"))
@@ -2311,20 +2312,70 @@ class OriginsRules:
                            if u["code"] == "OGN-121")
         return result
 
-    def _played_for_legion(self, state, player):
-        """Return cards finalized before the currently pending play.
+    def _mark_play_finalized(self, state, player, card=None, *, item=None):
+        """Record a completed card-play process exactly once.
 
-        ``players[player]['played']`` is a turn-local process counter and is
-        incremented when a card enters the play path. During Accelerate the
-        current unit is still Pending, so Legion must use the saved count from
-        before that unit entered the process (RUP5 350.1, 420.4.b, 812.1.c).
+        ``played`` remains the public compatibility alias for the finalized
+        count.  Rules that ask whether another card was played this turn
+        must read this finalized marker instead (RUP5 350.1, 352.2, 420.4.b,
+        812.1.c).  A chain item or direct play context may be revisited by a
+        reveal/continuation, so the marker is deliberately idempotent.
+        """
+        if item is not None:
+            if item.get("finalized_play_marked"):
+                return False
+            item["finalized_play_marked"] = True
+            player = item.get("played_by", player)
+            item["finalized_by"] = player
+        if card is None:
+            return False
+        row = state["players"][player]
+        # Older saved states do not have the new fields.  Initialise them on
+        # first use so loading a replay remains compatible.
+        row.setdefault("finalized_played", row.get("played", 0))
+        row.setdefault("finalized_cards", [])
+        # ``played`` now represents finalized cards as well.  Keeping the
+        # legacy field synchronized avoids breaking saved states and GUI
+        # consumers while removing its old provisional semantics.
+        if row["finalized_played"] < row.get("played", 0):
+            row["finalized_played"] = row["played"]
+        row["finalized_played"] += 1
+        row["played"] = row["finalized_played"]
+        row["finalized_cards"].append(card)
+        return True
+
+    def _spell_post_triggers(self, state, player, second_card):
+        """Build post-resolution triggers for a finalized spell play.
+
+        The trigger list is attached when the spell becomes a Chain item, but
+        each effect is generated only after that item resolves.  Keeping this
+        in one helper makes ordinary, targeted, field-targeted, and Counter
+        spells follow the same extension point.
+        """
+        triggers = [{"effect": "ravenbloom", "owner": player}]
+        if second_card:
+            triggers.append({"effect": "darius", "owner": player})
+        if state["turn_player"] != player:
+            triggers.extend(
+                {"effect": "viktor_innovator", "source": source["id"], "owner": player}
+                for source in self._units(state, player) if source["code"] == "OGN-117"
+            )
+        return triggers
+
+    def _played_for_legion(self, state, player):
+        """Return the number of this player's finalized cards this turn.
+
+        ``played`` remains a synchronized compatibility alias for this count;
+        older hand-built/replay states that lack ``finalized_played`` are read
+        through the same value.  The live Accelerate card is not counted until
+        its payment and entry process is complete.
         """
         row = state["players"][player]
-        count = row.get("played", 0)
-        pending = (state.get("decision") or {}).get("accelerate")
-        if pending and pending.get("player", player) == player:
-            return int(pending.get("played_before", max(0, count - 1)))
-        return count
+        # ``played`` is kept as a synchronized public alias.  Taking the
+        # maximum also migrates older hand-built/replay states that only set
+        # that field, while the live Accelerate card no longer increments it
+        # until finalization, so a pending first card still returns zero.
+        return max(int(row.get("finalized_played", 0)), int(row.get("played", 0)))
 
     def _accelerate_resource_actions(self, state, player):
         """Resource Add abilities legal while paying an Accelerate cost.
@@ -2614,7 +2665,7 @@ class OriginsRules:
                 permitted += [i for i in range(len(state["fields"]))
                               if any(u["owner"] != player and u["location"] == i for u in state["units"])
                               and i not in permitted]
-            energy = data["energy"] - (2 if code == "OGN-012" and row["played"] else 0)
+            energy = data["energy"] - (2 if code == "OGN-012" and self._played_for_legion(state, player) else 0)
             if "Dragon" in data["tags"] and any(u["code"] == "OGN-140" and u["owner"] == player
                                                   and self._is_field(u["location"]) for u in state["units"]):
                 energy = max(1, energy - 2)
@@ -2649,7 +2700,7 @@ class OriginsRules:
                                     for payment in self._payments(state, player, total_energy, data["domains"], total_power):
                                         for location in permitted:
                                             enter_targets = [None]
-                                            if code == "OGN-016" and row["played"]:
+                                            if code == "OGN-016" and self._played_for_legion(state, player):
                                                 candidates = [unit["id"] for unit in self._units(state, player)]
                                                 enter_targets = candidates or [None]
                                             for enter_target in enter_targets:
@@ -2663,7 +2714,7 @@ class OriginsRules:
                                                     discard_card=discard_card,
                                                     spend_buffs=spend_buffs,
                                                     kill_units=kill_units))
-                                            if code == "OGN-016" and row["played"] and candidates:
+                                            if code == "OGN-016" and self._played_for_legion(state, player) and candidates:
                                                 result.append(Action.make(
                                                     "play_unit_targeted", card=card, location=location,
                                                     accelerate=accelerate, payment=payment,
@@ -2919,6 +2970,13 @@ class OriginsRules:
         return tuple(result)
 
     def _enter_chain(self, state, items, *, preserve_context=False):
+        for item in items:
+            # Preserve the player who completed the play process separately
+            # from ``owner``.  Counter/reversal effects may later change the
+            # resolving item's controller, but Legion and post-play triggers
+            # still belong to the player who actually played the card.
+            if item.get("card") is not None:
+                item.setdefault("played_by", item.get("owner"))
         if not state["chain"] and not preserve_context:
             state["chain_return"] = state["phase"]
             state["chain_from_spell"] = any(item["effect"] == "spell" for item in items)
@@ -3055,7 +3113,11 @@ class OriginsRules:
         return unit
 
     def _second_card_triggers(self, state, player):
-        if state["players"][player]["played"] != 2:
+        # The current card is still pending when this helper is called.  A
+        # second-card trigger therefore means exactly one *previous* card has
+        # finalized this turn; testing the old ``played == 2`` shape here
+        # would be fragile during nested/reaction plays.
+        if self._played_for_legion(state, player) != 1:
             return []
         return [{"effect": "darius", "source": u["id"], "owner": player}
                 for u in self._units(state, player) if u["code"] == "OGN-027"]
@@ -3077,17 +3139,22 @@ class OriginsRules:
         player = pending["player"]
         location = pending["location"]
         triggers = pending.get("triggers", [])
+        unit = self._unit(state, pending.get("unit"))
+        if unit is None:
+            return
         state["phase"], state["actor"], state["passes"] = "main", player, 0
         row = state["players"][player]
         if pending.get("scrapyard_discard") and row["hand"]:
             state["decision"] = {"kind": "discard", "player": player,
                                   "remaining": min(2, len(row["hand"])),
                                   "scrapyard_discard": True,
-                                  "post_triggers": triggers}
+                                  "post_triggers": triggers,
+                                  "finalized_card": unit.get("card")}
             state["phase"], state["actor"], state["passes"] = "decision", player, 0
             return
         if pending.get("scrapyard_discard"):
             self._draw(state, player, 2, rng)
+        self._mark_play_finalized(state, player, unit.get("card"))
         if pending.get("replay_optional"):
             self._queue_optional(state, player, "replay_trash_unit",
                                  source=pending["unit"], code=pending["code"])
@@ -4590,6 +4657,7 @@ class OriginsRules:
                 row["trash"].remove(candidate)
                 self._new_unit(state, state["cards"][candidate]["code"], owner,
                                f"base:{owner}", card=candidate, exhausted=True)
+                self._mark_play_finalized(state, owner, candidate)
         elif code == "OGN-022":
             for player in (0, 1):
                 for gear in list(state["players"][player]["gear"]):
@@ -4873,6 +4941,9 @@ class OriginsRules:
                                       "counter_retarget": decision.get("counter_retarget", False)}
                 state["phase"], state["actor"], state["passes"] = "decision", player, 0
                 return
+            self._mark_play_finalized(
+                state, item.get("played_by", item["owner"]),
+                item.get("card"), item=item)
             state["decision"] = None
             state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
             return
@@ -4883,6 +4954,11 @@ class OriginsRules:
                 raise ValueError("chain target selection is unavailable")
             item = decision["item"]
             item["counter_target"] = target
+            played_by = item.get("played_by", item["owner"])
+            if "post_triggers" not in item:
+                item["post_triggers"] = self._spell_post_triggers(
+                    state, played_by, self._played_for_legion(state, played_by) > 0)
+            self._mark_play_finalized(state, played_by, item.get("card"), item=item)
             state["decision"] = None
             state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
             return
@@ -4990,6 +5066,10 @@ class OriginsRules:
                     if not decision.get("counter_retarget"):
                         self._pay(row, 0, list(range(x)))
                     item["x"] = x
+                    if decision.get("item", {}).get("effect") == "spell":
+                        self._mark_play_finalized(
+                            state, item.get("played_by", item["owner"]),
+                            item.get("card"), item=item)
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                     return
@@ -5134,6 +5214,7 @@ class OriginsRules:
                     if decision["remaining"]:
                         return
                     self._draw(state, player, 2, rng)
+                    self._mark_play_finalized(state, player, decision.get("finalized_card"))
                     post = decision.get("post_triggers", [])
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "main", player, 0
@@ -5622,6 +5703,9 @@ class OriginsRules:
                     for entry in reversed(state["chain"]):
                         if entry.get("card") == item.get("card"):
                             entry["targets"] = [args["target"]]
+                            self._mark_play_finalized(
+                                state, entry.get("played_by", item["owner"]),
+                                entry.get("card"), item=entry)
                             break
                 else:
                     self.effects.dispatch(item["effect"], state, item, rng)
@@ -5694,6 +5778,9 @@ class OriginsRules:
                     for entry in reversed(state["chain"]):
                         if entry.get("card") == item.get("card"):
                             entry["targets"] = selected
+                            self._mark_play_finalized(
+                                state, entry.get("played_by", item["owner"]),
+                                entry.get("card"), item=entry)
                             if item.get("code") == "OGN-256":
                                 entry["fox_fire_initial_targets"] = list(selected)
                             break
@@ -5757,13 +5844,15 @@ class OriginsRules:
             ignore_energy = bool(args.get("ignore_energy"))
             self._pay(row, 0 if ignore_energy else data["energy"], args.get("payment", []))
             row["hand"].remove(card)
-            row["played"] += 1
             row["gear"].append({"id": card, "card": card, "code": code,
                                 "owner": player,
                                 "card_owner": self._card_owner(state, card, player),
                                 "location": f"base:{player}",
                                 "exhausted": code == "OGN-017",
                                 "temporary": False})
+            # Gear has no open target-selection step: it is finalized as soon
+            # as payment and placement into the Base complete.
+            self._mark_play_finalized(state, player, card)
             if code == "OGN-182":
                 self._draw(state, player, 1, rng)
             elif code == "OGN-212":
@@ -6146,7 +6235,6 @@ class OriginsRules:
             data = self.cards[code]
             self._pay(row, data["energy"], args.get("payment", []))
             row["hand"].remove(card)
-            row["played"] += 1
             item = {"effect": "counter", "owner": player, "card": card,
                     "code": code, "targets": [], "counter_targets": list(args.get("targets", []))}
             self._enter_chain(state, [item])
@@ -6163,18 +6251,12 @@ class OriginsRules:
             self._pay(row, energy, args.get("payment", []))
             row["spell_discount"] = 0
             row["hand"].remove(card)
-            row["played"] += 1
+            finalized_before = self._played_for_legion(state, player)
             item = {"effect": "spell", "owner": player, "card": card,
                     "code": code, "targets": [], "field": None,
-                    "legion": row["played"] > 1,
+                    "legion": bool(finalized_before),
                     "x": 0,
-                    "post_triggers": [{"effect": "ravenbloom", "owner": player}]}
-            if row["played"] == 2:
-                item["post_triggers"].append({"effect": "darius", "owner": player})
-            if state["turn_player"] != player:
-                item["post_triggers"].extend(
-                    {"effect": "viktor_innovator", "source": source["id"], "owner": player}
-                    for source in self._units(state, player) if source["code"] == "OGN-117")
+                    "post_triggers": self._spell_post_triggers(state, player, finalized_before)}
             self._enter_chain(state, [item])
             state["decision"] = {"kind": "field", "player": player,
                                   "fields": list(args.get("fields", [])), "item": item,
@@ -6189,6 +6271,7 @@ class OriginsRules:
             data = self.cards[code]
             payment = args.get("payment", [])
             spend = args.get("spend_buff")
+            finalized_before = self._played_for_legion(state, player)
             before = {
                 "card": card, "energy": row["energy"], "power": list(row["power"]),
                 "played": row["played"], "hand_index": row["hand"].index(card),
@@ -6209,22 +6292,15 @@ class OriginsRules:
                     raise ValueError("invalid buff payment")
                 spent["buff"] = 0
             row["hand"].remove(card)
-            row["played"] += 1
             item = {"effect": "spell", "owner": player, "card": card,
                     "code": code, "targets": [], "destination": args.get("destination"),
-                    "legion": before["played"] > 0}
+                    "legion": bool(finalized_before)}
             if code == "OGN-183":
                 item["deck_options"] = list(args.get("deck_options", []))
-            # Ravenbloom triggers after this spell finishes resolving.
-            item["post_triggers"] = [{"effect": "ravenbloom", "owner": player}]
-            if row["played"] == 2:
-                item["post_triggers"].append({"effect": "darius", "owner": player})
-            if state["turn_player"] != player:
-                item["post_triggers"].extend(
-                    {"effect": "viktor_innovator", "owner": player}
-                    for source in self._units(state, player)
-                    if source["code"] == "OGN-117"
-                )
+            # Ravenbloom/Darius/Viktor are generated only after this spell
+            # resolves; the shared helper keeps all spell entry paths aligned.
+            item["post_triggers"] = self._spell_post_triggers(
+                state, player, finalized_before)
             # Keep a pending spell item while the player chooses its target;
             # target confirmation fills that item before normal chain resolution.
             self._enter_chain(state, [item])
@@ -6268,8 +6344,8 @@ class OriginsRules:
             card = args["card"]
             code = state["cards"][card]["code"]
             data = self.cards[code]
-            played_before = row["played"]
-            was_legion = played_before > 0
+            finalized_before = self._played_for_legion(state, player)
+            was_legion = finalized_before > 0
             if kind == "play_unit":
                 ignore_cost = bool(args.get("ignore_cost"))
                 additional_cost = bool(args.get("additional_cost"))
@@ -6318,7 +6394,6 @@ class OriginsRules:
                 unit = self._new_unit(state, code, player, args["location"], card=card, exhausted=not ready)
                 if args.get("hidden_field") is not None:
                     unit["hidden_field"] = args["hidden_field"]
-                row["played"] += 1
                 if (row["legend"] == "OGN-249" and not row["legend_exhausted"]
                         and self.might(state, unit) >= 5):
                     state.setdefault("legend_options", []).append({"owner": player,
@@ -6448,7 +6523,7 @@ class OriginsRules:
                         "accelerate": {
                             "unit": unit["id"], "player": player,
                             "code": code, "location": args["location"],
-                            "played_before": played_before,
+                            "finalized_before": finalized_before,
                             "domains": list(data["domains"]),
                             "triggers": copy.deepcopy(triggers),
                             "scrapyard_discard": code == "OGN-020" and was_legion,
@@ -6462,11 +6537,13 @@ class OriginsRules:
                     state["decision"] = {"kind": "discard", "player": player,
                                           "remaining": min(2, len(row["hand"])),
                                           "scrapyard_discard": True,
-                                          "post_triggers": triggers}
+                                          "post_triggers": triggers,
+                                          "finalized_card": card}
                     state["phase"], state["actor"], state["passes"] = "decision", player, 0
                     return
                 if code == "OGN-020" and was_legion:
                     self._draw(state, player, 2, rng)
+                self._mark_play_finalized(state, player, card)
                 if code in {"OGN-196", "OGN-226"}:
                     self._queue_optional(state, player, "replay_trash_unit",
                                          source=unit["id"], code=code)
@@ -6489,7 +6566,6 @@ class OriginsRules:
                 if spend is not None:
                     self._unit(state, spend)["buff"] = 0
                 row["hand"].remove(card)
-                row["played"] += 1
                 effect = "return_unit" if code == "OGN-170" else ("sabotage" if code == "OGN-156" else "spell")
                 triggers = self._second_card_triggers(state, player)
                 spell_item = {"effect": effect, "owner": player, "card": card,
@@ -6504,19 +6580,18 @@ class OriginsRules:
                 if code == "OGN-183":
                     spell_item["deck_options"] = list(args.get("deck_options", []))
                 if code in SPELL_CODES:
-                    spell_item["post_triggers"] = [{"effect": "ravenbloom", "owner": player}]
-                    if row["played"] == 2:
-                        spell_item["post_triggers"].append({"effect": "darius", "owner": player})
-                    if state["turn_player"] != player:
-                        spell_item["post_triggers"].extend(
-                            {"effect": "viktor_innovator", "owner": player}
-                            for source in self._units(state, player)
-                            if source["code"] == "OGN-117"
-                        )
-                    # Playing a spell completes only after its resolution, so
-                    # Darius's second-card trigger is a post-spell trigger too.
+                    spell_item["post_triggers"] = self._spell_post_triggers(
+                        state, player, was_legion)
+                    # The spell is already finalized when the Chain item is
+                    # created; Ravenbloom/Darius remain post-resolution
+                    # triggers and are therefore kept on the item.
                     triggers = []
                 self._enter_chain(state, [spell_item])
+                # The spell's play process is complete when its Chain item is
+                # created.  Its effect may still be pending, but a later card
+                # must already see this card as Finalized (including when it
+                # is subsequently countered).
+                self._mark_play_finalized(state, player, card, item=spell_item)
                 self._cleanup(state, rng)
                 self._triggers(state, triggers)
         elif kind == "order_triggers":
@@ -6607,27 +6682,28 @@ class OriginsRules:
             # spell item prevents them from incorrectly resolving before it.
             post_triggers = item.pop("post_triggers", None)
             if post_triggers:
+                played_by = item.get("finalized_by", item.get("played_by", item["owner"]))
                 generated = []
                 for spec in post_triggers:
                     if spec.get("effect") == "ravenbloom":
                         generated.extend(
                             {"effect": "ravenbloom", "source": source["id"],
-                             "owner": item["owner"]}
-                            for source in self._units(state, item["owner"])
+                             "owner": played_by}
+                            for source in self._units(state, played_by)
                             if source["code"] == "OGN-103"
                         )
                     elif spec.get("effect") == "darius":
                         generated.extend(
                             {"effect": "darius", "source": source["id"],
-                             "owner": item["owner"]}
-                            for source in self._units(state, item["owner"])
+                             "owner": played_by}
+                            for source in self._units(state, played_by)
                             if source["code"] == "OGN-027"
                         )
                     elif spec.get("effect") == "viktor_innovator":
                         generated.extend(
                             {"effect": "viktor_innovator", "source": source["id"],
-                             "owner": item["owner"]}
-                            for source in self._units(state, item["owner"])
+                             "owner": played_by}
+                            for source in self._units(state, played_by)
                             if source["code"] == "OGN-117"
                         )
                 if generated:
@@ -6914,7 +6990,9 @@ class OriginsRules:
                                    "legend": row["legend"], "legend_exhausted": row["legend_exhausted"],
                                    "champion": [card(uid) for uid in row["champion"]],
                                    "banishment": [card(uid) for uid in row["banishment"]],
-                                   "trash": [card(uid) for uid in row["trash"]], "played": row["played"]})
+                                   "trash": [card(uid) for uid in row["trash"]],
+                                   "played": row["played"],
+                                   "finalized_played": row.get("finalized_played", row["played"])})
         return {"player": player, "to_act": state["actor"], "turn_player": state["turn_player"],
                 "turn": state["turn"], "phase": state["phase"], "points": state["points"].copy(),
                 "victory": state["victory"], "hand": [card(uid) for uid in state["players"][player]["hand"]],

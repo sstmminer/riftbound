@@ -271,6 +271,8 @@ OGN-185 的移动弃牌、OGN-174 的开放战场、OGN-252 的征服回手及�
 - GUI 目标交互审计：普通目标、Hidden 目标、装备/单位技能目标、战场目标和结算链目标均通过左键选择；多目标使用统一的临时目标序列窗口并要求“确认目标”，可取消重选，重复分配按顺序记录。决策窗口期间右键不会再偷偷改变目标，也不会打开复杂组合菜单；Hidden 和装备能力可用左键启动，符文在目标窗口中也优先作为目标处理。右键保留给非决策状态下的区域操作和资源菜单。
 - Accelerate 时序按 RUP5 355.1.a、357.1.a、357.2、430.2/430.3、445.2.c、805.1/805.2/805.6 修正：这是打出单位过程中的 Pay Costs 临时窗口，不是普通优先权窗口。只有带 Reaction 的 Add-resource 能力可以在此时立即结算；Hand of Noxus、Seal/Energy Conduit 和 Heimer 复制的资源能力现在可用，Daughter of the Void 因“仅用于打出法术”不会出现。普通 Reaction 法术不能在这里响应；支付完成后由 Accelerate 的延迟替代效果使单位直接以就绪状态进入，之后才恢复正常优先权。GUI 底部不再列出横置/回收符文按钮，符文区直接操作，底部只保留加速/跳过和资源能力按钮。根据 RUP5 350.1、420.4.b、812.1.c，支付中的当前单位仍是 Pending，不能满足 Hand of Noxus 的 Legion；只有本回合更早已 Finalized 的另一张牌才会开放该能力。
 
+- 本轮将 Accelerate 修正提升为通用 Finalized play 状态，而不是保留 Hand of Noxus 专用特例。`players[*].played` 继续作为兼容字段，但现在只在统一的 `_mark_play_finalized` 事件中递增；内部同时保留 `finalized_played` 与 `finalized_cards`，观察层只公开计数。单位在 Accelerate/必选入场选择完成后标记，普通、目标、场地和 Counter 法术分别在目标或领域选择完成并挂入 Chain 时标记，装备在支付并进入基地时标记。目标尚未确认、取消打出、以及 Accelerate 支付中的当前单位都不会提前标记；被随后反制的法术仍保留已完成的打出记录。Ravenbloom、Darius、Viktor 的法术后触发统一由 `_spell_post_triggers` 生成，并保留实际打出者归属，避免 Chain item 控制者改变后错误计入对手。
+
 ### 本轮优先完成的三项
 
 - **Mystic Reversal 的非目标选项重选**：OGN-080 接管法术后会清除原法术的目标、领域、X 值和旧选择，并把新控制者重新带入该法术的统一选择窗口。Party Favors（OGN-071）重新选择 cards/runes；Whirlwind（OGN-187）先选择 return/skip，选择 return 后再通过同一个目标窗口点选单位；King's Edict 及已支持的多目标、场地、目的地法术继续复用同一规格。

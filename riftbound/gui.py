@@ -269,7 +269,13 @@ class OriginsGUI(tk.Tk):
                 button.configure(command=lambda u=uid: self.mulligan_click(u))
             elif uid is not None:
                 if zone == "gear":
-                    button.bind("<Button-1>", lambda event, u=uid: self.card_menu(event, u))
+                    button.bind("<Button-1>", lambda event, u=uid: self._left_activate_card(u))
+                elif zone == "hidden":
+                    # Hidden cards have one legal play location: the
+                    # battlefield where they were hidden. Start the play with
+                    # a normal left click; target selection still happens by
+                    # clicking the visible units and the shared Confirm button.
+                    button.bind("<Button-1>", lambda event, u=uid: self._left_activate_card(u))
                 else:
                     button.bind("<ButtonPress-1>", lambda event, u=uid: self.start_drag(event, u, zone))
                     button.bind("<ButtonRelease-1>", lambda event, u=uid: self.end_drag(event, u, zone))
@@ -280,6 +286,33 @@ class OriginsGUI(tk.Tk):
                     # when the fan is rebuilt during initial rendering.
                     wrapper.bind("<Button-1>", lambda event, u=uid: self.start_drag(event, u, zone))
         return wrapper
+
+    def _left_activate_card(self, uid):
+        """Start a single card action without requiring a context menu.
+
+        Complex target choices are always handled by the shared decision
+        window after this action enters the engine. If a card exposes several
+        different abilities, the persistent bottom action bar remains the
+        unambiguous selector rather than guessing from a right-click menu.
+        """
+        legal = self.env.legal_actions()
+        matching = []
+        for action in legal:
+            args = json.loads(action.arguments)
+            if uid not in {args.get("card"), args.get("gear"), args.get("unit")}:
+                continue
+            if action.kind in {"play_hidden", "play_hidden_targeted"}:
+                matching.append(action)
+            elif action.kind == "gear_targeted":
+                matching.append(action)
+        if len(matching) == 1:
+            self.perform(matching[0])
+        elif len(matching) > 1:
+            self.set_notice("请在底部操作栏选择要发动的能力；目标仍通过左键点选。")
+            self.render()
+        else:
+            self.card_menu(type("Event", (), {
+                "x_root": self.winfo_pointerx(), "y_root": self.winfo_pointery()})(), uid)
 
     def _stack(self, parent, cards, *, owner=None, title="", limit=4, factor=4,
                count=None, collapse=False):
@@ -509,6 +542,16 @@ class OriginsGUI(tk.Tk):
                 if direct is not None:
                     self.perform(direct)
                     return
+            if zone == "hidden" and self.env.current_player == 0:
+                # Hidden spells with multi-target effects start their ordinary
+                # left-click target window directly; they must not require a
+                # context menu just to enter the selection flow.
+                direct = next((a for a in self.env.legal_actions()
+                               if a.kind in {"play_hidden", "play_hidden_targeted"}
+                               and json.loads(a.arguments).get("card") == uid), None)
+                if direct is not None:
+                    self.perform(direct)
+                    return
             if zone in {"field", "base"} and self.env.current_player == 0 and self.env.observe(0)["phase"] == "main":
                 self.unit_click(uid)
             else:
@@ -644,7 +687,11 @@ class OriginsGUI(tk.Tk):
         self.perform(action)
 
     def card_menu(self, event, uid):
-        if self._decision_target_click(uid):
+        # Target windows are deliberately left-click only. Right-click must
+        # never silently add/remove a target from a multi-target sequence.
+        obs = self.env.observe(0) if self.env.current_player == 0 else None
+        if obs and obs.get("phase") == "decision" and obs.get("decision"):
+            self.set_notice("当前正在选择目标，请左键点选；右键菜单暂不可用。")
             return
         menu = tk.Menu(self, tearoff=False)
         actions = []
@@ -654,7 +701,8 @@ class OriginsGUI(tk.Tk):
                 actions.append(action)
         targeted = [action for action in actions if action.kind in {
             "play_spell_targeted", "play_field_targeted", "gear_targeted",
-            "unit_ability_targeted", "legend_targeted", "legend_move_targeted"}]
+            "unit_ability_targeted", "legend_targeted", "legend_move_targeted",
+            "play_hidden_targeted"}]
         if targeted:
             legacy = {
                 "play_spell", "gear_target", "unit_caitlyn", "unit_malzahar",
@@ -885,7 +933,16 @@ class OriginsGUI(tk.Tk):
             tk.Label(wrapper, text=self._card_name(rune["code"]), bg="#24364d", fg="#e9f1fc",
                      font=("TkDefaultFont", 7)).pack()
         if player == 0:
-            button.bind("<Button-1>", lambda _event, u=rune["id"]: self.rune_click(u))
+            def click_rune(_event, u=rune["id"]):
+                # Rune cards can also be targets in explicit selection
+                # windows (for example Divine Judgment). In that state a
+                # left click must feed the decision first instead of being
+                # interpreted as the normal exhaust action.
+                if self._decision_target_click(u):
+                    return "break"
+                self.rune_click(u)
+                return "break"
+            button.bind("<Button-1>", click_rune)
             button.bind("<Button-3>", lambda event, u=rune["id"]: self.rune_menu(event, u))
         return wrapper
 
@@ -1521,7 +1578,8 @@ class OriginsGUI(tk.Tk):
                                "legend_move", "legend_ganking",
                                "legend_targeted", "legend_move_targeted", "commit_move", "cancel_move", "order_triggers",
                                "play_spell_targeted", "play_field_targeted", "play_counter", "play_unit_targeted",
-                               "ability_activate", "ability_targeted"}:
+                               "play_hidden", "play_hidden_targeted", "gear_targeted",
+                               "unit_ability_targeted", "ability_activate", "ability_targeted"}:
                 ttk.Button(self.actions, text=self.action_text(action),
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
         prompt = "左键选择/多选单位，再拖到基地/战场移动；右键查看其他操作"

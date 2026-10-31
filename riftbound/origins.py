@@ -583,7 +583,7 @@ class OriginsRules:
         if deathknell_undercover:
             state.setdefault("undercover_pending", []).extend(deathknell_undercover)
             if state.get("decision") is None:
-                self._begin_undercover_discard(state)
+                self._begin_undercover_discard(state, rng)
         if vanguard_triggers:
             if state.get("decision") is None:
                 self._triggers(state, vanguard_triggers)

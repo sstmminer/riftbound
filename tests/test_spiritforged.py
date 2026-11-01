@@ -50,9 +50,12 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 12)
+        self.assertEqual(len(registry.executable_codes()), 18)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
+        self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
+        self.assertEqual(registry.get("SFD-147-221").spell_effect, "return_all_units_gear")
+        self.assertEqual(registry.get("SFD-204-221").spell_effect, "ready_friendly_units")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -133,6 +136,54 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, resource, random.Random(15))
         self.assertEqual(state["players"][0]["power"][-1], "fury")
         self.assertTrue(gear["exhausted"])
+
+    def test_registry_entry_and_move_hooks_are_executable(self):
+        deck = legal_deck("SFD-094-221", "OGN-267", "OGN-162")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(20))
+        card = move_code_to_hand(state, 0, "SFD-094-221")
+        state["phase"], state["actor"] = "main", 0
+        state["players"][0]["energy"] = 20
+        state["players"][0]["power"] = ["body"] * 20
+        rules._new_unit(state, "OGN-001", 0, "base:0", exhausted=False)
+        action = next(a for a in rules.legal_actions(state)
+                      if a.kind == "play_unit"
+                      and __import__("json").loads(a.arguments)["card"] == card)
+        rules.apply(state, action, random.Random(21))
+        unit = next(unit for unit in state["units"] if unit["card"] == card)
+        self.assertFalse(unit["exhausted"])
+
+        before = len(state["players"][0]["hand"])
+        mover = rules._new_unit(state, "SFD-048-221", 0, "base:0", exhausted=False)
+        state["fields"][0]["controller"] = 0
+        rules._resolve_move(state, [mover], 0, 0, random.Random(22))
+        self.assertEqual(len(state["players"][0]["hand"]), before + 1)
+
+    def test_registry_deathknell_and_spell_hooks(self):
+        deck = legal_deck("SFD-106-221", "OGN-267", "OGN-162")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(23))
+        before = len(state["players"][0]["hand"])
+        lonely = rules._new_unit(state, "SFD-036-221", 0, 0, exhausted=False)
+        lonely["damage"] = rules.might(state, lonely)
+        rules._cleanup(state, random.Random(24))
+        self.assertEqual(len(state["players"][0]["hand"]), before + 1)
+
+        spell = move_code_to_hand(state, 0, "SFD-106-221")
+        state["phase"], state["actor"] = "main", 0
+        state["players"][0]["energy"] = 3
+        state["players"][0]["power"] = ["body"] * 3
+        rules._new_unit(state, "OGN-001", 0, "base:0", exhausted=False)
+        draw_before = len(state["players"][0]["hand"])
+        play = next(a for a in rules.legal_actions(state)
+                    if a.kind == "play_spell"
+                    and __import__("json").loads(a.arguments)["card"] == spell)
+        rules.apply(state, play, random.Random(25))
+        rules.apply(state, Action.make("pass"), random.Random(26))
+        rules.apply(state, Action.make("pass"), random.Random(27))
+        # The spell leaves hand and draws one card, so the net hand size is
+        # unchanged while the draw hook has still consumed the top card.
+        self.assertEqual(len(state["players"][0]["hand"]), draw_before)
 
 
 if __name__ == "__main__":

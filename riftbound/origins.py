@@ -137,6 +137,12 @@ class OriginsRules:
             if effect == "enter_ready_if_base_units":
                 return sum(unit["owner"] == player and unit["location"] == f"base:{player}"
                            for unit in state["units"]) >= 2
+            if effect == "enter_ready_if_dragon":
+                return any(
+                    unit["owner"] == player
+                    and "Dragon" in self.cards.get(unit["code"], {}).get("tags", [])
+                    for unit in state["units"]
+                )
         return False
 
     def _build_effect_registry(self):
@@ -481,6 +487,7 @@ class OriginsRules:
         deathknell_channel_two = []
         deathknell_recycle = []
         deathknell_undercover = []
+        registry_deathknell_draw = []
         wraith_draw = []
         vanguard_triggers = []
         kogmaw_fields = []
@@ -616,6 +623,16 @@ class OriginsRules:
                     deathknell_recycle.append((self._unit_card_owner(state, unit), unit["card"]))
                 if unit["code"] == "OGN-178":
                     deathknell_undercover.append(unit["owner"])
+                implementation = self._card_implementation(unit["code"])
+                if implementation and implementation.deathknell_effect == "draw_if_alone":
+                    alone = not any(
+                        other["id"] != unit["id"]
+                        and other["owner"] == unit["owner"]
+                        and other["location"] == unit["location"]
+                        for other in state["units"]
+                    )
+                    if alone:
+                        registry_deathknell_draw.append(unit["owner"])
                 # Each Wraith source triggers once per turn when a friendly
                 # unit dies. Mark the surviving source itself so multiple
                 # Wraiths each trigger once, while recursive cleanup cannot
@@ -639,6 +656,10 @@ class OriginsRules:
         if deathknell:
             draw_rng = rng if rng is not None else random.Random(0)
             for player in deathknell:
+                self._draw(state, player, 1, draw_rng)
+        if registry_deathknell_draw:
+            draw_rng = rng if rng is not None else random.Random(0)
+            for player in registry_deathknell_draw:
                 self._draw(state, player, 1, draw_rng)
         if wraith_draw:
             draw_rng = rng if rng is not None else random.Random(0)
@@ -3184,6 +3205,10 @@ class OriginsRules:
             if (self._is_field(state, origin)
                     and state["fields"][origin]["code"] == "OGN-277"):
                 unit["temporary"] += 1
+            implementation = self._card_implementation(unit["code"])
+            if implementation and implementation.move_effect == "draw_one":
+                self._draw(state, unit["owner"], 1,
+                           rng if rng is not None else random.Random(0))
         # Stealthy Pursuer follows a friendly move from its location only
         # through an explicit optional window.  The printed ability says
         # "may"; accepting the window exhausts the Pursuer and moves it to
@@ -5030,6 +5055,22 @@ class OriginsRules:
             return True
         if implementation and implementation.spell_effect == "draw_three":
             self._draw(state, owner, 3, rng)
+            return True
+        if implementation and implementation.spell_effect == "draw_mighty":
+            amount = sum(self.might(state, unit) >= 5 for unit in self._units(state, owner))
+            self._draw(state, owner, amount, rng)
+            return True
+        if implementation and implementation.spell_effect == "return_all_units_gear":
+            # Return physical cards to their owners' hands and remove token
+            # objects.  This is the common return path used by ordinary
+            # effects, so ownership and card conservation remain explicit.
+            for unit in list(state["units"]):
+                state["units"].remove(unit)
+                self._hand_unit_card(state, unit)
+            for row in state["players"]:
+                for gear in list(row.get("gear", [])):
+                    row["gear"].remove(gear)
+                    self._hand_gear_card(state, gear)
             return True
         # The Dreaming Tree trigger is generated when the spell's target was
         # chosen, before the spell resolves.  Resolve-time checks are too

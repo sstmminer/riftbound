@@ -37,6 +37,7 @@ class CardImplementation:
     additional_cost_energy: int = 0
     additional_cost_effect: str | None = None
     cost_reduction_effect: str | None = None
+    placement_rule: str | None = None
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -50,7 +51,8 @@ class CardImplementation:
                 self.conquer_effect,
                 self.deathknell_effect, self.spell_effect,
                 self.buff_effect, self.might_effect, self.global_effect,
-                self.additional_cost_effect, self.cost_reduction_effect)):
+                self.additional_cost_effect, self.cost_reduction_effect,
+                self.placement_rule)):
             raise ValueError("executable implementation needs an explicit hook")
 
 
@@ -233,9 +235,21 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-007-221", sfd, "unit", "executable",
                            entry_trigger="ganking_target",
                            notes="When played, choose a unit to give Ganking this turn."),
+        CardImplementation("SFD-012-221", sfd, "unit", "executable",
+                           cost_reduction_effect="cards_played_floor_one",
+                           notes="Costs 1 less for each card played this turn, to a minimum of 1."),
+        CardImplementation("SFD-015-221", sfd, "unit", "executable",
+                           placement_rule="conquered_field_this_turn",
+                           notes="May be played only to a battlefield conquered this turn."),
         CardImplementation("SFD-021-221", sfd, "unit", "executable",
                            deathknell_effect="play_two_mech",
                            notes="Deathknell; play two 3-Might Mech tokens to your base."),
+        CardImplementation("SFD-093-221", sfd, "unit", "executable",
+                           placement_rule="occupied_enemy_field",
+                           notes="May be played to an occupied enemy battlefield."),
+        CardImplementation("SFD-158-221", sfd, "unit", "executable",
+                           entry_trigger="kill_small_enemy",
+                           notes="When played, kill an enemy unit with Might 3 or less."),
         CardImplementation("SFD-034-221", sfd, "spell", "executable",
                            reaction=True, spell_effect="buff_two", target_scope="any_unit",
                            notes="Reaction; give a unit +2 Might this turn."),

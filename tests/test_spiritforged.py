@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 57)
+        self.assertEqual(len(registry.executable_codes()), 61)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -87,6 +87,10 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-007-221").entry_trigger, "ganking_target")
         self.assertEqual(registry.get("SFD-021-221").deathknell_effect, "play_two_mech")
         self.assertEqual(registry.get("SFD-089-221").global_effect, "mechs_plus_one")
+        self.assertEqual(registry.get("SFD-012-221").cost_reduction_effect, "cards_played_floor_one")
+        self.assertEqual(registry.get("SFD-015-221").placement_rule, "conquered_field_this_turn")
+        self.assertEqual(registry.get("SFD-093-221").placement_rule, "occupied_enemy_field")
+        self.assertEqual(registry.get("SFD-158-221").entry_trigger, "kill_small_enemy")
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -778,6 +782,66 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         aura_state["fields"][0]["controller"] = 0
         aura_rules._score(aura_state, 0, 0, "hold", random.Random(150))
         self.assertEqual(sum(unit["code"] == "SFD-T05" for unit in aura_state["units"]), 1)
+
+    def test_batch_cost_and_placement_rules_and_entry_kill(self):
+        ram_deck = legal_deck("SFD-012-221", "OGN-247", "OGN-039")
+        ram_rules = SpiritforgedRules([ram_deck, ram_deck])
+        ram_state = ram_rules.initial_state(random.Random(151))
+        ram_card = move_code_to_hand(ram_state, 0, "SFD-012-221")
+        ram_state["players"][0]["finalized_played"] = 3
+        ram_state["players"][0]["played"] = 3
+        ram_state["phase"], ram_state["actor"] = "main", 0
+        ram_state["players"][0]["energy"] = 2
+        ram_state["players"][0]["power"] = ["fury"] * 5
+        ram_action = next(action for action in ram_rules.legal_actions(ram_state)
+                          if action.kind == "play_unit"
+                          and __import__("json").loads(action.arguments)["card"] == ram_card)
+        self.assertEqual(__import__("json").loads(ram_action.arguments)["location"], "base:0")
+
+        grim_deck = legal_deck("SFD-015-221", "OGN-247", "OGN-039")
+        grim_rules = SpiritforgedRules([grim_deck, grim_deck])
+        grim_state = grim_rules.initial_state(random.Random(152))
+        grim_card = move_code_to_hand(grim_state, 0, "SFD-015-221")
+        grim_state["scored"][0] = [0]
+        grim_state["phase"], grim_state["actor"] = "main", 0
+        grim_state["players"][0]["energy"] = 10
+        grim_state["players"][0]["power"] = ["fury"] * 10
+        grim_locations = {__import__("json").loads(action.arguments)["location"]
+                          for action in grim_rules.legal_actions(grim_state)
+                          if action.kind == "play_unit"
+                          and __import__("json").loads(action.arguments)["card"] == grim_card}
+        self.assertEqual(grim_locations, {0})
+
+        vanguard_deck = legal_deck("SFD-093-221", "OGN-267", "OGN-162")
+        vanguard_rules = SpiritforgedRules([vanguard_deck, vanguard_deck])
+        vanguard_state = vanguard_rules.initial_state(random.Random(153))
+        vanguard_card = move_code_to_hand(vanguard_state, 0, "SFD-093-221")
+        vanguard_rules._new_unit(vanguard_state, "OGN-001", 1, 0, exhausted=False)
+        vanguard_state["phase"], vanguard_state["actor"] = "main", 0
+        vanguard_state["players"][0]["energy"] = 10
+        vanguard_state["players"][0]["power"] = ["body"] * 10
+        vanguard_locations = {__import__("json").loads(action.arguments)["location"]
+                              for action in vanguard_rules.legal_actions(vanguard_state)
+                              if action.kind == "play_unit"
+                              and __import__("json").loads(action.arguments)["card"] == vanguard_card}
+        self.assertIn(0, vanguard_locations)
+
+        shifter_deck = legal_deck("SFD-158-221", "OGN-253", "OGN-243")
+        shifter_rules = SpiritforgedRules([shifter_deck, shifter_deck])
+        shifter_state = shifter_rules.initial_state(random.Random(154))
+        shifter_card = move_code_to_hand(shifter_state, 0, "SFD-158-221")
+        victim = shifter_rules._new_unit(shifter_state, "OGN-003", 1, 0, exhausted=False)
+        shifter_state["phase"], shifter_state["actor"] = "main", 0
+        shifter_state["players"][0]["energy"] = 10
+        shifter_state["players"][0]["power"] = ["order"] * 10
+        play = next(action for action in shifter_rules.legal_actions(shifter_state)
+                    if action.kind == "play_unit"
+                    and __import__("json").loads(action.arguments)["card"] == shifter_card)
+        shifter_rules.apply(shifter_state, play, random.Random(155))
+        shifter_rules.apply(shifter_state, Action.make("choose_target", target=victim["id"]), random.Random(156))
+        shifter_rules.apply(shifter_state, Action.make("pass"), random.Random(157))
+        shifter_rules.apply(shifter_state, Action.make("pass"), random.Random(158))
+        self.assertNotIn(victim, shifter_state["units"])
 
 
 if __name__ == "__main__":

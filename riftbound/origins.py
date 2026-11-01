@@ -216,6 +216,7 @@ class OriginsRules:
         registry.register("optional_kill_gear", self._effect_optional_kill_gear)
         registry.register("optional_kill_cheap_gear", self._effect_optional_kill_cheap_gear)
         registry.register("ganking_target", self._effect_ganking_target)
+        registry.register("kill_small_enemy", self._effect_kill_small_enemy)
         registry.register("buff_another_on_move", self._effect_buff_another_on_move)
         registry.register("legend_toggle", self._effect_legend_toggle)
         registry.register("optional_draw_or_buff", self._effect_optional_draw_or_buff)
@@ -3292,7 +3293,16 @@ class OriginsRules:
             if not (code in UNIT_CODES or self._is_executable_kind(code, "unit")):
                 continue
             data = self.cards[code]
+            implementation = self._card_implementation(code)
             permitted = locations.copy()
+            if implementation and implementation.placement_rule == "occupied_enemy_field":
+                permitted += [i for i in range(len(state["fields"]))
+                              if any(unit["owner"] != player and unit["location"] == i
+                                     for unit in state["units"])
+                              and i not in permitted]
+            if implementation and implementation.placement_rule == "conquered_field_this_turn":
+                permitted = [i for i in state.get("scored", [[], []])[player]
+                             if i not in permitted]
             if code in {"OGN-174", "OGN-176", "OGN-193"}:
                 permitted += [i for i in range(len(state["fields"])) if not self._units(state, location=i) and i not in permitted]
             if any(other["owner"] == player and other["code"] == "OGN-193"
@@ -3304,12 +3314,13 @@ class OriginsRules:
                               if any(u["owner"] != player and u["location"] == i for u in state["units"])
                               and i not in permitted]
             energy = data["energy"] - (2 if code == "OGN-012" and self._played_for_legion(state, player) else 0)
+            if implementation and implementation.cost_reduction_effect == "cards_played_floor_one":
+                energy = max(1, energy - self._played_for_legion(state, player))
             if "Dragon" in data["tags"] and any(u["code"] == "OGN-140" and u["owner"] == player
                                                   and self._is_field(u["location"]) for u in state["units"]):
                 energy = max(1, energy - 2)
             if code == "OGN-195":
                 energy = max(1, energy - len(row["trash"]))
-            implementation = self._card_implementation(code)
             additional_energy = (implementation.additional_cost_energy
                                  if implementation is not None else
                                  (1 if code == "OGN-044" else 0))
@@ -3750,6 +3761,9 @@ class OriginsRules:
             return [u["id"] for u in self._units(state, owner) if u["id"] != source]
         if effect == "ganking_target":
             return [u["id"] for u in state["units"]]
+        if effect == "kill_small_enemy":
+            return [u["id"] for u in state["units"]
+                    if u["owner"] != owner and self.might(state, u) <= 3]
         if effect == "kinkou_buff":
             return [u["id"] for u in self._units(state, owner) if u["id"] != source]
         if effect == "ahri_debuff":
@@ -4731,6 +4745,14 @@ class OriginsRules:
         target = self._unit(state, item.get("target"))
         if target is not None:
             target["temporary_ganking"] = True
+        return True
+
+    def _effect_kill_small_enemy(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if target is not None and target["owner"] != item["owner"] and self.might(state, target) <= 3:
+            state["units"].remove(target)
+            self._trash_unit_card(state, target)
+            self._cleanup(state, rng)
         return True
 
     def _effect_play_four_gold_gear(self, state, item, rng):

@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 116)
+        self.assertEqual(len(registry.executable_codes()), 118)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -150,6 +150,8 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertIn("hidden", registry.get("SFD-138-221").static_keywords)
         self.assertEqual(registry.get("SFD-126-221").combat_effect, "loyal_pup_defend")
         self.assertEqual(registry.get("SFD-128-221").combat_effect, "overzealous_fan_defend")
+        self.assertEqual(registry.get("SFD-189-221").activated_effect, "legend_rainbow")
+        self.assertEqual(registry.get("SFD-244-221").activated_effect, "legend_rainbow")
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -289,6 +291,18 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, Action.make("choose_target", target=attacker["id"]), random.Random(39))
         self.assertNotIn(fan, state["units"])
         self.assertEqual(attacker["location"], "base:0")
+
+    def test_fire_below_the_mountain_exposes_reaction_resource_action(self):
+        deck = legal_deck("OGN-124", "OGN-267", "OGN-193")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(40))
+        state["players"][0]["legend"] = "SFD-189-221"
+        state.update(phase="showdown", actor=0, focus=0, passes=0)
+        action = next(action for action in rules.legal_actions(state)
+                      if action.kind == "legend_rainbow")
+        rules.apply(state, action, random.Random(41))
+        self.assertTrue(state["players"][0]["legend_exhausted"])
+        self.assertEqual(state["players"][0]["power"][-1], "any")
 
     def test_entry_ready_and_static_keywords_use_common_unit_path(self):
         deck = legal_deck("SFD-006-221", "OGN-247", "OGN-039")

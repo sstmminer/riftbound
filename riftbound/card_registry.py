@@ -477,4 +477,10 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-128-221", sfd, "unit", "executable",
                            combat_effect="overzealous_fan_defend",
                            notes="Overzealous Fan; while defending, may die to recall an attacking unit."),
+        CardImplementation("SFD-189-221", sfd, "legend", "executable", reaction=True,
+                           activated_effect="legend_rainbow",
+                           notes="Fire Below the Mountain; exhaust as a Reaction to add a Rainbow rune power for Gear."),
+        CardImplementation("SFD-244-221", sfd, "legend", "executable", reaction=True,
+                           activated_effect="legend_rainbow",
+                           notes="Fire Below the Mountain alternate printing; shared Legend resource ability."),
     ])

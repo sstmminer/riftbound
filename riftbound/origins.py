@@ -3070,6 +3070,14 @@ class OriginsRules:
                 # registry.  This deliberately excludes non-E abilities such
                 # as Vi/Udyr and automatically picks up future registrations.
                 result.extend(self._heimer_registry_actions(state, player, unit))
+        legend_implementation = self._card_implementation(row["legend"])
+        if (legend_implementation is not None
+                and legend_implementation.activated_effect == "legend_rainbow"
+                and not row["legend_exhausted"]
+                and (state["phase"] in {"chain", "showdown"}
+                     or ((state.get("decision") or {}).get("accelerate")
+                         and state["phase"] == "decision"))):
+            result.append(Action.make("legend_rainbow"))
         # During an Accelerate payment window the unit is represented on the
         # Board but its play process has not completed.  The shared finalized
         # count therefore excludes it automatically.
@@ -3222,7 +3230,7 @@ class OriginsRules:
         """
         actions = []
         for action in self._resource_actions(state) + self._gear_actions(state):
-            if action.kind in {"legend_energy", "gear_resource"}:
+            if action.kind in {"legend_energy", "legend_rainbow", "gear_resource"}:
                 actions.append(action)
                 continue
             if action.kind == "ability_activate":
@@ -8252,6 +8260,16 @@ class OriginsRules:
         elif kind == "legend_spell_power":
             row["legend_exhausted"] = True
             row["power"].append("spell_any")
+            state["passes"] = 0
+        elif kind == "legend_rainbow":
+            implementation = self._card_implementation(row["legend"])
+            if (implementation is None
+                    or implementation.activated_effect != "legend_rainbow"
+                    or not implementation.reaction
+                    or row["legend_exhausted"]):
+                raise ValueError("Legend Rainbow ability is unavailable")
+            row["legend_exhausted"] = True
+            row["power"].append("any")
             state["passes"] = 0
         elif kind == "unit_registry_ability":
             source = self._unit(state, args["unit"])

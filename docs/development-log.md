@@ -477,3 +477,8 @@ Karma/Vision 的回收监听不会被跳过。Spiritforged 定向新增 4 项，
 都接入同一战斗指定触发队列：Loyal Pup 在防守时先确认是否从基地移动，Overzealous Fan 先确认是否
 牺牲，再打开攻击方单位的点击目标窗口并回基地。它们没有新增独立战斗结算分支；移动、回收、死亡和
 结算继续走已有共享路径。Spiritforged 定向测试增至 39 项，全量回归为 443 项。
+
+本轮再接入 `SFD-189-221` 与 `SFD-244-221` Fire Below the Mountain。两张 Legend 替代印刷共享
+`legend_rainbow` 资源动作：只在 Chain/Showdown 反应窗口（或 Accelerate 费用窗口）显示，横置
+Legend 后加入 `any` 法力，避免把资源能力误当成主阶段动作。注册表规模增至 118，Spiritforged
+定向测试 40 项，全量回归为 444 项。

@@ -28,6 +28,7 @@ class CardImplementation:
     conquer_effect: str | None = None
     deathknell_effect: str | None = None
     spell_effect: str | None = None
+    activated_effect: str | None = None
     target_scope: str | None = None
     target_min: int = 1
     target_max: int = 1
@@ -50,6 +51,7 @@ class CardImplementation:
                 self.entry_trigger, self.move_effect, self.hold_effect,
                 self.conquer_effect,
                 self.deathknell_effect, self.spell_effect,
+                self.activated_effect,
                 self.buff_effect, self.might_effect, self.global_effect,
                 self.additional_cost_effect, self.cost_reduction_effect,
                 self.placement_rule)):
@@ -306,4 +308,35 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-179-221", sfd, "unit", "executable",
                            move_effect="play_recruit_three",
                            notes="When moving to a battlefield, play three Recruit tokens there."),
+        CardImplementation("SFD-046-221", sfd, "gear", "executable",
+                           entry_trigger="draw_one", activated_effect="gear_draw",
+                           notes="Play: draw 1; pay 1 Energy and Calm, exhaust and kill: draw 1."),
+        CardImplementation("SFD-052-221", sfd, "gear", "executable",
+                           activated_effect="gear_buff_three", target_scope="any_unit",
+                           notes="Exhaust: give a unit +3 Might this turn."),
+        CardImplementation("SFD-110-221", sfd, "unit", "executable",
+                           might_effect="double_one_on_one",
+                           notes="Doubles its Might in a one-on-one combat."),
+        CardImplementation("SFD-116-221", sfd, "unit", "executable",
+                           conquer_effect="damage_enemy_base_by_might",
+                           notes="After conquering an uncontrolled battlefield, may damage an enemy unit in base."),
+        CardImplementation("SFD-166-221", sfd, "spell", "executable",
+                           spell_effect="rally_the_troops",
+                           notes="Draw 1; friendly units played this turn enter with a buff."),
+        CardImplementation("SFD-163-221", sfd, "spell", "executable",
+                           spell_effect="deathgrip", target_scope="friendly_unit",
+                           target_min=2, target_max=2,
+                           notes="Kill one friendly unit, buff another by its Might, then draw 1."),
+        CardImplementation("SFD-168-221", sfd, "gear", "executable",
+                           activated_effect="play_three_recruit",
+                           notes="Exhaust: play three Recruit tokens, choosing each destination."),
+        CardImplementation("SFD-028A-221", sfd, "unit", "executable",
+                           static_keywords=frozenset({"assault_1"}),
+                           notes="Alternate Lucian printing; Assault 1 and attack trigger."),
+        CardImplementation("SFD-089A-221", sfd, "unit", "executable",
+                           global_effect="mechs_plus_one", hold_effect="play_mech_token",
+                           notes="Alternate Rumble, Scrapper printing."),
+        CardImplementation("SFD-149A-221", sfd, "unit", "executable",
+                           entry_trigger="discard_one_draw_two",
+                           notes="Alternate Ezreal, Prodigy printing."),
     ])

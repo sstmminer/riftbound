@@ -418,3 +418,11 @@ Accelerate 识别和动态 Assault 计算，在战斗攻击者战力中按敌方
 
 随后加入 Lucian, Gunslinger。它的 Assault 1 和攻击触发复用战斗阶段既有的“先指定目标、再进入
 结算链”窗口，攻击触发造成的伤害仍通过统一伤害/清理路径处理。完整回归现为 428 项。
+
+本轮批量扩展 10 张 Spiritforged 可执行牌，注册表规模从 65 增至 75：Poro Snax 的入场抽牌与
+支付/横置/摧毁后的抽牌共用 Gear 资源路径；Heart of Dark Ice 通过统一 Gear 目标窗口给任意单位
++3；Fiora, Peerless 的单挑加倍接入战斗 Might 计算；Yone, Blademaster 在征服无人战场后打开敌方
+基地单位目标窗口并按自身 Might 造成伤害；Rally the Troops 使用回合范围的单位入场标记并在普通、
+嵌套和 Hidden 单位路径统一加增益；Vanguard Armory 通过连续场地选择窗口生成三个 Recruit；Deathgrip
+通过有序双目标窗口先消灭友方单位、再按其 Might 增益另一友方单位并抽牌。另将 Lucian、Rumble 和
+Ezreal 的替代印刷版本接入相同实现。全量测试现为 430 项，固定种子批量对局 0–5 均终局且无截断。

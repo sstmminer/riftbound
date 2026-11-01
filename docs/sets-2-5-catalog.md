@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 65 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 75 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -93,6 +93,16 @@ python -m riftbound catalog --set SFD
 - `SFD-060-221` Tianna Crownguard：在战场时阻止对手通过 Hold/Conquer 得分；
 - `SFD-131-221` Ancient Warmonger：Accelerate，并按战场敌方单位数获得动态 Assault。
 - `SFD-028-221` Lucian, Gunslinger：Assault 1；攻击时通过战斗触发目标窗口对敌方单位造成 Assault 伤害。
+- `SFD-046-221` Poro Snax：入场抽 1；支付 Energy 与 Calm、横置并摧毁自身后再抽 1。
+- `SFD-052-221` Heart of Dark Ice：横置后通过统一目标窗口给任意单位 +3 Might。
+- `SFD-110-221` Fiora, Peerless：单挑战斗中通过统一 Might 计算加倍自身战力。
+- `SFD-116-221` Yone, Blademaster：征服无人战场后打开敌方基地单位目标窗口，按自身 Might 造成伤害。
+- `SFD-163-221` Deathgrip：有序点选两名友方单位，消灭第一名、按其 Might 临时增益第二名并抽 1。
+- `SFD-166-221` Rally the Troops：结算时抽 1，并在本回合后续友方单位进入时自动给予增益。
+- `SFD-168-221` Vanguard Armory：横置后连续选择三个合法目的地，生成三个 Recruit token。
+- `SFD-028A-221` Lucian, Gunslinger alternate print：复用 Lucian 的 Assault 与攻击触发。
+- `SFD-089A-221` Rumble, Scrapper alternate print：复用 Mech +1 Might 与 Hold 生成 Mech。
+- `SFD-149A-221` Ezreal, Prodigy alternate print：复用弃 1 抽 2 的入场选择窗口。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。签名牌 `SFD-204 On the Hunt` 暂缓注册，因为其合法套牌还依赖尚未执行的 Sivir/Battle Mistress 组合；装备附着、Repeat、Hidden、复杂衍生物和多步骤替代效果也继续保持 catalog-only。
 

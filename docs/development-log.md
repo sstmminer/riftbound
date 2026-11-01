@@ -426,3 +426,12 @@ Accelerate 识别和动态 Assault 计算，在战斗攻击者战力中按敌方
 嵌套和 Hidden 单位路径统一加增益；Vanguard Armory 通过连续场地选择窗口生成三个 Recruit；Deathgrip
 通过有序双目标窗口先消灭友方单位、再按其 Might 增益另一友方单位并抽牌。另将 Lucian、Rumble 和
 Ezreal 的替代印刷版本接入相同实现。全量测试现为 430 项，固定种子批量对局 0–5 均终局且无截断。
+
+下一批继续扩展 10 张 Spiritforged 可执行牌，注册表规模从 75 增至 85：Blood Rush、Sudden Storm、
+Thwonk!、Wages of Pain 与 Bonds of Strength 均声明统一的单位目标规格；目标点击后才进入结算，伤害和
+眩晕复用普通清理路径。Apprentice Smith 的移动触发使用公开牌库顶查看窗口，结束展示后由通用回收事件
+处理非 Gear 牌；Corrupt Enforcer 的移动弃牌通过统一弃牌窗口，战斗胜利抽牌接入结算后的战斗触发；
+Yordle Explorer 监听 finalized play 事件，避免 Accelerate/嵌套打出把未完成出牌误算为已打出。Petricite
+Monument 接入临时 Gear 与 Deflect 谓词；Mechanized Menace 注册为 Legend 全局 Shield 能力并接入防守
+Might 计算。测试总数为 432 项；本批没有注册需要尚未实现签名英雄的 SFD 签名牌。复杂 Equip、Repeat、
+Hidden、跨区免费打出和多步替代效果仍保持 catalog-only。

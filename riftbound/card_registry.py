@@ -26,6 +26,7 @@ class CardImplementation:
     move_effect: str | None = None
     hold_effect: str | None = None
     conquer_effect: str | None = None
+    combat_effect: str | None = None
     deathknell_effect: str | None = None
     spell_effect: str | None = None
     activated_effect: str | None = None
@@ -49,7 +50,7 @@ class CardImplementation:
         if self.status == "executable" and not any((
                 self.behavior_id, self.static_keywords, self.entry_effect,
                 self.entry_trigger, self.move_effect, self.hold_effect,
-                self.conquer_effect,
+                self.conquer_effect, self.combat_effect,
                 self.deathknell_effect, self.spell_effect,
                 self.activated_effect,
                 self.buff_effect, self.might_effect, self.global_effect,
@@ -339,4 +340,35 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-149A-221", sfd, "unit", "executable",
                            entry_trigger="discard_one_draw_two",
                            notes="Alternate Ezreal, Prodigy printing."),
+        CardImplementation("SFD-003-221", sfd, "spell", "executable",
+                           spell_effect="assault_two", target_scope="any_unit",
+                           notes="Give a unit Assault 2 this turn."),
+        CardImplementation("SFD-017-221", sfd, "spell", "executable",
+                           spell_effect="sudden_storm", target_scope="field_unit",
+                           notes="Deal 2 to a battlefield unit, or 4 if attacking."),
+        CardImplementation("SFD-040-221", sfd, "spell", "executable",
+                           spell_effect="stun_attacking", target_scope="attacking_unit",
+                           notes="Stun an attacking unit."),
+        CardImplementation("SFD-070-221", sfd, "spell", "executable",
+                           spell_effect="wages_of_pain", target_scope="field_unit",
+                           notes="Deal 3 to a battlefield unit, then create an exhausted Gold gear."),
+        CardImplementation("SFD-100-221", sfd, "unit", "executable",
+                           global_effect="draw_on_power_two",
+                           notes="When you play a card with Power cost 2 or more, draw 1."),
+        CardImplementation("SFD-123-221", sfd, "unit", "executable",
+                           move_effect="discard_one", combat_effect="draw_one_on_win",
+                           notes="Discard 1 when moving to a battlefield; draw 1 when winning combat."),
+        CardImplementation("SFD-151-221", sfd, "spell", "executable",
+                           reaction=True, spell_effect="buff_two_each",
+                           target_scope="friendly_unit", target_min=2, target_max=2,
+                           notes="Give two friendly units +1 Might this turn."),
+        CardImplementation("SFD-181-221", sfd, "legend", "executable",
+                           global_effect="mechs_shield",
+                           notes="Your Mechs have Shield."),
+        CardImplementation("SFD-041-221", sfd, "unit", "executable",
+                           move_effect="apprentice_smith",
+                           notes="When moving, reveal the top card; draw it if it is Gear, otherwise recycle it."),
+        CardImplementation("SFD-104-221", sfd, "gear", "executable",
+                           global_effect="friendly_deflect",
+                           notes="Temporary; friendly units have Deflect."),
     ])

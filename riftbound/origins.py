@@ -227,6 +227,8 @@ class OriginsRules:
         registry.register("legend_toggle", self._effect_legend_toggle)
         registry.register("optional_draw_or_buff", self._effect_optional_draw_or_buff)
         registry.register("discard_one_draw_two", self._effect_discard_one_draw_two)
+        registry.register("apprentice_smith", self._effect_apprentice_smith)
+        registry.register("yordle_explorer", self._effect_yordle_explorer)
         registry.register("play_sand_soldier", self._effect_play_sand_soldier)
         registry.register("kill_small_unit_and_gold", self._effect_kill_small_unit_and_gold)
         registry.register("buff_other_units_two", self._effect_buff_other_units_two)
@@ -406,6 +408,11 @@ class OriginsRules:
             enemy = self._units(state, 1 - unit["owner"], location)
             if len(friendly) == 1 and len(enemy) == 1:
                 value *= 2
+        legend = self.card_registry.get(state["players"][unit["owner"]].get("legend"))
+        if (role == "defender" and legend is not None
+                and legend.global_effect == "mechs_shield"
+                and "Mech" in self.cards.get(unit["code"], {}).get("tags", [])):
+            value += 1
         return max(1, value)
 
     def _apply_buff(self, state, unit):
@@ -464,6 +471,8 @@ class OriginsRules:
         """Apply spell/ability damage, including Void Gate's bonus damage."""
         if unit is None:
             return
+        if amount <= 0:
+            return
         if state.get("prevent_spell_ability_damage"):
             return
         if unit.get("code") == "OGN-189" and unit.get("move_count", 0) >= 2:
@@ -497,11 +506,16 @@ class OriginsRules:
                 for other in state["units"]
             )
         )
+        monument = any(
+            gear["code"] == "SFD-104-221"
+            for gear in state["players"][unit["owner"]].get("gear", [])
+        )
         return int(unit["code"] in {"OGN-013", "OGN-041", "OGN-155", "OGN-161", "OGN-231"}
                    or self._has_static_keyword(unit["code"], "deflect")
                    or mech_aura
                    or (unit["code"] == "OGN-232" and self.might(state, unit) >= 5)
-                   or refuge)
+                   or refuge
+                   or monument)
 
     def _ready_unit(self, state, unit):
         """Make a unit ready and apply ready-triggered Gear effects.
@@ -1370,6 +1384,24 @@ class OriginsRules:
         if reveal is None:
             raise ValueError("no reveal window is active")
         effect = reveal.get("effect")
+        if effect == "apprentice_smith":
+            owner = reveal["owner"]
+            row = state["players"][owner]
+            card = next((uid for uid in reveal.get("cards", []) if uid in row["main"]), None)
+            item = reveal.get("item")
+            if card is not None:
+                if self.cards[state["cards"][card]["code"]]["type"] == "gear":
+                    row["main"].remove(card)
+                    row["hand"].append(card)
+                else:
+                    self._recycle_cards_to_main(state, owner, [card], source="main", rng=rng)
+            state["reveal"] = None
+            if item is not None:
+                item["reveal_done"] = True
+                state["chain"].append(item)
+                state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                self._finish_resolution(state)
+            return
         if effect == "dazzling_aurora":
             owner = reveal["owner"]
             row = state["players"][owner]
@@ -2968,7 +3000,8 @@ class OriginsRules:
                            if u["code"] == "OGN-121")
         return result
 
-    def _mark_play_finalized(self, state, player, card=None, *, item=None):
+    def _mark_play_finalized(self, state, player, card=None, *, item=None,
+                             trigger_sink=None, rng=None):
         """Record a completed card-play process exactly once.
 
         ``played`` remains the public compatibility alias for the finalized
@@ -2998,6 +3031,36 @@ class OriginsRules:
         row["finalized_played"] += 1
         row["played"] = row["finalized_played"]
         row["finalized_cards"].append(card)
+        # Yordle Explorer listens to the finalized play event, rather than a
+        # provisional hand/Chain insertion.  That keeps ordinary, targeted,
+        # Hidden, and nested free plays on the same event path.  The Explorer
+        # itself is excluded from its own play event because its trigger was
+        # not active before that card entered play.
+        played_data = state.get("cards", {}).get(card, {})
+        played_rules = self.cards.get(played_data.get("code"), {})
+        if (played_rules.get("power_cost") is not None
+                and played_rules.get("power_cost", 0) >= 2):
+            yordle_sources = []
+            for source in self._units(state, player):
+                implementation = self._card_implementation(source["code"])
+                if (implementation is not None
+                        and implementation.global_effect == "draw_on_power_two"
+                        and source.get("card") != card):
+                    yordle_sources.append(source["id"])
+            if item is not None:
+                item.setdefault("post_triggers", []).extend(
+                    {"effect": "yordle_explorer", "source": source_id,
+                     "owner": player}
+                    for source_id in yordle_sources)
+            elif trigger_sink is not None:
+                trigger_sink.extend(
+                    {"effect": "yordle_explorer", "source": source_id,
+                     "owner": player}
+                    for source_id in yordle_sources)
+            else:
+                for _ in yordle_sources:
+                    self._draw(state, player, 1,
+                               rng if rng is not None else random.Random(0))
         return True
 
     def _spell_post_triggers(self, state, player, second_card):
@@ -3342,6 +3405,12 @@ class OriginsRules:
         if scope == "field_unit":
             return [unit["id"] for unit in state["units"]
                     if self._is_field(state, unit["location"])]
+        if scope == "attacking_unit":
+            battle = state.get("battle")
+            if battle is None:
+                return []
+            return [unit["id"] for unit in self._units(
+                state, battle["attacker"], battle["field"])]
         if scope == "field_unit_might_le_2":
             return [unit["id"] for unit in state["units"]
                     if self._is_field(state, unit["location"])
@@ -3512,6 +3581,14 @@ class OriginsRules:
                 move_triggers.append({"effect": "buff_another_on_move",
                                        "source": unit["id"], "owner": unit["owner"],
                                        "location": destination})
+            if (implementation and implementation.move_effect == "discard_one"
+                    and self._is_field(state, destination)):
+                move_triggers.append({"effect": "discard_one",
+                                       "source": unit["id"], "owner": unit["owner"]})
+            if (implementation and implementation.move_effect == "apprentice_smith"
+                    and self._is_field(state, destination)):
+                move_triggers.append({"effect": "apprentice_smith",
+                                       "source": unit["id"], "owner": unit["owner"]})
             if (implementation and implementation.move_effect == "play_recruit_three"
                     and self._is_field(state, destination)):
                 for _ in range(3):
@@ -3993,7 +4070,8 @@ class OriginsRules:
             return
         if pending.get("scrapyard_discard"):
             self._draw(state, player, 2, rng)
-        self._mark_play_finalized(state, player, unit.get("card"))
+        self._mark_play_finalized(state, player, unit.get("card"),
+                                  trigger_sink=triggers, rng=rng)
         if pending.get("replay_optional"):
             self._queue_optional(state, player, "replay_trash_unit",
                                  source=pending["unit"], code=pending["code"])
@@ -4521,6 +4599,25 @@ class OriginsRules:
             state["decision"] = {"kind": "discard", "player": owner, "remaining": 1}
             state["phase"], state["actor"] = "decision", owner
             return False
+        return True
+
+    def _effect_apprentice_smith(self, state, item, rng):
+        """Apprentice Smith's move trigger uses the shared public reveal window."""
+        owner = item["owner"]
+        top = list(state["players"][owner]["main"][:1])
+        if not top:
+            return True
+        self._open_reveal(state, owner=owner, cards=top, mode="display",
+                          chooser=1 - owner, closer=1 - owner,
+                          effect="apprentice_smith", item=item,
+                          choices=top, rng=rng)
+        return False
+
+    def _effect_yordle_explorer(self, state, item, rng):
+        """Resolve one Yordle Explorer draw after its play event."""
+        source = self._unit(state, item.get("source"))
+        if source is not None and source["owner"] == item["owner"]:
+            self._draw(state, item["owner"], 1, rng)
         return True
 
     def _open_target_choice(self, state, item, targets, *, multi=False, minimum=1, maximum=None,
@@ -5567,6 +5664,36 @@ class OriginsRules:
     def _effect_spell(self, state, item, rng):
         code, owner = item["code"], item["owner"]
         implementation = self._card_implementation(code)
+        if implementation and implementation.spell_effect == "assault_two":
+            target = self._unit(state, (item.get("targets") or [None])[0])
+            if target is not None:
+                target["assault"] += 2
+            return True
+        if implementation and implementation.spell_effect == "sudden_storm":
+            target = self._unit(state, (item.get("targets") or [None])[0])
+            if target is not None and self._is_field(state, target["location"]):
+                self._deal_damage(state, target,
+                                   4 if self._role(state, target) == "attacker" else 2)
+                self._cleanup(state, rng)
+            return True
+        if implementation and implementation.spell_effect == "stun_attacking":
+            target = self._unit(state, (item.get("targets") or [None])[0])
+            if target is not None and self._role(state, target) == "attacker":
+                target["stunned"] = True
+            return True
+        if implementation and implementation.spell_effect == "wages_of_pain":
+            target = self._unit(state, (item.get("targets") or [None])[0])
+            if target is not None and self._is_field(state, target["location"]):
+                self._deal_damage(state, target, 3)
+                self._cleanup(state, rng)
+            self._play_gold_gear_token(state, owner, exhausted=True)
+            return True
+        if implementation and implementation.spell_effect == "buff_two_each":
+            for target_id in list(item.get("targets") or [])[:2]:
+                target = self._unit(state, target_id)
+                if target is not None and target["owner"] == owner:
+                    target["temporary"] += 1
+            return True
         if implementation and implementation.spell_effect == "rally_the_troops":
             state.setdefault("rally_effects", []).append({"owner": owner, "turn": state["turn"]})
             self._draw(state, owner, 1, rng)
@@ -6231,6 +6358,9 @@ class OriginsRules:
                 if reveal.get("effect") == "dazzling_aurora":
                     self._finish_reveal(state, [], rng)
                     return
+                if reveal.get("effect") == "apprentice_smith":
+                    self._finish_reveal(state, [], rng)
+                    return
                 if reveal.get("effect") == "mindsplitter":
                     # The opponent closes the public reveal; the caster then
                     # chooses one of the revealed physical hand cards.  Keep
@@ -6845,8 +6975,9 @@ class OriginsRules:
                     if decision["remaining"]:
                         return
                     self._draw(state, player, 2, rng)
-                    self._mark_play_finalized(state, player, decision.get("finalized_card"))
                     post = decision.get("post_triggers", [])
+                    self._mark_play_finalized(state, player, decision.get("finalized_card"),
+                                              trigger_sink=post, rng=rng)
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "main", player, 0
                     self._cleanup(state, rng)
@@ -7611,16 +7742,17 @@ class OriginsRules:
             ignore_energy = bool(args.get("ignore_energy"))
             self._pay(row, 0 if ignore_energy else data["energy"], args.get("payment", []))
             row["hand"].remove(card)
+            triggers = []
             row["gear"].append({"id": card, "card": card, "code": code,
                                 "owner": player,
                                 "card_owner": self._card_owner(state, card, player),
                                 "location": f"base:{player}",
                                 "exhausted": code == "OGN-017",
-                                "temporary": False})
+                                "temporary": code == "SFD-104-221"})
             # Gear has no open target-selection step: it is finalized as soon
             # as payment and placement into the Base complete.
-            self._mark_play_finalized(state, player, card)
-            triggers = []
+            self._mark_play_finalized(state, player, card,
+                                      trigger_sink=triggers, rng=rng)
             if code == "OGN-182":
                 self._draw(state, player, 1, rng)
             elif code == "OGN-212":
@@ -8361,7 +8493,8 @@ class OriginsRules:
                     return
                 if code == "OGN-020" and was_legion:
                     self._draw(state, player, 2, rng)
-                self._mark_play_finalized(state, player, card)
+                self._mark_play_finalized(state, player, card,
+                                          trigger_sink=triggers, rng=rng)
                 if code in {"OGN-196", "OGN-226"}:
                     self._queue_optional(state, player, "replay_trash_unit",
                                          source=unit["id"], code=code)
@@ -8541,6 +8674,14 @@ class OriginsRules:
                             for source in self._units(state, played_by)
                             if source["code"] == "OGN-117"
                         )
+                    elif spec.get("effect") == "yordle_explorer":
+                        source = self._unit(state, spec.get("source"))
+                        if (source is not None and source["owner"] == played_by
+                                and self._card_implementation(source["code"]) is not None
+                                and self._card_implementation(source["code"]).global_effect == "draw_on_power_two"):
+                            generated.append({"effect": "yordle_explorer",
+                                              "source": source["id"],
+                                              "owner": played_by})
                 if generated:
                     self._triggers(state, generated, preserve_context=True)
                     if state.get("phase") == "trigger_order":
@@ -8755,13 +8896,26 @@ class OriginsRules:
         else:
             for allocations in damage["assignments"]:
                 for uid, amount in allocations.items():
-                    self._unit(state, uid)["damage"] += amount
+                    unit = self._unit(state, uid)
+                    if unit is None or amount <= 0:
+                        continue
+                    unit["damage"] += amount
             self._settle_battle(state, rng)
 
     def _settle_battle(self, state, rng):
         battle = state["battle"]
         field, attacker = battle["field"], battle["attacker"]
         self._cleanup(state, rng)  # Kill lethal before healing, with combat modifiers active.
+        combat_draws = []
+        if battle["combat"]:
+            attackers_alive = bool(self._units(state, attacker, field))
+            defenders_alive = bool(self._units(state, 1 - attacker, field))
+            if attackers_alive != defenders_alive:
+                winning_owner = attacker if attackers_alive else 1 - attacker
+                combat_draws.extend(
+                    unit["owner"] for unit in self._units(state, winning_owner, field)
+                    if (self._card_implementation(unit["code"]) is not None
+                        and self._card_implementation(unit["code"]).combat_effect == "draw_one_on_win"))
         symbol_tie = (battle["combat"]
                       and self._units(state, attacker, field)
                       and self._units(state, 1 - attacker, field)
@@ -8782,6 +8936,8 @@ class OriginsRules:
         controller = next(iter(occupants)) if len(occupants) == 1 else None
         previous = state["fields"][field]["controller"]
         state["fields"][field]["controller"] = controller
+        for owner in combat_draws:
+            self._draw(state, owner, 1, rng)
         if (controller == attacker and battle.get("excess", [0, 0])[attacker] >= 5
                 and any(unit["code"] == "OGN-034" and unit["owner"] == attacker
                         and unit["location"] == field for unit in state["units"])):

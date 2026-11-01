@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 75)
+        self.assertEqual(len(registry.executable_codes()), 85)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -106,6 +106,16 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-028A-221").static_keywords, frozenset({"assault_1"}))
         self.assertEqual(registry.get("SFD-089A-221").global_effect, "mechs_plus_one")
         self.assertEqual(registry.get("SFD-149A-221").entry_trigger, "discard_one_draw_two")
+        self.assertEqual(registry.get("SFD-003-221").spell_effect, "assault_two")
+        self.assertEqual(registry.get("SFD-017-221").spell_effect, "sudden_storm")
+        self.assertEqual(registry.get("SFD-040-221").target_scope, "attacking_unit")
+        self.assertEqual(registry.get("SFD-070-221").spell_effect, "wages_of_pain")
+        self.assertEqual(registry.get("SFD-100-221").global_effect, "draw_on_power_two")
+        self.assertEqual(registry.get("SFD-123-221").combat_effect, "draw_one_on_win")
+        self.assertEqual(registry.get("SFD-151-221").spell_effect, "buff_two_each")
+        self.assertEqual(registry.get("SFD-181-221").global_effect, "mechs_shield")
+        self.assertEqual(registry.get("SFD-041-221").move_effect, "apprentice_smith")
+        self.assertEqual(registry.get("SFD-104-221").global_effect, "friendly_deflect")
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -1024,6 +1034,140 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         grip_rules.apply(grip_state, Action.make("pass"), random.Random(194))
         self.assertNotIn(killed, grip_state["units"])
         self.assertEqual(recipient["temporary"], 5)
+
+    def test_batch_spell_target_windows_and_damage_hooks(self):
+        cases = (
+            ("SFD-003-221", "OGN-247", "OGN-039", "friendly", "assault"),
+            ("SFD-017-221", "OGN-247", "OGN-039", "enemy", "damage"),
+            ("SFD-070-221", "OGN-247", "OGN-039", "enemy", "gold"),
+        )
+        for code, legend, champion, side, expected in cases:
+            deck = legal_deck(code, legend, champion)
+            rules = SpiritforgedRules([deck, deck])
+            state = rules.initial_state(random.Random(200))
+            card = move_code_to_hand(state, 0, code)
+            state["phase"], state["actor"] = "main", 0
+            state["players"][0]["energy"] = 20
+            state["players"][0]["power"] = ["body"] * 20
+            owner = 0 if side == "friendly" else 1
+            target = rules._new_unit(state, "OGN-001", owner, 0, exhausted=False)
+            state["fields"][0]["controller"] = owner
+            play = next(action for action in rules.legal_actions(state)
+                        if action.kind == "play_spell_targeted"
+                        and __import__("json").loads(action.arguments)["card"] == card)
+            args = __import__("json").loads(play.arguments)
+            self.assertIn(target["id"], args["target_candidates"])
+            rules.apply(state, play, random.Random(201))
+            rules.apply(state, Action.make("choose_target", target=target["id"]), random.Random(202))
+            rules.apply(state, Action.make("pass"), random.Random(203))
+            rules.apply(state, Action.make("pass"), random.Random(204))
+            if expected == "assault":
+                self.assertEqual(target["assault"], 2)
+            elif expected == "damage":
+                self.assertEqual(target["damage"], 2)
+            else:
+                self.assertEqual(sum(g["code"] == "SFD-T03"
+                                     for g in state["players"][0]["gear"]), 1)
+
+        stun_deck = legal_deck("SFD-040-221", "OGN-255", "OGN-066")
+        stun_rules = SpiritforgedRules([stun_deck, stun_deck])
+        stun_state = stun_rules.initial_state(random.Random(205))
+        stun_card = move_code_to_hand(stun_state, 0, "SFD-040-221")
+        attacker = stun_rules._new_unit(stun_state, "OGN-001", 1, 0, exhausted=False)
+        stun_state["battle"] = {"field": 0, "attacker": 1, "combat": True}
+        stun_state["phase"], stun_state["actor"] = "showdown", 0
+        stun_state["players"][0]["energy"] = 5
+        stun_state["players"][0]["power"] = ["calm"] * 5
+        play = next(action for action in stun_rules.legal_actions(stun_state)
+                    if action.kind == "play_spell_targeted"
+                    and __import__("json").loads(action.arguments)["card"] == stun_card)
+        stun_rules.apply(stun_state, play, random.Random(206))
+        stun_rules.apply(stun_state, Action.make("choose_target", target=attacker["id"]), random.Random(207))
+        stun_rules.apply(stun_state, Action.make("pass"), random.Random(208))
+        stun_rules.apply(stun_state, Action.make("pass"), random.Random(209))
+        self.assertTrue(attacker["stunned"])
+
+        bond_deck = legal_deck("SFD-151-221", "OGN-253", "OGN-243")
+        bond_rules = SpiritforgedRules([bond_deck, bond_deck])
+        bond_state = bond_rules.initial_state(random.Random(210))
+        bond_card = move_code_to_hand(bond_state, 0, "SFD-151-221")
+        first = bond_rules._new_unit(bond_state, "OGN-001", 0, "base:0", exhausted=False)
+        second = bond_rules._new_unit(bond_state, "OGN-001", 0, 0, exhausted=False)
+        bond_state["phase"], bond_state["actor"] = "main", 0
+        bond_state["players"][0]["energy"] = 5
+        bond_state["players"][0]["power"] = ["order"] * 5
+        play = next(action for action in bond_rules.legal_actions(bond_state)
+                    if action.kind == "play_spell_targeted"
+                    and __import__("json").loads(action.arguments)["card"] == bond_card)
+        bond_rules.apply(bond_state, play, random.Random(211))
+        bond_rules.apply(bond_state, Action.make("choose_target", target=first["id"]), random.Random(212))
+        bond_rules.apply(bond_state, Action.make("choose_target", target=second["id"]), random.Random(213))
+        bond_rules.apply(bond_state, Action.make("confirm_targets"), random.Random(214))
+        bond_rules.apply(bond_state, Action.make("pass"), random.Random(215))
+        bond_rules.apply(bond_state, Action.make("pass"), random.Random(216))
+        self.assertEqual(first["temporary"], 1)
+        self.assertEqual(second["temporary"], 1)
+
+    def test_batch_move_reveal_yordle_and_temporary_deflect(self):
+        smith_deck = legal_deck("SFD-041-221", "OGN-255", "OGN-066")
+        smith_rules = SpiritforgedRules([smith_deck, smith_deck])
+        smith_state = smith_rules.initial_state(random.Random(210))
+        smith_card = move_code_to_hand(smith_state, 0, "SFD-041-221")
+        smith = smith_rules._new_unit(smith_state, "SFD-041-221", 0, "base:0",
+                                      card=smith_card, exhausted=False)
+        smith_state["phase"], smith_state["actor"] = "main", 0
+        smith_state["fields"][0]["controller"] = 0
+        top = smith_state["players"][0]["main"][0]
+        smith_state["cards"][top]["code"] = "SFD-046-221"
+        smith_rules._resolve_move(smith_state, [smith], 0, 0, random.Random(211))
+        smith_rules.apply(smith_state, Action.make("pass"), random.Random(212))
+        smith_rules.apply(smith_state, Action.make("pass"), random.Random(213))
+        self.assertEqual(smith_state["phase"], "reveal")
+        smith_rules.apply(smith_state, Action.make("end_reveal"), random.Random(214))
+        self.assertIn(top, smith_state["players"][0]["hand"])
+
+        enforcer_deck = legal_deck("SFD-123-221", "OGN-267", "OGN-162")
+        enforcer_rules = SpiritforgedRules([enforcer_deck, enforcer_deck])
+        enforcer_state = enforcer_rules.initial_state(random.Random(215))
+        enforcer = enforcer_rules._new_unit(enforcer_state, "SFD-123-221", 0, "base:0",
+                                            exhausted=False)
+        enforcer_state["players"][0]["hand"] = enforcer_state["players"][0]["hand"][:1]
+        enforcer_state["phase"], enforcer_state["actor"] = "main", 0
+        enforcer_state["fields"][0]["controller"] = 0
+        enforcer_rules._resolve_move(enforcer_state, [enforcer], 0, 0, random.Random(216))
+        enforcer_rules.apply(enforcer_state, Action.make("pass"), random.Random(217))
+        enforcer_rules.apply(enforcer_state, Action.make("pass"), random.Random(218))
+        self.assertEqual(enforcer_state["phase"], "decision")
+        self.assertEqual(enforcer_state["decision"]["kind"], "discard")
+
+        yordle_deck = legal_deck("SFD-100-221", "OGN-257", "OGN-151")
+        yordle_rules = SpiritforgedRules([yordle_deck, yordle_deck])
+        yordle_state = yordle_rules.initial_state(random.Random(219))
+        yordle_rules._new_unit(yordle_state, "SFD-100-221", 0, "base:0", exhausted=False)
+        played = next(uid for uid in yordle_state["players"][0]["main"]
+                      if yordle_rules.cards[yordle_state["cards"][uid]["code"]].get("power_cost", 0) >= 2)
+        yordle_state["players"][0]["main"].remove(played)
+        yordle_state["players"][0]["hand"].append(played)
+        before = len(yordle_state["players"][0]["hand"])
+        yordle_rules._mark_play_finalized(yordle_state, 0, played, rng=random.Random(220))
+        self.assertEqual(len(yordle_state["players"][0]["hand"]), before + 1)
+
+        shield_deck = legal_deck("SFD-104-221", "OGN-257", "OGN-151")
+        shield_rules = SpiritforgedRules([shield_deck, shield_deck])
+        shield_state = shield_rules.initial_state(random.Random(221))
+        shield_state["players"][0]["legend"] = "SFD-181-221"
+        mech = shield_rules._new_unit(shield_state, "SFD-T05", 0, 0, exhausted=False)
+        shield_state["battle"] = {"field": 0, "attacker": 1, "combat": True}
+        self.assertEqual(shield_rules.might(shield_state, mech), 4)
+        shield = move_code_to_hand(shield_state, 0, "SFD-104-221")
+        shield_state["phase"], shield_state["actor"] = "main", 0
+        shield_state["players"][0]["energy"] = 5
+        shield_state["players"][0]["power"] = ["body"] * 5
+        play = next(action for action in shield_rules.legal_actions(shield_state)
+                    if action.kind == "play_gear"
+                    and __import__("json").loads(action.arguments)["card"] == shield)
+        shield_rules.apply(shield_state, play, random.Random(222))
+        self.assertTrue(shield_rules._deflect(shield_state, mech))
 
 
 if __name__ == "__main__":

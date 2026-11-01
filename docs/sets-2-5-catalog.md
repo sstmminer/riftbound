@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 75 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 85 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -103,6 +103,16 @@ python -m riftbound catalog --set SFD
 - `SFD-028A-221` Lucian, Gunslinger alternate print：复用 Lucian 的 Assault 与攻击触发。
 - `SFD-089A-221` Rumble, Scrapper alternate print：复用 Mech +1 Might 与 Hold 生成 Mech。
 - `SFD-149A-221` Ezreal, Prodigy alternate print：复用弃 1 抽 2 的入场选择窗口。
+- `SFD-003-221` Blood Rush：通过统一单位目标窗口给予单位本回合 Assault 2。
+- `SFD-017-221` Sudden Storm：点选战场单位造成 2 点伤害；若目标正在攻击则造成 4 点。
+- `SFD-040-221` Thwonk!：只提供正在攻击的单位作为目标，并将其眩晕。
+- `SFD-041-221` Apprentice Smith：移动到战场后公开查看牌库顶，Gear 进入手牌，其他牌统一回收。
+- `SFD-070-221` Wages of Pain：点选战场单位造成 3 点伤害，并生成横置 Gold Gear。
+- `SFD-100-221` Yordle Explorer：监听已完成出牌事件，打出 Power cost 至少 2 的牌时抽 1。
+- `SFD-104-221` Petricite Monument：作为临时 Gear 给予己方单位 Deflect，并在下个己方开始阶段按 Temporary 规则移除。
+- `SFD-123-221` Corrupt Enforcer：移动到战场后通过统一弃牌窗口弃 1；赢得战斗后抽 1。
+- `SFD-151-221` Bonds of Strength：Reaction，有序点选两名友方单位，各获得本回合 +1 Might。
+- `SFD-181-221` Mechanized Menace：注册为 Legend 全局能力，使己方 Mech 在防守时获得 Shield。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。签名牌 `SFD-204 On the Hunt` 暂缓注册，因为其合法套牌还依赖尚未执行的 Sivir/Battle Mistress 组合；装备附着、Repeat、Hidden、复杂衍生物和多步骤替代效果也继续保持 catalog-only。
 

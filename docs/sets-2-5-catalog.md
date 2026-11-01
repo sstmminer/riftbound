@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 104 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 105 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -125,6 +125,7 @@ python -m riftbound catalog --set SFD
 - `SFD-230-221` / `SFD-230-STAR-221` Teemo, Strategist：Hidden 与防守时五张公开查看/回收、按 Hidden 数量伤害复用同一窗口。
 - `SFD-232-221` / `SFD-232-STAR-221` Sett, Brawler：入场/征服增益与“消耗增益获得 +4”使用统一注册能力动作。
 - `SFD-185-221` Glorious Executioner：普通印刷接入 Legend 战斗胜利抽牌监听。
+- `SFD-105-221` Ruin Runner：以共享目标免疫谓词从敌方的单位法术和能力目标窗口中排除。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。签名牌 `SFD-204 On the Hunt` 暂缓注册，因为其合法套牌还依赖尚未执行的 Sivir/Battle Mistress 组合；装备附着、Repeat、Hidden、复杂衍生物和多步骤替代效果也继续保持 catalog-only。
 

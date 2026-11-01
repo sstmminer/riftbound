@@ -130,6 +130,14 @@ class OriginsRules:
     def _is_hidden_code(self, code):
         return code in HIDDEN_CODES or self._has_static_keyword(code, "hidden")
 
+    def _is_targetable(self, state, chooser, target_id):
+        """Apply shared target-immunity predicates to unit target windows."""
+        target = self._unit(state, target_id)
+        if target is None:
+            return True
+        return not (target["owner"] != chooser
+                    and self._has_static_keyword(target["code"], "untargetable_enemy"))
+
     def _is_reaction_code(self, code):
         implementation = self._card_implementation(code)
         return code in REACTIONS or bool(implementation and implementation.reaction)
@@ -3394,6 +3402,13 @@ class OriginsRules:
                                 spec = self._spell_target_spec(state, player, code)
                                 if spec is None or spec.get("kind") == "field":
                                     continue
+                                spec = dict(spec)
+                                spec["candidates"] = [uid for uid in spec.get("candidates", [])
+                                                      if self._is_targetable(state, player, uid)]
+                                if spec.get("target_pairs") is not None:
+                                    spec["target_pairs"] = [pair for pair in spec["target_pairs"]
+                                                             if all(self._is_targetable(state, player, uid)
+                                                                    for uid in pair)]
                                 candidates = list(spec.get("candidates", []))
                                 target_count = int(spec.get("min", 1))
                                 target_pairs = [list(pair) for pair in spec.get("target_pairs", [])]
@@ -3437,7 +3452,8 @@ class OriginsRules:
         list as policies and replays.
         """
         if scope == "any_unit":
-            return [unit["id"] for unit in state["units"]]
+            return [unit["id"] for unit in state["units"]
+                    if self._is_targetable(state, player, unit["id"])]
         if scope in {"friendly_unit", "friendly_field_unit"}:
             return [unit["id"] for unit in self._units(state, player)
                     if scope == "friendly_unit" or self._is_field(state, unit["location"])]
@@ -3446,7 +3462,8 @@ class OriginsRules:
                     for gear in row.get("gear", [])]
         if scope == "field_unit":
             return [unit["id"] for unit in state["units"]
-                    if self._is_field(state, unit["location"])]
+                    if self._is_field(state, unit["location"])
+                    and self._is_targetable(state, player, unit["id"])]
         if scope == "attacking_unit":
             battle = state.get("battle")
             if battle is None:
@@ -3456,7 +3473,8 @@ class OriginsRules:
         if scope == "field_unit_might_le_2":
             return [unit["id"] for unit in state["units"]
                     if self._is_field(state, unit["location"])
-                    and self.might(state, unit) <= 2]
+                    and self.might(state, unit) <= 2
+                    and self._is_targetable(state, player, unit["id"])]
         raise ValueError(f"unknown registered spell target scope: {scope}")
 
     def _unit_actions(self, state):
@@ -4023,6 +4041,7 @@ class OriginsRules:
             targets = self._trigger_target_candidates(state, item)
             if targets is None:
                 return False
+            targets = [uid for uid in targets if self._is_targetable(state, item["owner"], uid)]
             if not targets and (not item.get("target_multi") or item.get("target_min", 0) > 0):
                 # RUP5 403.4: an already-triggered ability with no legal
                 # choices is removed from the Chain and never resolves.
@@ -7145,6 +7164,8 @@ class OriginsRules:
                 decision = state["decision"]
                 if args["target"] not in decision["targets"]:
                     raise ValueError("invalid target choice")
+                if not self._is_targetable(state, decision.get("player", player), args["target"]):
+                    raise ValueError("target is protected from enemy spells and abilities")
                 if decision.get("optional_gear_effect"):
                     target_id = args["target"]
                     owner = player

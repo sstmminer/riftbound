@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 104)
+        self.assertEqual(len(registry.executable_codes()), 105)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -136,6 +136,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-232-221").activated_effect, "spend_buff_four")
         self.assertEqual(registry.get("SFD-232-STAR-221").conquer_effect, "buff_self")
         self.assertEqual(registry.get("SFD-185-221").combat_effect, "draw_one_on_win")
+        self.assertIn("untargetable_enemy", registry.get("SFD-105-221").static_keywords)
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -1324,6 +1325,16 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         teemo_rules.apply(teemo_state, Action.make("pass"), random.Random(247))
         teemo_rules.apply(teemo_state, Action.make("pass"), random.Random(248))
         self.assertEqual(target["damage"], 1)
+
+    def test_batch_enemy_target_immunity_filters_shared_target_windows(self):
+        deck = legal_deck("SFD-105-221", "OGN-267", "OGN-162")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(249))
+        protected = rules._new_unit(state, "SFD-105-221", 0, 0, exhausted=False)
+        ordinary = rules._new_unit(state, "OGN-001", 0, 0, exhausted=False)
+        candidates = rules._registry_spell_target_candidates(state, 1, "any_unit")
+        self.assertNotIn(protected["id"], candidates)
+        self.assertIn(ordinary["id"], candidates)
 
 
 if __name__ == "__main__":

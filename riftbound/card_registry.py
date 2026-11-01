@@ -439,4 +439,7 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-185-221", sfd, "legend", "executable",
                            combat_effect="draw_one_on_win",
                            notes="Glorious Executioner; normal printing."),
+        CardImplementation("SFD-105-221", sfd, "unit", "executable",
+                           static_keywords=frozenset({"untargetable_enemy"}),
+                           notes="Ruin Runner; enemy target windows exclude this unit."),
     ])

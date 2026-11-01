@@ -33,6 +33,8 @@ class CardImplementation:
     buff_effect: str | None = None
     might_effect: str | None = None
     global_effect: str | None = None
+    additional_cost_energy: int = 0
+    additional_cost_effect: str | None = None
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -44,7 +46,8 @@ class CardImplementation:
                 self.behavior_id, self.static_keywords, self.entry_effect,
                 self.entry_trigger, self.move_effect, self.hold_effect,
                 self.deathknell_effect, self.spell_effect,
-                self.buff_effect, self.might_effect, self.global_effect)):
+                self.buff_effect, self.might_effect, self.global_effect,
+                self.additional_cost_effect)):
             raise ValueError("executable implementation needs an explicit hook")
 
 
@@ -197,4 +200,8 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-174-221", sfd, "unit", "executable",
                            entry_trigger="play_four_gold_gear",
                            notes="When played, play four exhausted Gold gear tokens."),
+        CardImplementation("SFD-098-221", sfd, "unit", "executable",
+                           additional_cost_energy=1,
+                           additional_cost_effect="buff_self",
+                           notes="May pay 1 additional Energy; if paid, buff this unit."),
     ])

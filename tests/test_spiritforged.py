@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 34)
+        self.assertEqual(len(registry.executable_codes()), 35)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -72,6 +72,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-152-221").hold_effect, "play_two_gold_gear")
         self.assertEqual(registry.get("SFD-171-221").global_effect, "tokens_enter_ready")
         self.assertEqual(registry.get("SFD-174-221").entry_trigger, "play_four_gold_gear")
+        self.assertEqual(registry.get("SFD-098-221").additional_cost_effect, "buff_self")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -429,6 +430,22 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         trove_rules.apply(trove_state, Action.make("pass"), random.Random(74))
         trove_rules.apply(trove_state, Action.make("pass"), random.Random(75))
         self.assertEqual(sum(g["code"] == "SFD-T03" for g in trove_state["players"][0]["gear"]), 4)
+
+    def test_registered_additional_cost_unit_uses_common_payment(self):
+        deck = legal_deck("SFD-098-221", "OGN-267", "OGN-162")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(76))
+        card = move_code_to_hand(state, 0, "SFD-098-221")
+        state["phase"], state["actor"] = "main", 0
+        state["players"][0]["energy"] = 10
+        state["players"][0]["power"] = ["body"] * 10
+        action = next(action for action in rules.legal_actions(state)
+                      if action.kind == "play_unit"
+                      and __import__("json").loads(action.arguments)["card"] == card
+                      and __import__("json").loads(action.arguments)["additional_cost"])
+        rules.apply(state, action, random.Random(77))
+        unit = next(unit for unit in state["units"] if unit["card"] == card)
+        self.assertEqual(unit["buff"], 1)
 
 
 if __name__ == "__main__":

@@ -3185,9 +3185,14 @@ class OriginsRules:
                 energy = max(1, energy - 2)
             if code == "OGN-195":
                 energy = max(1, energy - len(row["trash"]))
+            implementation = self._card_implementation(code)
+            additional_energy = (implementation.additional_cost_energy
+                                 if implementation is not None else
+                                 (1 if code == "OGN-044" else 0))
             sacrifices = ([unit["id"] for unit in self._units(state, player)]
                           if code == "OGN-208" else [None])
-            extra_costs = ([False, True] if code == "OGN-044" and row["energy"] >= energy else [False])
+            extra_costs = ([False, True] if additional_energy and row["energy"] >= energy + additional_energy
+                           else [False])
             discard_cards = ([None] + [uid for uid in row["hand"] if uid != card]
                              if code == "OGN-002" else [None])
             buff_slots = [unit["id"] for unit in self._units(state, player)
@@ -3209,7 +3214,7 @@ class OriginsRules:
                             for spend_buffs in buff_spends:
                                 for kill_units in kill_options:
                                     total_energy = max(0, energy - (2 if discard_card else 0))
-                                    total_energy += int(additional_cost)
+                                    total_energy += additional_energy if additional_cost else 0
                                     total_power = max(0, data["power_cost"] - len(spend_buffs) - len(kill_units))
                                     for payment in self._payments(state, player, total_energy, data["domains"], total_power):
                                         for location in permitted:
@@ -7527,6 +7532,7 @@ class OriginsRules:
             card = args["card"]
             code = state["cards"][card]["code"]
             data = self.cards[code]
+            implementation = self._card_implementation(code)
             finalized_before = self._played_for_legion(state, player)
             was_legion = finalized_before > 0
             if kind == "play_unit":
@@ -7538,9 +7544,12 @@ class OriginsRules:
                 kill_units = list(args.get("kill_units") or [])
                 ignore_energy = bool(args.get("ignore_energy"))
                 energy_reduction = max(0, int(args.get("energy_reduction", 0)))
+                additional_energy = (implementation.additional_cost_energy
+                                     if implementation is not None else
+                                     (1 if code == "OGN-044" else 0))
                 energy = 0 if (ignore_cost or ignore_energy) else max(0, data["energy"] - energy_reduction - (2 if code == "OGN-012" and was_legion else 0)
                                                     - (2 if discard_card else 0)
-                                                    + int(additional_cost))
+                                                    + (additional_energy if additional_cost else 0))
                 power_cost = max(0, data["power_cost"] - len(spend_buffs) - len(kill_units))
                 self._pay(row, energy, [] if ignore_cost else args["payment"])
                 if not ignore_cost and discard_card is not None:
@@ -7579,6 +7588,9 @@ class OriginsRules:
                 unit = self._new_unit(state, code, player, args["location"], card=card, exhausted=not ready)
                 if args.get("hidden_field") is not None:
                     unit["hidden_field"] = args["hidden_field"]
+                if (additional_cost and implementation is not None
+                        and implementation.additional_cost_effect == "buff_self"):
+                    self._apply_buff(state, unit)
                 if (row["legend"] == "OGN-249" and not row["legend_exhausted"]
                         and self.might(state, unit) >= 5):
                     state.setdefault("legend_options", []).append({"owner": player,
@@ -7758,7 +7770,6 @@ class OriginsRules:
                 if spend is not None:
                     self._unit(state, spend)["buff"] = 0
                 row["hand"].remove(card)
-                implementation = self._card_implementation(code)
                 effect = ("spell" if implementation and implementation.spell_effect
                           else "return_unit" if code == "OGN-170"
                           else "sabotage" if code == "OGN-156" else "spell")

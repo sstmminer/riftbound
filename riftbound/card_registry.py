@@ -134,7 +134,4 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-147-221", sfd, "spell", "executable",
                            spell_effect="return_all_units_gear",
                            notes="Return all units and gear to their owners' hands."),
-        CardImplementation("SFD-204-221", sfd, "spell", "executable",
-                           spell_effect="ready_friendly_units",
-                           notes="Ready your units."),
     ])

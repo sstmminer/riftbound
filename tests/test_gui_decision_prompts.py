@@ -133,6 +133,37 @@ class GuiDecisionPromptTests(unittest.TestCase):
         self.assertTrue(self.gui._target_sequence_extendable(decision, ["source"]))
         self.assertFalse(self.gui._target_sequence_extendable(decision, ["destination"]))
 
+    def test_private_deck_card_choices_resolve_to_physical_cards(self):
+        options = list(self.state["players"][0]["main"][:3])
+        decision = {
+            "kind": "target", "player": 0,
+            "targets": list(options),
+            "item": {"effect": "spell", "code": "OGN-183",
+                      "deck_options": list(options)},
+        }
+        self.assertEqual(self.gui._decision_card_choices(decision), options)
+        self.assertEqual(self.gui._target_code(options[0]),
+                         self.state["cards"][options[0]]["code"])
+        self.assertEqual(self.gui._target_label(options[0]),
+                         self.rules.cards[self.state["cards"][options[0]]["code"]]["name"])
+
+    def test_predict_card_records_are_normalized_for_picker(self):
+        uid = self.state["players"][0]["main"][0]
+        code = self.state["cards"][uid]["code"]
+        decision = {"kind": "predict", "player": 0,
+                    "cards": [{"id": uid, "code": code}]}
+        self.assertEqual(self.gui._decision_card_choices(decision), [uid])
+
+    def test_hand_card_prompt_uses_card_names_instead_of_uids(self):
+        uid = self.state["players"][0]["main"][0]
+        code = self.state["cards"][uid]["code"]
+        prompt = self.gui._decision_prompt({
+            "kind": "hand_card", "player": 0, "cards": [uid],
+            "item": {"effect": "mindsplitter", "code": "OGN-022"},
+        })
+        self.assertIn(self.rules.cards[code]["name"], prompt)
+        self.assertNotIn(uid, prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

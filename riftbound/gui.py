@@ -57,6 +57,18 @@ class OriginsGUI(tk.Tk):
         self._preview = None
         self._decision_signature = None
         self._reveal_window = None
+        # Card-selection decisions that refer to cards outside the visible
+        # table (for example the top three cards of Stacked Deck) use a
+        # dedicated transient window.  Keeping it separate from the target
+        # sequence window lets ordinary board targets and private card picks
+        # use the same click semantics without exposing raw UIDs in the
+        # action bar.
+        self._card_choice_window = None
+        self._card_choice_signature = None
+        self._reveal_order_selection = []
+        self._order_window = None
+        self._order_selection = []
+        self._order_signature = None
         # Aurora remains one-card-at-a-time in the backend; the GUI batches
         # public non-unit cards into one recycle confirmation.
         self._aurora_batch_cards = []
@@ -526,6 +538,10 @@ class OriginsGUI(tk.Tk):
         self.selected_mulligan.clear()
         self.selected_decision_targets.clear()
         self._close_target_window()
+        self._close_card_choice_window()
+        self._close_order_window()
+        self._reveal_order_selection.clear()
+        self._order_selection.clear()
         self._decision_signature = None
         self._winner_announced = False
         self._log_seq = 0
@@ -945,6 +961,12 @@ class OriginsGUI(tk.Tk):
             rune = next((rune for rune in row.get("runes", []) if rune.get("id") == uid), None)
             if rune is not None:
                 return self._card_name(rune["code"])
+        try:
+            code = self.env._state.get("cards", {}).get(uid, {}).get("code")
+        except AttributeError:
+            code = None
+        if code is not None:
+            return self._card_name(code)
         return str(uid)
 
     def _decision_selected_ids(self):
@@ -1020,6 +1042,11 @@ class OriginsGUI(tk.Tk):
             text += f"（当前提供 {len(candidates)} 个合法目标）"
             if candidates and len(candidates) <= 10:
                 text += "：" + "、".join(self._target_label(uid) for uid in candidates)
+            card_choices = self._decision_card_choices(decision)
+            if card_choices:
+                names = "、".join(self._target_label(uid) for uid in card_choices[:8])
+                return (f"{source}：从展示的 {len(card_choices)} 张牌中选择 1 张"
+                        + (f"（{names}）" if names else ""))
             return text
         if kind == "unit_target":
             return f"{source}：选择技能目标（{len(decision.get('targets', []))} 个合法目标）"
@@ -1046,6 +1073,21 @@ class OriginsGUI(tk.Tk):
                 code = "Nocturne"
             card_name = self._card_name(code)
             return f"{source}：牌库顶出现 {card_name}，请选择放逐并继续，或跳过替代效果"
+        if kind == "hand_card":
+            cards = decision.get("cards", [])
+            names = []
+            for value in cards:
+                uid = value.get("id") if isinstance(value, dict) else value
+                names.append(self._target_label(uid))
+            suffix = "、".join(names) if names and len(names) <= 8 else f"{len(names)} 张牌"
+            return f"{source}：从已展示/可选的手牌中选择 1 张（{suffix}）"
+        if kind == "predict":
+            cards = decision.get("cards", [])
+            if cards:
+                value = cards[0]
+                uid = value.get("id") if isinstance(value, dict) else value
+                return f"{source}：查看牌库顶的 {self._target_label(uid)}，选择保留或回收"
+            return f"{source}：选择保留或回收牌库顶牌"
         return None
 
     def _target_code(self, uid):
@@ -1057,7 +1099,193 @@ class OriginsGUI(tk.Tk):
             gear = next((gear for gear in row.get("gear", []) if gear.get("id") == uid), None)
             if gear is not None:
                 return gear["code"]
+        # Private card decisions (the top of a deck or a card in a private
+        # trash/hand selection) expose the physical card UID without placing
+        # it in a normal board zone.  The local client can resolve that UID
+        # through the engine's private card table and show the real card art.
+        try:
+            code = self.env._state.get("cards", {}).get(uid, {}).get("code")
+        except AttributeError:
+            code = None
+        if code is not None:
+            return code
         return BACK_CODE
+
+    def _is_card_uid(self, value):
+        """Return whether *value* is a physical card id in the local state."""
+        if not isinstance(value, str):
+            return False
+        try:
+            return value in self.env._state.get("cards", {})
+        except AttributeError:
+            return False
+
+    def _decision_card_choices(self, decision):
+        """Extract physical cards that must be chosen from a decision.
+
+        Board target decisions already render their units/gears in place.  A
+        few decisions instead refer to private cards that are not present in
+        any visible zone: Stacked Deck's top three, Hidden/Mindsplitter card
+        picks, and similar future effects.  Those cards must be rendered in a
+        transient face-up picker.  The helper deliberately uses explicit
+        decision metadata first, then validates every candidate against the
+        private card table so literal options such as ``"draw"`` or
+        ``"accelerate"`` never become accidental card buttons.
+        """
+        if not decision:
+            return []
+        raw = []
+        kind = decision.get("kind")
+        if kind in {"hand_card", "predict"}:
+            raw.extend(decision.get("cards", []))
+        item = decision.get("item") or {}
+        for key in ("deck_options", "card_options", "revealed_cards"):
+            raw.extend(item.get(key, []) or [])
+        for key in ("free_play", "free_play_unit", "free_play_spell", "free_play_gear"):
+            nested = decision.get(key) or {}
+            for option_key in ("deck_options", "card_options", "revealed_cards"):
+                raw.extend(nested.get(option_key, []) or [])
+        # Some future adapters may put the card ids directly in options.  Do
+        # this only for values that are physical ids; ordinary string choices
+        # remain regular bottom-bar actions.
+        if kind == "choice":
+            raw.extend(value for value in decision.get("options", [])
+                       if self._is_card_uid(value))
+        if kind == "target" and not raw:
+            # Triggered effects such as returning a unit from the trash may
+            # expose physical card UIDs directly in ``targets`` rather than
+            # carrying a separate deck/card-options field.  Unit and gear
+            # object ids are not keys in ``state['cards']``, so this remains
+            # safe for ordinary battlefield target windows.
+            raw.extend(uid for uid in decision.get("targets", [])
+                       if self._is_card_uid(uid))
+        # ``observe`` enriches private Predict cards to ``{"id", "code"}``
+        # records, while other decision paths retain bare UIDs.  Normalize
+        # both forms before rendering.
+        normalized = []
+        for value in raw:
+            uid = value.get("id") if isinstance(value, dict) else value
+            if uid is not None and self._is_card_uid(uid):
+                normalized.append(uid)
+        seen = set()
+        result = []
+        for uid in normalized:
+            if uid in seen:
+                continue
+            seen.add(uid)
+            result.append(uid)
+        return result
+
+    def _close_card_choice_window(self):
+        popup = self._card_choice_window
+        if popup is not None:
+            try:
+                if popup.winfo_exists():
+                    popup.destroy()
+            except tk.TclError:
+                pass
+        self._card_choice_window = None
+        self._card_choice_signature = None
+
+    def _decision_card_click(self, uid):
+        """Resolve a click on a card rendered in a decision picker."""
+        obs = self.env.observe(0)
+        decision = obs.get("decision")
+        if self.env.current_player != 0 or obs.get("phase") != "decision" or not decision:
+            return "break"
+        choices = set(self._decision_card_choices(decision))
+        if uid not in choices:
+            self.set_notice("这张牌不是当前效果可选择的牌。")
+            return "break"
+        actions = []
+        for action in self.env.legal_actions():
+            args = json.loads(action.arguments)
+            if (args.get("card") == uid or args.get("target") == uid
+                    or args.get("option") == uid):
+                actions.append(action)
+        if not actions:
+            self.set_notice("这张牌当前没有合法的选择动作。")
+            return "break"
+        # A multi-target card picker uses the same ordered target semantics as
+        # board clicks.  Single card choices (Hidden/Mindsplitter/Stacked
+        # Deck) resolve immediately through their existing legal action.
+        if decision.get("kind") == "target":
+            self._decision_target_click(uid)
+        else:
+            self.perform(actions[0])
+        return "break"
+
+    def _render_card_choice_window(self, decision, legal):
+        """Render face-up card choices in a temporary Hearthstone-like window.
+
+        The engine remains authoritative: clicking a card only dispatches an
+        already legal action.  This method is purely presentation and works
+        for private deck/hand choices as well as future card-choice metadata.
+        """
+        cards = self._decision_card_choices(decision)
+        if not cards or self.env.current_player != 0:
+            self._close_card_choice_window()
+            return False
+        signature = json.dumps({"kind": decision.get("kind"), "cards": cards,
+                                "selected": decision.get("selected", []),
+                                "local": self.selected_decision_targets},
+                               sort_keys=True, default=str)
+        popup = self._card_choice_window
+        if popup is None or not popup.winfo_exists():
+            popup = tk.Toplevel(self)
+            self._card_choice_window = popup
+            popup.transient(self)
+            popup.protocol("WM_DELETE_WINDOW", self._close_card_choice_window)
+        else:
+            for child in popup.winfo_children():
+                child.destroy()
+        popup.title("选择牌 / Choose a card")
+        popup.configure(bg="#101b2b")
+        source = self._decision_source_label(decision)
+        if decision.get("kind") == "predict":
+            instruction = f"{source}：查看牌库顶牌后选择保留或回收"
+        elif decision.get("kind") == "hand_card":
+            instruction = f"{source}：点击一张牌确认选择"
+        else:
+            instruction = f"{source}：点击要选择的牌"
+        tk.Label(popup, text=instruction, bg="#101b2b", fg="#f3d58b",
+                 padx=10, pady=8, anchor="w").pack(fill="x")
+        body = tk.Frame(popup, bg="#101b2b")
+        body.pack(fill="both", expand=True, padx=8, pady=4)
+        selected = self._decision_selected_ids()
+        selected_sequence = list(self.selected_decision_targets)
+        for index, uid in enumerate(cards):
+            code = self._target_code(uid)
+            if code == BACK_CODE:
+                continue
+            number = ""
+            if uid in selected_sequence:
+                number = f"{selected_sequence.index(uid) + 1}. "
+            label = number + self._card_name(code)
+            wrapper = self._image_card(body, code, uid=uid, factor=3,
+                                       compact_label=label, selected=uid in selected,
+                                       click=False, pack=False)
+            wrapper.grid(row=index // 6, column=index % 6, padx=7, pady=6, sticky="n")
+            callback = lambda _event, u=uid: self._decision_card_click(u)
+            wrapper.bind("<Button-1>", callback, add="+")
+            for child in wrapper.winfo_children():
+                child.bind("<Button-1>", callback, add="+")
+        if not cards:
+            tk.Label(body, text="当前没有可选择的牌", bg="#101b2b", fg="#dbe8f7").pack()
+        footer = tk.Frame(popup, bg="#101b2b")
+        footer.pack(fill="x", padx=8, pady=(3, 8))
+        if decision.get("kind") == "target" and decision.get("multi"):
+            tk.Label(footer, text=f"已选 {len(self.selected_decision_targets)}/{decision.get('max', 0)}",
+                     bg="#101b2b", fg="#dbe8f7").pack(side="left")
+        elif decision.get("kind") == "hand_card":
+            tk.Label(footer, text="点击卡牌后会立即执行合法选择。",
+                     bg="#101b2b", fg="#9fb4ce").pack(side="left")
+        popup.update_idletasks()
+        width = min(1200, max(460, 190 * min(6, len(cards))))
+        rows = max(1, (len(cards) + 5) // 6)
+        popup.geometry(f"{width}x{min(780, 220 + rows * 250)}")
+        self._card_choice_signature = signature
+        return True
 
     def _close_target_window(self):
         if self._target_window is not None:
@@ -1543,6 +1771,8 @@ class OriginsGUI(tk.Tk):
         if obs["phase"] != "decision" or obs["to_act"] != 0:
             self.selected_decision_targets.clear()
             self._close_target_window()
+            self._close_card_choice_window()
+            self._close_order_window()
         turn_text = "玩家 0 行动" if obs["to_act"] == 0 else "对手行动"
         self.status.configure(text=f"回合 {obs['turn']} · {turn_text} · 比分 {obs['points'][0]}–{obs['points'][1]} / {obs['victory']}")
         self.state_bar.configure(text=self._state_summary(obs))
@@ -1870,6 +2100,18 @@ class OriginsGUI(tk.Tk):
         if optional and self.env.current_player == 0:
             self._render_optional_bar(optional[0], legal)
             return
+        if obs.get("phase") == "trigger_order" and self.env.current_player == 0:
+            pending = list(obs.get("pending") or [])
+            order_actions = [a for a in legal if a.kind == "order_triggers"]
+            if pending and order_actions:
+                self._render_order_window(
+                    kind="trigger", entries=pending, legal=order_actions,
+                    order_values=list(range(len(pending))),
+                    title="同时触发的技能顺序 / Trigger order")
+            else:
+                tk.Label(self.actions, text="当前没有可排序的触发。",
+                         bg="#101b2b", fg="#dbe8f7").pack(side="left")
+            return
         if self.env.current_player != 0:
             tk.Label(self.actions, text="对手正在自动决策…", bg="#101b2b", fg="#c7d7eb").pack(side="left")
             if self._opponent_job is None:
@@ -1948,13 +2190,36 @@ class OriginsGUI(tk.Tk):
             return f"P{closer}：展示方 P{owner} 的对手结束展示 / End reveal"
         return f"P{closer}：结束展示 / End reveal"
 
+    def _reveal_order_click(self, uid):
+        """Append/remove one card from an interactive reorder sequence."""
+        obs = self.env.observe(0)
+        reveal = obs.get("reveal") or {}
+        if reveal.get("kind") != "reorder" or self.env.current_player != reveal.get("chooser"):
+            return "break"
+        cards = [card.get("id") for card in reveal.get("cards", [])]
+        if uid not in cards:
+            return "break"
+        if uid in self._reveal_order_selection:
+            self._reveal_order_selection.remove(uid)
+        else:
+            self._reveal_order_selection.append(uid)
+        self.render()
+        return "break"
+
     def _render_reveal_window(self, obs):
         reveal = obs.get("reveal")
         if not reveal:
             if self._reveal_window is not None and self._reveal_window.winfo_exists():
                 self._reveal_window.destroy()
             self._reveal_window = None
+            self._reveal_order_selection.clear()
             return
+        if reveal.get("kind") != "reorder":
+            self._reveal_order_selection.clear()
+        else:
+            valid_order = {card.get("id") for card in reveal.get("cards", [])}
+            self._reveal_order_selection = [uid for uid in self._reveal_order_selection
+                                            if uid in valid_order]
         if self._reveal_window is not None and self._reveal_window.winfo_exists():
             self._reveal_window.destroy()
         popup = tk.Toplevel(self)
@@ -1978,11 +2243,23 @@ class OriginsGUI(tk.Tk):
                 self._image_card(body, card["code"], uid=None, factor=3,
                                  selected=False, click=False,
                                  compact_label="待统一回收 · " + self._card_name(card["code"]))
+        reorder = reveal.get("kind") == "reorder"
         for card in reveal.get("cards", []):
+            order_number = (self._reveal_order_selection.index(card["id"]) + 1
+                            if reorder and card["id"] in self._reveal_order_selection else None)
+            label = self._card_name(card["code"])
+            if order_number is not None:
+                label = f"{order_number}. {label}"
             wrapper = self._image_card(body, card["code"], uid=None, factor=3,
-                                       selected=card["id"] in selected, click=False,
-                                       compact_label=self._card_name(card["code"]))
-            if card["id"] in actions:
+                                       selected=(card["id"] in selected
+                                                 or order_number is not None), click=False,
+                                       compact_label=label)
+            if reorder:
+                callback = lambda _event, uid=card["id"]: self._reveal_order_click(uid)
+                wrapper.bind("<Button-1>", callback, add="+")
+                for child in wrapper.winfo_children():
+                    child.bind("<Button-1>", callback, add="+")
+            elif card["id"] in actions:
                 action = actions[card["id"]]
                 for child in wrapper.winfo_children():
                     child.bind("<Button-1>", lambda _event, a=action: self.perform(a), add="+")
@@ -2000,14 +2277,25 @@ class OriginsGUI(tk.Tk):
                 ttk.Button(popup, text=self.action_text(confirm),
                            command=lambda a=confirm: self.perform(a)).pack(pady=6)
         else:
-            order_actions = [a for a in legal if a.kind == "order_revealed"]
-            for action in order_actions:
-                args = json.loads(action.arguments)
-                names = " → ".join(self._card_name(next(
-                    card["code"] for card in reveal.get("cards", [])
-                    if card["id"] == uid)) for uid in args.get("order", []))
-                ttk.Button(popup, text=f"顺序：{names}",
-                           command=lambda a=action: self.perform(a)).pack(pady=3)
+            # Reordering used to expose one text button per permutation.  A
+            # five-card reveal therefore produced 120 opaque choices.  Let
+            # the player click cards in the desired order and confirm one
+            # legal permutation instead.
+            if reorder:
+                selected_count = len(self._reveal_order_selection)
+                tk.Label(popup, text=(f"已选择顺序 {selected_count}/{len(reveal.get('cards', []))}；"
+                                      "按顺序点击卡牌，重复点击可取消"),
+                         bg="#101b2b", fg="#dbe8f7", padx=8, pady=4).pack(fill="x")
+                if selected_count == len(reveal.get("cards", [])):
+                    order = list(self._reveal_order_selection)
+                    action = next((a for a in legal
+                                   if json.loads(a.arguments).get("order") == order), None)
+                    if action is not None:
+                        ttk.Button(popup, text="确认牌库顺序 / Confirm order",
+                                   command=lambda a=action: self.perform(a)).pack(side="left", padx=8, pady=6)
+                ttk.Button(popup, text="清空重选 / Clear",
+                           command=lambda: (self._reveal_order_selection.clear(), self.render())).pack(
+                               side="left", padx=8, pady=6)
 
     def _render_decision_bar(self, decision, legal):
         """Render target/choice instructions in the persistent bottom bar."""
@@ -2042,10 +2330,27 @@ class OriginsGUI(tk.Tk):
         else:
             prompt = f"等待选择：{kind}"
         tk.Label(self.actions, text=prompt, bg="#101b2b", fg="#f3d58b").pack(side="left", padx=4)
+        # Private card choices must be shown face-up in a temporary picker.
+        # Keep the action bar as a concise status/confirm area; it should
+        # never force a player to decode physical card UIDs.
+        card_choices = self._decision_card_choices(decision)
+        card_picker = self._render_card_choice_window(decision, legal)
+        card_ids = set(card_choices)
+
+        def is_card_choice_action(action):
+            if not card_ids:
+                return False
+            args = json.loads(action.arguments)
+            return (args.get("card") in card_ids
+                    or args.get("target") in card_ids
+                    or args.get("option") in card_ids)
+
         if kind == "predict":
             for action in legal:
                 ttk.Button(self.actions, text=self.action_text(action),
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
+            return
+        if kind == "hand_card" and card_picker:
             return
         if decision.get("accelerate"):
             # Rune resources are operated directly on the rune cards. Keep
@@ -2067,14 +2372,141 @@ class OriginsGUI(tk.Tk):
                        command=self.commit_decision_targets).pack(side="left", padx=2)
             ttk.Button(self.actions, text="取消 / Cancel",
                        command=self.cancel_decision_targets).pack(side="left", padx=2)
-            self._render_target_window(decision)
+            # For private card sequences the picker already shows the
+            # selected cards at full size.  Board target sequences retain the
+            # compact ordered-target window.
+            if not card_picker:
+                self._render_target_window(decision)
         else:
             self._close_target_window()
             # Keep a text fallback for targets whose card is not visible in the
             # current private view; normal interaction remains card clicking.
             for action in legal:
+                if is_card_choice_action(action):
+                    continue
+                # Candidate cards/units are already rendered with their
+                # actual art in the hand, board, rune, or chain region.  A
+                # second row of identical "choose target/card" buttons adds
+                # no information and used to expose opaque IDs for private
+                # choices.  Keep only confirmation/cancel/non-candidate
+                # actions in the persistent bar.
+                if action.kind in {"choose_target", "choose_card", "discard_card",
+                                   "choose_divine", "choose_chain_target"}:
+                    continue
                 ttk.Button(self.actions, text=self.action_text(action),
                            command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
+
+    def _close_order_window(self):
+        popup = self._order_window
+        if popup is not None:
+            try:
+                if popup.winfo_exists():
+                    popup.destroy()
+            except tk.TclError:
+                pass
+        self._order_window = None
+        self._order_signature = None
+
+    def _order_source_code(self, item, obs):
+        """Resolve a trigger/optional source to card art when possible."""
+        source = item.get("source")
+        unit = next((u for u in obs.get("units", []) if u.get("id") == source), None)
+        if unit is not None:
+            return unit.get("code")
+        for row in obs.get("players", []):
+            for gear in row.get("gear", []):
+                if gear.get("id") == source:
+                    return gear.get("code")
+        field = item.get("field")
+        if field is None:
+            field = item.get("battlefield")
+        if isinstance(field, int) and 0 <= field < len(obs.get("fields", [])):
+            return obs["fields"][field].get("code")
+        item_code = item.get("code")
+        return item_code if item_code in self.rules.cards else None
+
+    def _order_item_label(self, item, obs):
+        effect_names = {
+            "darius": "Darius：增益",
+            "ravenbloom": "Ravenbloom Student：触发",
+            "viktor_innovator": "Viktor：复制",
+            "peak": "战场效果：增益",
+            "drummer": "战场效果：生成单位",
+            "reaver_recall": "Reaver：回基地",
+            "recall_defender": "回收防守单位",
+            "channel_rune": "横置符文",
+            "ready_runes": "重置符文",
+        }
+        code = self._order_source_code(item, obs)
+        source = self._card_name(code) if code else "技能/战场效果"
+        return f"{source} · {effect_names.get(item.get('effect'), item.get('effect', '效果'))}"
+
+    def _order_card_click(self, index):
+        if index in self._order_selection:
+            self._order_selection.remove(index)
+        else:
+            self._order_selection.append(index)
+        self.render()
+        return "break"
+
+    def _render_order_window(self, *, kind, entries, legal, order_values, title):
+        """Show readable source cards and collect one trigger ordering."""
+        if self.env.current_player != 0 or not entries:
+            self._close_order_window()
+            return False
+        context_signature = json.dumps({"kind": kind, "entries": entries,
+                                        "values": order_values},
+                                       sort_keys=True, default=str)
+        if self._order_signature != context_signature:
+            self._order_selection.clear()
+            self._order_signature = context_signature
+        valid = set(range(len(entries)))
+        self._order_selection = [index for index in self._order_selection if index in valid]
+        popup = self._order_window
+        if popup is None or not popup.winfo_exists():
+            popup = tk.Toplevel(self)
+            self._order_window = popup
+            popup.transient(self)
+            popup.protocol("WM_DELETE_WINDOW", self._close_order_window)
+        else:
+            for child in popup.winfo_children():
+                child.destroy()
+        popup.title(title)
+        popup.configure(bg="#101b2b")
+        tk.Label(popup, text="按希望的结算顺序依次点击卡牌/技能；最后确认。",
+                 bg="#101b2b", fg="#f3d58b", padx=10, pady=8).pack(fill="x")
+        body = tk.Frame(popup, bg="#101b2b")
+        body.pack(fill="both", expand=True, padx=8, pady=4)
+        obs = self.env.observe(0)
+        for index, item in enumerate(entries):
+            code = self._order_source_code(item, obs) or BACK_CODE
+            number = (f"{self._order_selection.index(index) + 1}. "
+                      if index in self._order_selection else "")
+            wrapper = self._image_card(
+                body, code, factor=3, compact_label=number + self._order_item_label(item, obs),
+                click=False, pack=False, selected=index in self._order_selection)
+            wrapper.grid(row=index // 6, column=index % 6, padx=7, pady=6, sticky="n")
+            callback = lambda _event, i=index: self._order_card_click(i)
+            wrapper.bind("<Button-1>", callback, add="+")
+            for child in wrapper.winfo_children():
+                child.bind("<Button-1>", callback, add="+")
+        footer = tk.Frame(popup, bg="#101b2b")
+        footer.pack(fill="x", padx=8, pady=(3, 8))
+        tk.Label(footer, text=f"已选顺序 {len(self._order_selection)}/{len(entries)}",
+                 bg="#101b2b", fg="#dbe8f7").pack(side="left")
+        if len(self._order_selection) == len(entries):
+            selected_values = [order_values[index] for index in self._order_selection]
+            action = next((a for a in legal
+                           if json.loads(a.arguments).get("order") == selected_values), None)
+            if action is not None:
+                ttk.Button(footer, text="确认顺序 / Confirm order",
+                           command=lambda a=action: self.perform(a)).pack(side="left", padx=8)
+        ttk.Button(footer, text="清空重选 / Clear",
+                   command=lambda: (self._order_selection.clear(), self.render())).pack(side="left", padx=8)
+        popup.update_idletasks()
+        popup.geometry(f"{min(1200, max(460, 190 * min(6, len(entries))))}x"
+                       f"{min(780, 240 + ((len(entries) + 5) // 6) * 250)}")
+        return True
 
     def _render_optional_bar(self, optional, legal):
         """Keep optional trigger confirmation in the persistent bottom bar.
@@ -2103,11 +2535,13 @@ class OriginsGUI(tk.Tk):
                    and json.loads(a.arguments).get("optional") == optional.get("id")]
         order_options = [a for a in legal if a.kind == "order_optional"]
         if order_options:
-            tk.Label(self.actions, text="请先确认同时触发的顺序：",
-                     bg="#101b2b", fg="#dbe8f7").pack(side="left", padx=4)
-            for action in order_options:
-                ttk.Button(self.actions, text=self.action_text(action),
-                           command=lambda a=action: self.perform(a)).pack(side="left", padx=2)
+            optional_items = list(self.env.observe(0).get("optional", []))
+            if not self._render_order_window(
+                    kind="optional", entries=optional_items, legal=order_options,
+                    order_values=[item.get("id") for item in optional_items],
+                    title="同时触发的可选效果顺序 / Optional effects"):
+                tk.Label(self.actions, text="请先确认同时触发的顺序：",
+                         bg="#101b2b", fg="#dbe8f7").pack(side="left", padx=4)
             return
         for action in options:
             ttk.Button(self.actions, text=self.action_text(action),

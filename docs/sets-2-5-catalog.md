@@ -134,6 +134,8 @@ python -m riftbound catalog --set SFD
 - `SFD-122-221` Called Shot：结算时打开牌库顶两张的公开选择窗口，玩家抽取一张，另一张通过统一回收事件置于牌库底。
 - `SFD-132-221` Beast Below：入场后打开有序双目标窗口，必须选择另一名友方单位与一名敌方单位并分别回到物主手牌。
 - `SFD-138-221` Windsinger：Hidden 单位入场后先确认是否发动，再点选战场上 Might 不超过 3 的单位回手。
+- `SFD-126-221` Loyal Pup：防守触发通过共享战斗窗口确认是否从基地移动到防守战场。
+- `SFD-128-221` Overzealous Fan：防守触发先确认是否牺牲自身，再点选攻击方单位并将其回基地。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。装备附着、Repeat、复杂衍生物和多步骤替代效果继续保持 catalog-only。
 

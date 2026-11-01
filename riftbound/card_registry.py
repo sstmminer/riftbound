@@ -471,4 +471,10 @@ def spiritforged_registry() -> CardSetRegistry:
                            static_keywords=frozenset({"hidden"}),
                            entry_trigger="optional_return_small_field_unit",
                            notes="Windsinger; may return another battlefield unit with Might 3 or less."),
+        CardImplementation("SFD-126-221", sfd, "unit", "executable",
+                           combat_effect="loyal_pup_defend",
+                           notes="Loyal Pup; while defending, may move from base to the defending battlefield."),
+        CardImplementation("SFD-128-221", sfd, "unit", "executable",
+                           combat_effect="overzealous_fan_defend",
+                           notes="Overzealous Fan; while defending, may die to recall an attacking unit."),
     ])

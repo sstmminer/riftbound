@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 114)
+        self.assertEqual(len(registry.executable_codes()), 116)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -148,6 +148,8 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-122-221").spell_effect, "draw_one_recycle_one")
         self.assertEqual(registry.get("SFD-138-221").entry_trigger, "optional_return_small_field_unit")
         self.assertIn("hidden", registry.get("SFD-138-221").static_keywords)
+        self.assertEqual(registry.get("SFD-126-221").combat_effect, "loyal_pup_defend")
+        self.assertEqual(registry.get("SFD-128-221").combat_effect, "overzealous_fan_defend")
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -251,6 +253,42 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(state["decision"]["targets"], [target["id"]])
         rules.apply(state, Action.make("choose_target", target=target["id"]), random.Random(28))
         self.assertNotIn(target, state["units"])
+
+    def test_loyal_pup_defend_opens_a_move_optional(self):
+        deck = legal_deck("SFD-126-221", "OGN-267", "OGN-193")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(29))
+        pup = rules._new_unit(state, "SFD-126-221", 1, "base:1", exhausted=False)
+        rules._new_unit(state, "OGN-003", 1, 0, exhausted=False)
+        rules._new_unit(state, "OGN-003", 0, 0, exhausted=False)
+        state.update(phase="showdown", actor=0, focus=0, passes=0,
+                     battle={"field": 0, "attacker": 0, "combat": True})
+        rules._close_showdown(state, random.Random(30))
+        rules.apply(state, Action.make("pass"), random.Random(31))
+        rules.apply(state, Action.make("pass"), random.Random(32))
+        self.assertEqual(state["phase"], "optional")
+        optional = state["optional"][0]["id"]
+        rules.apply(state, Action.make("optional_effect", optional=optional, accept=True), random.Random(33))
+        self.assertEqual(pup["location"], 0)
+
+    def test_overzealous_fan_defend_targets_an_attacker(self):
+        deck = legal_deck("SFD-128-221", "OGN-267", "OGN-193")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(34))
+        fan = rules._new_unit(state, "SFD-128-221", 1, 0, exhausted=False)
+        attacker = rules._new_unit(state, "OGN-003", 0, 0, exhausted=False)
+        state.update(phase="showdown", actor=0, focus=0, passes=0,
+                     battle={"field": 0, "attacker": 0, "combat": True})
+        rules._close_showdown(state, random.Random(35))
+        rules.apply(state, Action.make("pass"), random.Random(36))
+        rules.apply(state, Action.make("pass"), random.Random(37))
+        self.assertEqual(state["phase"], "optional")
+        optional = state["optional"][0]["id"]
+        rules.apply(state, Action.make("optional_effect", optional=optional, accept=True), random.Random(38))
+        self.assertEqual(state["decision"]["targets"], [attacker["id"]])
+        rules.apply(state, Action.make("choose_target", target=attacker["id"]), random.Random(39))
+        self.assertNotIn(fan, state["units"])
+        self.assertEqual(attacker["location"], "base:0")
 
     def test_entry_ready_and_static_keywords_use_common_unit_path(self):
         deck = legal_deck("SFD-006-221", "OGN-247", "OGN-039")

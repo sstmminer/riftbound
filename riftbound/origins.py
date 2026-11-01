@@ -189,6 +189,8 @@ class OriginsRules:
         registry.register("return_field_unit", self._effect_return_field_unit)
         registry.register("return_friendly_enemy", self._effect_return_friendly_enemy)
         registry.register("optional_return_small_field_unit", self._effect_optional_return_small_field_unit)
+        registry.register("loyal_pup_defend", self._effect_loyal_pup_defend)
+        registry.register("overzealous_fan_defend", self._effect_overzealous_fan_defend)
         registry.register("move_field_unit", self._effect_move_field_unit)
         registry.register("poro_herder", self._effect_poro_herder)
         registry.register("sprite_mother", self._effect_sprite_mother)
@@ -1781,6 +1783,34 @@ class OriginsRules:
     def _resolve_optional(self, state, item, rng):
         player = item["player"]
         effect = item["effect"]
+        if effect == "loyal_pup_move":
+            source = self._unit(state, item.get("source"))
+            destination = item.get("destination")
+            if (source is None or source["owner"] != player
+                    or source["location"] != f"base:{player}"
+                    or not self._is_field(state, destination)):
+                return True
+            source["location"] = destination
+            source["exhausted"] = True
+            source["move_count"] = source.get("move_count", 0) + 1
+            return True
+        if effect == "fan_return_attacker":
+            source = self._unit(state, item.get("source"))
+            field = item.get("field")
+            candidates = [unit["id"] for unit in state["units"]
+                          if unit["owner"] != player and unit["location"] == field]
+            if source is None or source["owner"] != player or source["location"] != field:
+                return True
+            if not candidates:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": candidates,
+                "item": {"effect": "fan_return_attacker", "owner": player,
+                          "source": source["id"], "field": field},
+                "optional_fan_target": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
         if effect == "return_small_field_unit":
             candidates = [unit["id"] for unit in state["units"]
                           if self._is_field(state, unit["location"])
@@ -4326,6 +4356,32 @@ class OriginsRules:
             return True
         self._queue_optional(state, item["owner"], "return_small_field_unit",
                              source=item.get("source"), candidates=candidates)
+        return True
+
+    def _effect_loyal_pup_defend(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        field = item.get("field")
+        if (source is None or source["owner"] != item["owner"]
+                or source["location"] != f"base:{item['owner']}"
+                or not self._is_field(state, field)):
+            return True
+        self._queue_optional(state, item["owner"], "loyal_pup_move",
+                             source=source["id"], destination=field,
+                             resume="close_showdown")
+        return True
+
+    def _effect_overzealous_fan_defend(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        field = item.get("field")
+        if (source is None or source["owner"] != item["owner"]
+                or source["location"] != field or not self._is_field(state, field)):
+            return True
+        if not any(unit["owner"] != item["owner"] and unit["location"] == field
+                   for unit in state["units"]):
+            return True
+        self._queue_optional(state, item["owner"], "fan_return_attacker",
+                             source=source["id"], field=field,
+                             resume="close_showdown")
         return True
 
     def _players_hand(self, state, player):
@@ -7417,6 +7473,36 @@ class OriginsRules:
                             restored["phase"], restored["actor"], restored.get("passes", 0))
                     self._cleanup(state, rng)
                     return
+                if decision.get("optional_fan_target"):
+                    source = self._unit(state, decision["item"].get("source"))
+                    target = self._unit(state, args["target"])
+                    field = decision["item"].get("field")
+                    if (source is None or target is None or source["owner"] != player
+                            or source["location"] != field or target["owner"] == player
+                            or target["location"] != field):
+                        raise ValueError("Overzealous Fan target is no longer legal")
+                    state["units"].remove(source)
+                    self._trash_unit_card(state, source)
+                    target["location"] = f"base:{target['owner']}"
+                    target["exhausted"] = True
+                    target["move_count"] = target.get("move_count", 0) + 1
+                    state["decision"] = None
+                    state["optional_ordered"] = False
+                    restored = state.pop("optional_return", None)
+                    if state.get("optional"):
+                        state["phase"], state["actor"], state["passes"] = (
+                            "optional", state["optional"][0]["player"], 0)
+                    elif restored is None:
+                        state["phase"], state["actor"], state["passes"] = "main", player, 0
+                    elif restored["phase"] == "chain" and not state.get("chain"):
+                        self._finish_resolution(state)
+                    else:
+                        state["phase"], state["actor"], state["passes"] = (
+                            restored["phase"], restored["actor"], restored.get("passes", 0))
+                    self._cleanup(state, rng)
+                    if restored is not None and restored["phase"] == "showdown" and state.get("battle") is not None:
+                        self._close_showdown(state, rng)
+                    return
                 if decision.get("score_target"):
                     target = self._unit(state, args["target"])
                     if target is None or target["owner"] != player or target["buff"]:
@@ -8962,6 +9048,11 @@ class OriginsRules:
                 item["trigger_target_finalized"] = True
                 state.setdefault("combat_trigger_selected", []).append(item)
                 continue
+            if item.get("target_required") is False:
+                item["trigger_target_pending"] = False
+                item["trigger_target_finalized"] = True
+                state.setdefault("combat_trigger_selected", []).append(item)
+                continue
             targets = [unit["id"] for unit in self._units(state, 1 - item["owner"], field)]
             if not targets:
                 continue
@@ -9045,6 +9136,22 @@ class OriginsRules:
                 or (self._card_implementation(unit["code"]) is not None
                     and self._card_implementation(unit["code"]).global_effect == "teemo_defend")
             ]
+            defender_owner = 1 - battle["attacker"]
+            for unit in self._units(state, defender_owner):
+                implementation = self._card_implementation(unit["code"])
+                if (implementation is None
+                        or implementation.combat_effect not in {
+                            "loyal_pup_defend", "overzealous_fan_defend"}):
+                    continue
+                if implementation.combat_effect == "loyal_pup_defend":
+                    legal_source = unit["location"] == f"base:{defender_owner}"
+                else:
+                    legal_source = unit["location"] == field
+                if legal_source:
+                    ahri_triggers.append({
+                        "effect": implementation.combat_effect, "source": unit["id"],
+                        "owner": defender_owner, "field": field,
+                        "target_required": False})
             ahri_triggers += [
                 {"effect": "ava_attack", "source": unit["id"],
                  "owner": unit["owner"], "field": field}

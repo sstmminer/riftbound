@@ -472,3 +472,8 @@ Hidden 判断、Shield 战力、每回合 Hold 计数、Legend 付费回手和�
 （Hidden 入场后的可选低战力战场单位回手）。其中 Beast Below 的目标对在触发生成时固定，UI 每次点击
 都会通过共享 `target_pairs` 约束拒绝同侧目标；Called Shot 的另一张牌会走统一 recycle 事件，因此
 Karma/Vision 的回收监听不会被跳过。Spiritforged 定向新增 4 项，全量回归为 441 项。
+
+随后补充 `SFD-126-221` Loyal Pup 与 `SFD-128-221` Overzealous Fan，注册表规模增至 116。两张牌
+都接入同一战斗指定触发队列：Loyal Pup 在防守时先确认是否从基地移动，Overzealous Fan 先确认是否
+牺牲，再打开攻击方单位的点击目标窗口并回基地。它们没有新增独立战斗结算分支；移动、回收、死亡和
+结算继续走已有共享路径。Spiritforged 定向测试增至 39 项，全量回归为 443 项。

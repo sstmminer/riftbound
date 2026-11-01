@@ -1,6 +1,6 @@
 # 下载、安装和测试攻略
 
-本攻略针对 **0.3.0 / simulator 分支**。它能自动运行内置的合法 Origins 套牌及 298 张第一弹卡牌；规则覆盖、复杂替代效果和训练基准仍在持续完善。包含本地图形界面，也可用命令行查看状态和生成对局文件。
+本攻略针对 **0.3.0 / simulator 分支**。它能自动运行内置的合法 Origins 套牌及 298 张第一弹卡牌；第二至第五弹的 1,056 条官方目录记录已经导入，但仍需逐卡完成规则适配。包含本地图形界面，也可用命令行查看状态和生成对局文件。
 
 ## 1. 下载
 
@@ -40,7 +40,7 @@ python3.12 -m venv .venv
 .venv/bin/python -m riftbound status
 ```
 
-状态应包含 `catalog_cards: 298`、`executable_cards: 298` 和 `supported_subset_playable: true`。`full_origins_supported` 仍表示完整规则/训练基准状态，不等同于卡牌目录是否已录入。
+状态应包含 `catalog_cards: 298`、`expansion_catalog_cards: 1056`、`executable_cards: 298` 和 `supported_subset_playable: true`。`full_origins_supported` 仍表示完整规则/训练基准状态，不等同于卡牌目录是否已录入。
 
 ## 3. 启动图形界面
 
@@ -148,6 +148,9 @@ python -m riftbound simulate --games 3 --seed 42 --export-decisions --output art
 
 ```text
 python -m riftbound catalog --supported
+
+# 查看第二至第五弹中的一个卡组目录（仅目录，不会绕过可执行卡牌检查）
+python -m riftbound catalog --set SFD
 python -m riftbound deck --output my-deck.json
 python -m riftbound validate-deck my-deck.json
 python -m riftbound simulate --deck0 my-deck.json --deck1 examples/starter-deck.json --output artifacts/custom-run

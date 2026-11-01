@@ -6,6 +6,7 @@ import platform
 import sys
 
 from .catalog import load_origins
+from .expansion_catalog import expansion_sets, load_expansions
 from .engine import Environment, RulesUnavailable, replay
 from .origins import OriginsRules
 from .policies import GreedyPolicy
@@ -82,6 +83,8 @@ def main(argv=None):
     gui.add_argument("--variant", choices=("starter", "vision", "daughter", "complex", "repeat", "replay", "cost", "resources", "reveal"), default="starter")
     catalog = commands.add_parser("catalog")
     catalog.add_argument("--supported", action="store_true")
+    catalog.add_argument("--set", dest="set_code", choices=expansion_sets(),
+                         help="show catalog-only records for one post-Origins set")
     deck_cmd = commands.add_parser("deck", help="print the included legal constructed deck")
     deck_cmd.add_argument("--output", type=Path)
     deck_cmd.add_argument("--variant", choices=("starter", "vision", "daughter", "complex", "repeat", "replay", "cost", "resources", "reveal"), default="starter")
@@ -102,16 +105,24 @@ def main(argv=None):
     try:
         if args.command == "status":
             print(json.dumps({"version": "0.3.0", "rules": "RUP5-2026-10-09", "mode": "1v1 Duel",
-                              "catalog_cards": len(load_origins()), "executable_cards": len(SUPPORTED),
+                              "catalog_cards": len(load_origins()),
+                              "expansion_catalog_cards": len(load_expansions()),
+                              "expansion_sets": expansion_sets(),
+                              "executable_cards": len(SUPPORTED),
                               "supported_subset_playable": True, "full_origins_supported": False,
                               "training_status": "experimental subset only; not a full-game benchmark"}, indent=2))
         elif args.command == "gui":
             from .gui import main as gui_main
             gui_main(variant=args.variant)
         elif args.command == "catalog":
-            for card in load_origins():
-                if not args.supported or card["code"] in SUPPORTED:
-                    print(json.dumps({**card, "supported": card["code"] in SUPPORTED}, ensure_ascii=False))
+            if args.set_code:
+                for card in load_expansions(set_code=args.set_code):
+                    print(json.dumps({**card, "supported": False,
+                                      "catalog_only": True}, ensure_ascii=False))
+            else:
+                for card in load_origins():
+                    if not args.supported or card["code"] in SUPPORTED:
+                        print(json.dumps({**card, "supported": card["code"] in SUPPORTED}, ensure_ascii=False))
         elif args.command == "deck":
             deck = (vision_deck() if args.variant == "vision" else
                     daughter_deck() if args.variant == "daughter" else

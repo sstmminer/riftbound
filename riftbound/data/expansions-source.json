@@ -1,0 +1,27 @@
+{
+  "source": "https://github.com/sstmminer/riftbound/tree/archive-download",
+  "source_ref": "origin/archive-download",
+  "cards_sha256": "96399d8763ca5a2de766c571b5f5a12ddf8ada7cb31017f74875706772b9b10b",
+  "errata_sha256": "edd0ae50df72277092b6b46e9459973adf9d9eea7410bf535936de6b1598b9ee",
+  "coverage_sha256": "755c96358cdde8d6d7b4ab9da880627620c3ae4c62ef1f8a3d6eef2b22261b5c",
+  "snapshot_sha256": "486cef9a25b108e93750f4e6bf220a6f1e0d073328dabcafade801c3704ba234",
+  "sets": [
+    "OGS",
+    "SFD",
+    "UNL",
+    "VEN",
+    "RAD"
+  ],
+  "counts": {
+    "OGS": 24,
+    "RAD": 219,
+    "SFD": 288,
+    "UNL": 288,
+    "VEN": 237
+  },
+  "count": 1056,
+  "selection": "all public print records in the selected set codes, including alternate and promo prints",
+  "text_policy": "effective_rules_text when present, otherwise printed_rules_text; preserve errata status",
+  "image_policy": "record official image_url and archive local_image_path; assets are fetched lazily by the expansion asset tool",
+  "execution_policy": "catalog-only until a card has an explicit, tested Rules implementation; no text parsing fallback"
+}

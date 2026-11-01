@@ -445,4 +445,13 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-204-221", sfd, "spell", "executable",
                            spell_effect="ready_friendly_units",
                            notes="On the Hunt; ready all friendly units through the shared ready path."),
+        CardImplementation("SFD-110A-221", sfd, "unit", "executable",
+                           might_effect="double_one_on_one",
+                           notes="Alternate Fiora, Peerless printing."),
+        CardImplementation("SFD-233-221", sfd, "unit", "executable",
+                           conquer_effect="damage_enemy_base_by_might",
+                           notes="Yone, Blademaster; shared conquer damage trigger."),
+        CardImplementation("SFD-233-STAR-221", sfd, "unit", "executable",
+                           conquer_effect="damage_enemy_base_by_might",
+                           notes="Alternate Yone, Blademaster printing."),
     ])

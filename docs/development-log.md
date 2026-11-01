@@ -444,6 +444,10 @@ Hidden、跨区免费打出和多步替代效果仍保持 catalog-only。
 本轮加入 Signature 法术 `SFD-204-221` On the Hunt，注册表规模从 105 增至 106。它不再依赖签名牌的
 硬编码分支，而是通过注册的 `ready_friendly_units` 复用统一就绪 helper，因此普通出牌、免费打出和
 后续能力复制都能共享状态更新。Spiritforged 定向测试 32 项，全量测试为 436 项。
+
+同一批次继续接入 3 张与现有实现文本一致的替代印刷：`SFD-110A-221` Fiora，以及 `SFD-233-221` /
+`SFD-233-STAR-221` Yone。它们直接复用已测试的单挑 Might 与征服基地伤害目标窗口，注册表规模增至
+109；全量回归仍为 436 项。
 本轮继续批量扩展 11 张 Spiritforged 可执行牌，注册表规模从 85 增至 96：加入 Renata、Ahri、Yasuo、
 Darius、Karma、Mechanized Menace 与 Glorious Executioner 的普通/替代印刷。它们全部复用统一能力注册表、
 战斗触发目标窗口、回收事件、移动计数、Legend 全局能力和战斗胜利监听；没有为单张卡建立旁路结算。

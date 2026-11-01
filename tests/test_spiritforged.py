@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 106)
+        self.assertEqual(len(registry.executable_codes()), 109)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -138,6 +138,9 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-185-221").combat_effect, "draw_one_on_win")
         self.assertIn("untargetable_enemy", registry.get("SFD-105-221").static_keywords)
         self.assertEqual(registry.get("SFD-204-221").spell_effect, "ready_friendly_units")
+        self.assertEqual(registry.get("SFD-110A-221").might_effect, "double_one_on_one")
+        self.assertEqual(registry.get("SFD-233-221").conquer_effect, "damage_enemy_base_by_might")
+        self.assertEqual(registry.get("SFD-233-STAR-221").conquer_effect, "damage_enemy_base_by_might")
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")

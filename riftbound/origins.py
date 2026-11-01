@@ -14,10 +14,11 @@ import random
 
 from .catalog import load_origins, require_supported
 from .core import DOMAINS, Card, Deck, Scoreboard, Unit, channel_count, draw_cards, mulligan, validate_deck
-from .engine import Action, canonical
+from .engine import Action, RulesUnavailable, canonical
 from .effects import EffectRegistry
 from .abilities import ORIGINS_ABILITIES
-from .support import ACCELERATE, FIELD_CODES, GEAR_CODES, HIDDEN_CODES, LEGENDS, REACTIONS, RUNES, SPELL_CODES, SPRITE_TOKEN, TOKEN, UNIT_CODES, starter_deck
+from .card_registry import CardSetRegistry
+from .support import ACCELERATE, FIELD_CODES, GEAR_CODES, HIDDEN_CODES, LEGENDS, REACTIONS, RUNES, SPELL_CODES, SPRITE_TOKEN, TOKEN, UNIT_CODES, SUPPORTED, starter_deck
 
 # Spells with one ordinary unit target and no destination/pairing choice can
 # use the same click-to-select target window as the repeated-target spells.
@@ -46,8 +47,20 @@ def card_model(row):
 
 
 class OriginsRules:
-    def __init__(self, decks=None, *, extra_fields=()):
+    def __init__(self, decks=None, *, extra_fields=(), card_registry=None,
+                 additional_cards=()):
         self.cards = {row["code"]: row for row in load_origins()}
+        self.card_registry = card_registry or CardSetRegistry()
+        for row in additional_cards:
+            # Expansion rows use a stable official-print ``id``.  The rules
+            # backend uses ``code`` for all physical cards, so normalize only
+            # at this adapter boundary and retain the original ID verbatim.
+            code = row.get("code", row.get("id"))
+            if not code:
+                raise ValueError("additional card rows require id or code")
+            if code in self.cards:
+                raise ValueError(f"duplicate card code: {code}")
+            self.cards[code] = {**row, "code": code}
         # Declarative activated-ability registry. The same table drives ordinary
         # source discovery and Heimerdinger's exhaust-only copy.
         self.abilities = ORIGINS_ABILITIES
@@ -59,18 +72,72 @@ class OriginsRules:
         self.decks = copy.deepcopy(decks if decks is not None else [starter_deck(), starter_deck()])
         if len(self.decks) != 2:
             raise ValueError("exactly two decks required")
-        models = {code: card_model(row) for code, row in self.cards.items()}
+        models = {code: card_model(row) for code, row in self.cards.items()
+                  if row.get("type") in {"unit", "gear", "spell", "rune", "legend", "battlefield"}}
         for deck in self.decks:
             validate_deck(Deck(deck["legend"], deck["chosen_champion"], tuple(deck["main"]),
                                tuple(deck["runes"]), tuple(deck["battlefields"])), models)
-            require_supported(tuple([deck["legend"], *deck["main"], *deck["runes"], *deck["battlefields"]]))
-            if deck["legend"] not in LEGENDS or not set(deck["runes"]) <= RUNES or not set(deck["battlefields"]) <= FIELD_CODES:
+            deck_codes = tuple([deck["legend"], *deck["main"], *deck["runes"], *deck["battlefields"]])
+            unknown = set(deck_codes) - set(self.cards)
+            if unknown:
+                raise ValueError(f"unknown card IDs: {sorted(unknown)}")
+            unsupported = {code for code in deck_codes
+                           if code not in SUPPORTED and not self.card_registry.is_executable(code)}
+            if unsupported:
+                raise RulesUnavailable(f"Unsupported cards: {sorted(unsupported)}")
+            if (deck["legend"] not in LEGENDS
+                    and not self._is_executable_kind(deck["legend"], "legend")):
+                raise ValueError("deck contains unsupported legend")
+            if (not set(deck["runes"]) <= RUNES
+                    and not all(self._is_executable_kind(code, "rune") for code in deck["runes"] if code not in RUNES)):
+                raise ValueError("deck contains unsupported runes")
+            if (not set(deck["battlefields"]) <= FIELD_CODES
+                    and not all(self._is_executable_kind(code, "battlefield")
+                                for code in deck["battlefields"] if code not in FIELD_CODES)):
                 raise ValueError("deck contains unsupported legend, rune or battlefield")
             if any(self.cards[code]["token"] for code in deck["main"]):
                 raise ValueError("tokens cannot be included in a constructed main deck")
         digest = hashlib.sha256(canonical({"cards": list(self.cards.values()), "decks": self.decks,
                                            "extra_fields": self.extra_fields}).encode()).hexdigest()
-        self.id = f"origins-subset/0.3.0/RUP5-2026-10-09/{digest}"
+        registry_digest = canonical([
+            {**item.__dict__, "static_keywords": sorted(item.static_keywords)}
+            for item in self.card_registry.implementations()
+        ])
+        registry_hash = hashlib.sha256(registry_digest.encode()).hexdigest()
+        registry_suffix = f"/{registry_hash}" if self.card_registry.implementations() else ""
+        self.id = f"origins-subset/0.3.0/RUP5-2026-10-09/{digest}{registry_suffix}"
+
+    def _card_implementation(self, code):
+        return self.card_registry.get(code)
+
+    def _is_executable_kind(self, code, kind):
+        if code in SUPPORTED:
+            return self.cards.get(code, {}).get("type") == kind
+        implementation = self._card_implementation(code)
+        return bool(implementation and implementation.status == "executable"
+                    and implementation.kind == kind)
+
+    def _behavior_code(self, code):
+        return self.card_registry.behavior_id(code)
+
+    def _has_static_keyword(self, code, keyword):
+        implementation = self._card_implementation(code)
+        return bool(implementation and keyword in implementation.static_keywords)
+
+    def _is_reaction_code(self, code):
+        implementation = self._card_implementation(code)
+        return code in REACTIONS or bool(implementation and implementation.reaction)
+
+    def _entry_ready(self, state, code, player):
+        """Resolve explicit ready-at-entry declarations for any card set."""
+        if self._card_implementation(code) is not None:
+            effect = self._card_implementation(code).entry_effect
+            if effect == "enter_ready":
+                return True
+            if effect == "enter_ready_if_base_units":
+                return sum(unit["owner"] == player and unit["location"] == f"base:{player}"
+                           for unit in state["units"]) >= 2
+        return False
 
     def _build_effect_registry(self):
         """Register every chain effect implemented by this backend explicitly."""
@@ -362,6 +429,7 @@ class OriginsRules:
             gear["code"] == "OGN-063"
             for gear in state["players"][unit["owner"]]["gear"]))
         return int(unit["code"] in {"OGN-013", "OGN-041", "OGN-155", "OGN-161", "OGN-231"}
+                   or self._has_static_keyword(unit["code"], "deflect")
                    or (unit["code"] == "OGN-232" and self.might(state, unit) >= 5)
                    or refuge)
 
@@ -390,6 +458,7 @@ class OriginsRules:
     def _ganking(self, state, unit):
         location = unit["location"]
         return ((unit["code"] in {"OGN-112", "OGN-162", "OGN-194"})
+                or self._has_static_keyword(unit["code"], "ganking")
                 or (unit["code"] == "OGN-125" and unit["buff"])
                 or (unit["code"] == "OGN-232" and self.might(state, unit) >= 5)
                 or unit.get("temporary_ganking", False)
@@ -398,7 +467,9 @@ class OriginsRules:
                 or (self._is_field(state, location) and state["fields"][location]["code"] == "OGN-297"))
 
     def _tank(self, unit):
-        return unit["code"] in {"OGN-054", "OGN-067", "OGN-087", "OGN-137", "OGN-241"} or unit.get("temporary_tank", False)
+        return (unit["code"] in {"OGN-054", "OGN-067", "OGN-087", "OGN-137", "OGN-241"}
+                or self._has_static_keyword(unit["code"], "tank")
+                or unit.get("temporary_tank", False))
 
     def _cleanup(self, state, rng=None):
         for player in (0, 1):
@@ -2485,19 +2556,20 @@ class OriginsRules:
         if state["phase"] == "main" and not self._cards_locked(state, player):
             for card in row["hand"]:
                 code = state["cards"][card]["code"]
-                if code not in GEAR_CODES:
+                if not (code in GEAR_CODES or self._is_executable_kind(code, "gear")):
                     continue
                 data = self.cards[code]
                 for payment in self._payments(state, player, data["energy"], data["domains"],
-                                               data["power_cost"]):
+                                               data["power_cost"] or 0):
                     result.append(Action.make("play_gear", card=card, payment=payment))
         gear_resource = {"OGN-040": "fury", "OGN-081": "calm", "OGN-120": "mind",
                          "OGN-163": "body", "OGN-204": "chaos", "OGN-245": "order"}
         for gear in row["gear"]:
             if gear["exhausted"]:
                 continue
-            if gear["code"] in gear_resource:
-                result.append(Action.make("gear_resource", gear=gear["id"], domain=gear_resource[gear["code"]]))
+            behavior = self._behavior_code(gear["code"])
+            if behavior in gear_resource:
+                result.append(Action.make("gear_resource", gear=gear["id"], domain=gear_resource[behavior]))
             elif gear["code"] == "OGN-098":
                 result.append(Action.make("gear_resource", gear=gear["id"], energy=1))
             elif gear["code"] == "OGN-017":
@@ -2762,11 +2834,20 @@ class OriginsRules:
             return result
         for card in row["hand"]:
             code = state["cards"][card]["code"]
-            if code not in SPELL_CODES or (state["phase"] == "chain" and code not in REACTIONS):
+            if (not (code in SPELL_CODES or self._is_executable_kind(code, "spell"))
+                    or (state["phase"] == "chain" and not self._is_reaction_code(code))):
                 continue
             if code == "OGN-008" and not row["hand"]:
                 continue
             data = self.cards[code]
+            implementation = self._card_implementation(code)
+            if implementation and implementation.spell_effect:
+                for payment in self._payments(state, player, data["energy"], data["domains"],
+                                              data["power_cost"] or 0, spell=True):
+                    result.append(Action.make("play_spell", card=card, targets=[],
+                                              destination=None, spend_buff=None,
+                                              payment=payment))
+                continue
             targeted_only = code in {"OGN-029", "OGN-104", "OGN-183", "OGN-248"}
             if code in {"OGN-045", "OGN-064", "OGN-080"}:
                 if state.get("chain"):
@@ -2991,7 +3072,7 @@ class OriginsRules:
             locations = [f"base:{player}"]
         for card in row["hand"] + row["champion"]:
             code = state["cards"][card]["code"]
-            if code not in UNIT_CODES:
+            if not (code in UNIT_CODES or self._is_executable_kind(code, "unit")):
                 continue
             data = self.cards[code]
             permitted = locations.copy()
@@ -3493,14 +3574,18 @@ class OriginsRules:
         if exhausted is None:
             exhausted = not any(u["code"] == "OGN-011" for u in self._units(state, owner))
         card_owner = state.get("cards", {}).get(card, {}).get("owner", owner) if card is not None else owner
+        implementation = self._card_implementation(code)
+        assault = 2 if self._has_static_keyword(code, "assault_2") else 0
         unit = {"id": self._object(state), "card": card, "card_owner": card_owner,
                 "code": code, "owner": owner,
                 "location": location, "exhausted": exhausted, "buff": 0,
                 "temporary": 0, "temporary_unit": False, "temporary_ganking": False,
-                "temporary_tank": False, "combat_shield": 0, "assault": 0,
+                "temporary_tank": False, "combat_shield": 0, "assault": assault,
                 "udyr_choices": [],
                 "damage": 0, "stunned": False, "move_count": 0,
                 "kill_on_damage": None}
+        if implementation and implementation.static_keywords:
+            unit["static_keywords"] = sorted(implementation.static_keywords)
         state["units"].append(unit)
         return unit
 
@@ -4938,6 +5023,14 @@ class OriginsRules:
 
     def _effect_spell(self, state, item, rng):
         code, owner = item["code"], item["owner"]
+        implementation = self._card_implementation(code)
+        if implementation and implementation.spell_effect == "ready_friendly_units":
+            for unit in self._units(state, owner):
+                self._ready_unit(state, unit)
+            return True
+        if implementation and implementation.spell_effect == "draw_three":
+            self._draw(state, owner, 3, rng)
+            return True
         # The Dreaming Tree trigger is generated when the spell's target was
         # chosen, before the spell resolves.  Resolve-time checks are too
         # late: a damage spell can kill the chosen friendly unit and would
@@ -6705,7 +6798,7 @@ class OriginsRules:
         elif kind == "play_gear":
             card = args["card"]
             code = state["cards"][card]["code"]
-            if code not in GEAR_CODES or card not in row["hand"]:
+            if not (code in GEAR_CODES or self._is_executable_kind(code, "gear")) or card not in row["hand"]:
                 raise ValueError("unsupported gear")
             data = self.cards[code]
             ignore_energy = bool(args.get("ignore_energy"))
@@ -7261,6 +7354,7 @@ class OriginsRules:
                 ready = (any(u["code"] == "OGN-011" for u in self._units(state, player))
                          or row.get("ready_play", False))
                 ready = ready or code == "OGN-159"
+                ready = ready or self._entry_ready(state, code, player)
                 if code == "OGN-035":
                     ready = ready or any(field["controller"] == 1-player for field in state["fields"])
                 if code == "OGN-079":
@@ -7443,7 +7537,10 @@ class OriginsRules:
                 if spend is not None:
                     self._unit(state, spend)["buff"] = 0
                 row["hand"].remove(card)
-                effect = "return_unit" if code == "OGN-170" else ("sabotage" if code == "OGN-156" else "spell")
+                implementation = self._card_implementation(code)
+                effect = ("spell" if implementation and implementation.spell_effect
+                          else "return_unit" if code == "OGN-170"
+                          else "sabotage" if code == "OGN-156" else "spell")
                 triggers = self._second_card_triggers(state, player)
                 spell_item = {"effect": effect, "owner": player, "card": card,
                                "card_owner": self._card_owner(state, card, player),

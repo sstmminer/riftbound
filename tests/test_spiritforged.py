@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 96)
+        self.assertEqual(len(registry.executable_codes()), 104)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -127,6 +127,15 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-237-STAR-221").global_effect, "vision_recycle")
         self.assertEqual(registry.get("SFD-240-221").global_effect, "mechs_shield")
         self.assertEqual(registry.get("SFD-242-221").combat_effect, "draw_one_on_win")
+        self.assertEqual(registry.get("SFD-055-221").cost_reduction_effect, "hold_points")
+        self.assertIn("shield_5", registry.get("SFD-055-221").static_keywords)
+        self.assertEqual(registry.get("SFD-223-221").entry_effect, "enter_ready_if_opponent_field")
+        self.assertEqual(registry.get("SFD-223-STAR-221").conquer_effect, "return_self")
+        self.assertEqual(registry.get("SFD-230-221").global_effect, "teemo_defend")
+        self.assertEqual(registry.get("SFD-230-STAR-221").global_effect, "teemo_defend")
+        self.assertEqual(registry.get("SFD-232-221").activated_effect, "spend_buff_four")
+        self.assertEqual(registry.get("SFD-232-STAR-221").conquer_effect, "buff_self")
+        self.assertEqual(registry.get("SFD-185-221").combat_effect, "draw_one_on_win")
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -1243,6 +1252,78 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         yasuo["move_count"] = 2
         yasuo_rules._resolve_move(yasuo_state, [yasuo], 0, 0, random.Random(234))
         self.assertEqual(yasuo_state["points"][0], 1)
+
+    def test_batch_static_ready_cost_and_defend_hooks(self):
+        # Needlessly Large Yordle uses a declarative Shield/Tank predicate and
+        # the per-turn hold-point reduction in the ordinary unit payment path.
+        yordle_deck = legal_deck("SFD-055-221", "OGN-261", "OGN-238")
+        yordle_rules = SpiritforgedRules([yordle_deck, yordle_deck])
+        yordle_state = yordle_rules.initial_state(random.Random(235))
+        yordle_state["hold_points"][0] = 1
+        yordle_card = move_code_to_hand(yordle_state, 0, "SFD-055-221")
+        yordle_state.update(phase="main", actor=0)
+        yordle_state["players"][0]["energy"] = 8
+        yordle_state["players"][0]["power"] = ["calm"] * 5
+        payment = next(action for action in yordle_rules.legal_actions(yordle_state)
+                       if action.kind == "play_unit"
+                       and __import__("json").loads(action.arguments)["card"] == yordle_card)
+        self.assertEqual(__import__("json").loads(payment.arguments)["payment"], [0, 1, 2, 3, 4])
+        yordle = yordle_rules._new_unit(yordle_state, "SFD-055-221", 0, 0, exhausted=False)
+        yordle_state["battle"] = {"field": 0, "attacker": 1, "combat": True}
+        self.assertEqual(yordle_rules.might(yordle_state, yordle), 10)
+        self.assertTrue(yordle_rules._tank(yordle))
+
+        # Vayne's entry condition and paid conquer recall share generic hooks.
+        vayne_deck = legal_deck("SFD-223-221", "OGN-253", "OGN-027")
+        vayne_rules = SpiritforgedRules([vayne_deck, vayne_deck])
+        vayne_state = vayne_rules.initial_state(random.Random(236))
+        vayne_card = move_code_to_hand(vayne_state, 0, "SFD-223-221")
+        vayne_state["fields"][0]["controller"] = 1
+        self.assertTrue(vayne_rules._entry_ready(vayne_state, "SFD-223-221", 0))
+        vayne = vayne_rules._new_unit(vayne_state, "SFD-223-221", 0, 0,
+                                      card=vayne_card, exhausted=False)
+        vayne_state["players"][0]["energy"] = 1
+        vayne_rules._score(vayne_state, 0, 0, "conquer", random.Random(237), uncontrolled=True)
+        self.assertEqual(vayne_state["phase"], "optional")
+        optional = vayne_state["optional"][0]
+        vayne_rules.apply(vayne_state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(238))
+        self.assertNotIn(vayne, vayne_state["units"])
+        self.assertIn(vayne_card, vayne_state["players"][0]["hand"])
+
+        # Sett's buff spend is exposed through the generic registered unit
+        # ability action rather than a card-code-specific action.
+        sett_deck = legal_deck("SFD-232-221", "OGN-269", "OGN-240")
+        sett_rules = SpiritforgedRules([sett_deck, sett_deck])
+        sett_state = sett_rules.initial_state(random.Random(239))
+        sett = sett_rules._new_unit(sett_state, "SFD-232-221", 0, "base:0", exhausted=False)
+        sett["buff"] = 1
+        sett_state.update(phase="main", actor=0)
+        action = next(action for action in sett_rules.legal_actions(sett_state)
+                      if action.kind == "unit_registry_ability")
+        sett_rules.apply(sett_state, action, random.Random(240))
+        self.assertEqual(sett["buff"], 0)
+        self.assertEqual(sett["temporary"], 4)
+        self.assertTrue(sett["exhausted"])
+
+        # Teemo's alternate printing uses the existing public reveal window.
+        teemo_deck = legal_deck("SFD-230-221", "OGN-265", "OGN-246")
+        teemo_rules = SpiritforgedRules([teemo_deck, teemo_deck])
+        teemo_state = teemo_rules.initial_state(random.Random(241))
+        teemo = teemo_rules._new_unit(teemo_state, "SFD-230-221", 1, 0, exhausted=False)
+        target = teemo_rules._new_unit(teemo_state, "OGN-001", 0, 0, exhausted=False)
+        top = teemo_state["players"][1]["main"][0]
+        teemo_state["cards"][top]["code"] = "SFD-004-221"
+        teemo_state.update(phase="showdown", actor=0, focus=0, passes=0,
+                           battle={"field": 0, "attacker": 0, "combat": True})
+        teemo_rules._close_showdown(teemo_state, random.Random(242))
+        teemo_rules.apply(teemo_state, Action.make("choose_target", target=target["id"]), random.Random(243))
+        teemo_rules.apply(teemo_state, Action.make("pass"), random.Random(244))
+        teemo_rules.apply(teemo_state, Action.make("pass"), random.Random(245))
+        self.assertEqual(teemo_state["phase"], "reveal")
+        teemo_rules.apply(teemo_state, Action.make("end_reveal"), random.Random(246))
+        teemo_rules.apply(teemo_state, Action.make("pass"), random.Random(247))
+        teemo_rules.apply(teemo_state, Action.make("pass"), random.Random(248))
+        self.assertEqual(target["damage"], 1)
 
 
 if __name__ == "__main__":

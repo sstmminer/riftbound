@@ -127,6 +127,9 @@ class OriginsRules:
     def _is_accelerate_code(self, code):
         return code in ACCELERATE or self._has_static_keyword(code, "accelerate")
 
+    def _is_hidden_code(self, code):
+        return code in HIDDEN_CODES or self._has_static_keyword(code, "hidden")
+
     def _is_reaction_code(self, code):
         implementation = self._card_implementation(code)
         return code in REACTIONS or bool(implementation and implementation.reaction)
@@ -146,6 +149,8 @@ class OriginsRules:
                 return len(state["players"][player].get("hand", [])) <= 2
             if effect == "enter_ready_if_legion":
                 return self._played_for_legion(state, player) > 0
+            if effect == "enter_ready_if_opponent_field":
+                return any(field["controller"] == 1 - player for field in state["fields"])
             if effect == "enter_ready_if_dragon":
                 return any(
                     unit["owner"] == player
@@ -259,7 +264,7 @@ class OriginsRules:
         first = rng.randrange(2)
         state = {"first": first, "turn_player": first, "actor": first, "turn": 0,
                  "phase": "mulligan", "mulligans": 0, "players": [], "cards": {},
-                 "units": [], "fields": [], "points": [0, 0], "scored": [[], []],
+                 "units": [], "fields": [], "points": [0, 0], "hold_points": [0, 0], "scored": [[], []],
                  "chain": [], "pending": [], "passes": 0, "battle": None,
                  "beginning_awarded": [False, False], "dreaming_tree_used": [], "selection": None,
                  "decision": None, "optional": [], "optional_return": None,
@@ -364,6 +369,8 @@ class OriginsRules:
         if self._is_field(state, location) and state["fields"][location]["code"] == "OGN-294":
             value += 1
         role = self._role(state, unit)
+        if role == "defender" and self._has_static_keyword(unit["code"], "shield_5"):
+            value += 5
         if unit["code"] == "OGN-065" and unit["buff"]:
             value += 1
         if role in {"attacker", "defender"} and unit["code"] == "OGN-055":
@@ -1717,7 +1724,7 @@ class OriginsRules:
         elif effect == "guerrilla_return_hidden":
             row = state["players"][reveal["owner"]]
             for uid in selected:
-                if uid in row["trash"] and state["cards"][uid]["code"] in HIDDEN_CODES:
+                if uid in row["trash"] and self._is_hidden_code(state["cards"][uid]["code"]):
                     row["trash"].remove(uid)
                     row["hand"].append(uid)
             row["free_hide_turn"] = True
@@ -1745,6 +1752,15 @@ class OriginsRules:
     def _resolve_optional(self, state, item, rng):
         player = item["player"]
         effect = item["effect"]
+        if effect == "return_self":
+            source = self._unit(state, item.get("source"))
+            row = state["players"][player]
+            if source is None or source["owner"] != player or row["energy"] < 1:
+                return True
+            row["energy"] -= 1
+            state["units"].remove(source)
+            self._hand_unit_card(state, source)
+            return True
         if effect == "miss_fortune_ready":
             source = self._unit(state, item.get("source"))
             candidates = [unit["id"] for unit in self._units(state, player)
@@ -2092,6 +2108,8 @@ class OriginsRules:
         if result is not None and method == "hold":
             state["points"][player] += sum(u["code"] == "OGN-066"
                                             for u in self._units(state, player, field))
+            if result == "point":
+                state.setdefault("hold_points", [0, 0])[player] += 1
         if result in {"point", "draw"} and method == "hold":
             for unit in self._units(state, player, field):
                 implementation = self._card_implementation(unit["code"])
@@ -2168,6 +2186,11 @@ class OriginsRules:
                         and uncontrolled):
                     self._queue_optional(state, player, "yone_conquer_damage",
                                          source=unit["id"])
+                if implementation and implementation.conquer_effect == "buff_self":
+                    self._apply_buff(state, unit)
+                if (implementation and implementation.conquer_effect == "return_self"
+                        and state["players"][player]["energy"] >= 1):
+                    self._queue_optional(state, player, "return_self", source=unit["id"])
             if code == "OGN-282":
                 # Monastery's optional draw lets the player choose which
                 # friendly buff to spend.  Do not silently take the first
@@ -2204,6 +2227,7 @@ class OriginsRules:
         # carry an unchosen opportunity into a later turn.
         state["legend_options"] = []
         state["scored"] = [[], []]
+        state["hold_points"] = [0, 0]
         state["dreaming_tree_used"] = [False] * len(state["fields"])
         state["rally_effects"] = []
         for row in state["players"]:
@@ -2300,7 +2324,7 @@ class OriginsRules:
                                < (2 if obj["code"] == "OGN-278" else 1)]
             for card in row["hand"] + row["champion"]:
                 code = state["cards"][card]["code"]
-                if code not in HIDDEN_CODES:
+                if not self._is_hidden_code(code):
                     continue
                 for field in open_fields:
                     if row.get("free_hide_turn"):
@@ -2937,6 +2961,11 @@ class OriginsRules:
         if state.get("rune_undo") and state["phase"] == "main":
             result.append(Action.make("undo_rune"))
         for unit in self._units(state, player):
+            implementation = self._card_implementation(unit["code"])
+            if (implementation and implementation.activated_effect == "spend_buff_four"
+                    and not unit["exhausted"] and unit.get("buff", 0) > 0):
+                result.append(Action.make("unit_registry_ability", unit=unit["id"],
+                                          effect=implementation.activated_effect))
             if unit["code"] == "OGN-078" and not unit["exhausted"]:
                 result.append(Action.make("unit_buff", unit=unit["id"]))
             if unit["code"] == "OGN-036" and not unit["exhausted"] and row["trash"]:
@@ -3467,6 +3496,8 @@ class OriginsRules:
             energy = data["energy"] - (2 if code == "OGN-012" and self._played_for_legion(state, player) else 0)
             if implementation and implementation.cost_reduction_effect == "cards_played_floor_one":
                 energy = max(1, energy - self._played_for_legion(state, player))
+            if implementation and implementation.cost_reduction_effect == "hold_points":
+                energy = max(0, energy - 2 * state.get("hold_points", [0, 0])[player])
             if "Dragon" in data["tags"] and any(u["code"] == "OGN-140" and u["owner"] == player
                                                   and self._is_field(u["location"]) for u in state["units"]):
                 energy = max(1, energy - 2)
@@ -4021,7 +4052,8 @@ class OriginsRules:
             exhausted = False
         card_owner = state.get("cards", {}).get(card, {}).get("owner", owner) if card is not None else owner
         implementation = self._card_implementation(code)
-        assault = (2 if self._has_static_keyword(code, "assault_2")
+        assault = (3 if self._has_static_keyword(code, "assault_3")
+                   else 2 if self._has_static_keyword(code, "assault_2")
                    else 1 if self._has_static_keyword(code, "assault_1") else 0)
         unit = {"id": self._object(state), "card": card, "card_owner": card_owner,
                 "code": code, "owner": owner,
@@ -5244,7 +5276,7 @@ class OriginsRules:
         if source is None or source["location"] != item.get("field"):
             return True
         candidates = [uid for uid in state["players"][item["owner"]]["hand"]
-                      if state["cards"][uid]["code"] in HIDDEN_CODES]
+                      if self._is_hidden_code(state["cards"][uid]["code"])]
         if not candidates:
             return True
         self._queue_optional(state, item["owner"], "ava_play_hidden",
@@ -6292,7 +6324,7 @@ class OriginsRules:
         elif code == "OGN-264" and not item.get("reveal_done"):
             row = state["players"][owner]
             choices = [uid for uid in row["trash"]
-                       if state["cards"][uid]["code"] in HIDDEN_CODES]
+                       if self._is_hidden_code(state["cards"][uid]["code"])]
             self._open_reveal(state, owner=owner, cards=list(choices), mode="select",
                               chooser=owner, minimum=0, maximum=min(2, len(choices)),
                               effect="guerrilla_return_hidden", item=item,
@@ -6401,7 +6433,7 @@ class OriginsRules:
                     top = [uid for uid in reveal.get("cards", [])
                            if uid in state["players"][owner]["main"]]
                     item["hidden_count"] = sum(
-                        state["cards"][uid]["code"] in HIDDEN_CODES for uid in top)
+                        self._is_hidden_code(state["cards"][uid]["code"]) for uid in top)
                     self._recycle_cards_to_main(state, owner, top, source="main", rng=rng)
                 if item is not None and reveal.get("resume", {}).get("phase") == "chain":
                     item["reveal_done"] = True
@@ -7793,7 +7825,7 @@ class OriginsRules:
             card = args["card"]
             code = state["cards"][card]["code"]
             field = args["field"]
-            if code not in HIDDEN_CODES or field not in range(len(state["fields"])):
+            if not self._is_hidden_code(code) or field not in range(len(state["fields"])):
                 raise ValueError("invalid Hidden card or battlefield")
             capacity = 2 if state["fields"][field]["code"] == "OGN-278" else 1
             if state["fields"][field]["controller"] != player or sum(
@@ -7984,6 +8016,17 @@ class OriginsRules:
         elif kind == "legend_spell_power":
             row["legend_exhausted"] = True
             row["power"].append("spell_any")
+            state["passes"] = 0
+        elif kind == "unit_registry_ability":
+            source = self._unit(state, args["unit"])
+            implementation = self._card_implementation(source["code"]) if source else None
+            if (source is None or source["owner"] != player or source["exhausted"]
+                    or source.get("buff", 0) <= 0 or implementation is None
+                    or implementation.activated_effect != args.get("effect")):
+                raise ValueError("registered unit ability is unavailable")
+            source["buff"] -= 1
+            source["exhausted"] = True
+            source["temporary"] += 4
             state["passes"] = 0
         elif kind == "unit_udyr":
             source = self._unit(state, args["unit"])
@@ -8825,7 +8868,10 @@ class OriginsRules:
             ahri_triggers += [
                 {"effect": "teemo_defend", "source": unit["id"],
                  "owner": unit["owner"], "field": field}
-                for unit in defenders if unit["code"] == "OGN-121"
+                for unit in defenders
+                if unit["code"] == "OGN-121"
+                or (self._card_implementation(unit["code"]) is not None
+                    and self._card_implementation(unit["code"]).global_effect == "teemo_defend")
             ]
             ahri_triggers += [
                 {"effect": "ava_attack", "source": unit["id"],

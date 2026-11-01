@@ -440,3 +440,10 @@ Darius、Karma、Mechanized Menace 与 Glorious Executioner 的普通/替代印�
 战斗触发目标窗口、回收事件、移动计数、Legend 全局能力和战斗胜利监听；没有为单张卡建立旁路结算。
 修复了动态同战场 +1 Might 接入时的局部变量回归，并为别名印刷补充了 token 就绪、Ahri 目标、第三次
 移动、Legion 入场、Karma 回收和 Legend 抽牌回归。Spiritforged 定向测试 29 项，全量测试为 433 项。
+
+随后批量加入 8 张 Spiritforged 可执行牌，注册表规模从 96 增至 104：Needlessly Large Yordle 的 Shield 5、
+Tank 和 Hold 得分减费，Vayne 普通/替代印刷的 Assault 3、条件入场就绪和征服后付费回手，Teemo 普通/替代
+印刷的 Hidden 防守公开查看/回收，以及 Sett 普通/替代印刷的入场/征服增益和通用增益消耗能力。新增的
+Hidden 判断、Shield 战力、每回合 Hold 计数、Legend 付费回手和注册能力动作均接入既有共享路径。Teemo
+的公开查看窗口由对手结束，Hidden 牌数量在窗口关闭后统一计算，避免提前结算。Spiritforged 定向测试
+30 项，全量测试为 434 项。

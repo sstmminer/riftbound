@@ -23,6 +23,7 @@ class CardImplementation:
     static_keywords: frozenset[str] = frozenset()
     entry_effect: str | None = None
     move_effect: str | None = None
+    hold_effect: str | None = None
     deathknell_effect: str | None = None
     spell_effect: str | None = None
     target_scope: str | None = None
@@ -39,7 +40,7 @@ class CardImplementation:
             raise ValueError("unknown implementation status")
         if self.status == "executable" and not any((
                 self.behavior_id, self.static_keywords, self.entry_effect,
-                self.move_effect, self.deathknell_effect, self.spell_effect,
+                self.move_effect, self.hold_effect, self.deathknell_effect, self.spell_effect,
                 self.buff_effect, self.might_effect)):
             raise ValueError("executable implementation needs an explicit hook")
 
@@ -174,4 +175,8 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-167-221", sfd, "unit", "executable",
                            deathknell_effect="draw_two_if_mighty",
                            notes="Deathknell; if this was Mighty, draw 2."),
+        CardImplementation("SFD-027-221", sfd, "unit", "executable",
+                           entry_effect="enter_ready_if_small_hand",
+                           hold_effect="draw_two",
+                           notes="Enters ready with two or fewer cards in hand; draw 2 when holding."),
     ])

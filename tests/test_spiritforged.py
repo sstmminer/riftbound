@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 28)
+        self.assertEqual(len(registry.executable_codes()), 29)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -66,6 +66,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-137-221").move_effect, "buff_self_two_from_field")
         self.assertEqual(registry.get("SFD-159-221").might_effect, "plus_one_if_another_friendly_here")
         self.assertEqual(registry.get("SFD-167-221").deathknell_effect, "draw_two_if_mighty")
+        self.assertEqual(registry.get("SFD-027-221").hold_effect, "draw_two")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -334,6 +335,17 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         mighty["damage"] = mighty_rules.might(mighty_state, mighty)
         mighty_rules._cleanup(mighty_state, random.Random(56))
         self.assertEqual(len(mighty_state["players"][0]["hand"]), before + 2)
+
+        dunebreaker_deck = legal_deck("SFD-027-221", "OGN-247", "OGN-039")
+        dunebreaker_rules = SpiritforgedRules([dunebreaker_deck, dunebreaker_deck])
+        dunebreaker_state = dunebreaker_rules.initial_state(random.Random(57))
+        dunebreaker_state["players"][0]["hand"] = dunebreaker_state["players"][0]["hand"][:2]
+        self.assertTrue(dunebreaker_rules._entry_ready(dunebreaker_state, "SFD-027-221", 0))
+        holder = dunebreaker_rules._new_unit(dunebreaker_state, "SFD-027-221", 0, 0, exhausted=False)
+        dunebreaker_state["fields"][0]["controller"] = 0
+        before_hold_draw = len(dunebreaker_state["players"][0]["hand"])
+        dunebreaker_rules._score(dunebreaker_state, 0, 0, "hold", random.Random(58))
+        self.assertEqual(len(dunebreaker_state["players"][0]["hand"]), before_hold_draw + 2)
 
 
 if __name__ == "__main__":

@@ -139,6 +139,8 @@ class OriginsRules:
                            for unit in state["units"]) >= 2
             if effect == "enter_ready_if_two_gear":
                 return len(state["players"][player].get("gear", [])) >= 2
+            if effect == "enter_ready_if_small_hand":
+                return len(state["players"][player].get("hand", [])) <= 2
             if effect == "enter_ready_if_dragon":
                 return any(
                     unit["owner"] == player
@@ -1906,6 +1908,11 @@ class OriginsRules:
         if result is not None and method == "hold":
             state["points"][player] += sum(u["code"] == "OGN-066"
                                             for u in self._units(state, player, field))
+        if result in {"point", "draw"} and method == "hold":
+            for unit in self._units(state, player, field):
+                implementation = self._card_implementation(unit["code"])
+                if implementation and implementation.hold_effect == "draw_two":
+                    self._draw(state, player, 2, rng)
         # These battlefield triggers are intentionally resolved at the score
         # event, after the point/draw result is known.  The closed engine has
         # no gear zone yet, so the effects here only touch existing card

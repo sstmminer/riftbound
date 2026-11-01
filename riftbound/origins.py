@@ -137,6 +137,8 @@ class OriginsRules:
             if effect == "enter_ready_if_base_units":
                 return sum(unit["owner"] == player and unit["location"] == f"base:{player}"
                            for unit in state["units"]) >= 2
+            if effect == "enter_ready_if_two_gear":
+                return len(state["players"][player].get("gear", [])) >= 2
             if effect == "enter_ready_if_dragon":
                 return any(
                     unit["owner"] == player
@@ -300,6 +302,12 @@ class OriginsRules:
 
     def might(self, state, unit):
         value = self.cards[unit["code"]]["might"] + unit["buff"] + unit["temporary"]
+        implementation = self._card_implementation(unit["code"])
+        if (implementation and implementation.might_effect == "plus_one_if_another_friendly_here"
+                and any(other["id"] != unit["id"] and other["owner"] == unit["owner"]
+                        and other["location"] == unit["location"]
+                        for other in state["units"])):
+            value += 1
         location = unit["location"]
         if unit["code"] == "OGN-028":
             value += state["points"][unit["owner"]]
@@ -365,6 +373,9 @@ class OriginsRules:
         bonus = state["players"][unit["owner"]].get("buff_bonus", 0)
         if bonus:
             unit["temporary"] += bonus
+        implementation = self._card_implementation(unit["code"])
+        if implementation and implementation.buff_effect == "ready_self":
+            self._ready_unit(state, unit)
         # Mistfall's E is an optional response to a friendly unit being buffed.
         # Native Mistfall and each eligible copied source use the same
         # registry-driven optional window.
@@ -488,6 +499,7 @@ class OriginsRules:
         deathknell_recycle = []
         deathknell_undercover = []
         registry_deathknell_draw = []
+        registry_deathknell_draw_two = []
         registry_deathknell_gold = []
         wraith_draw = []
         vanguard_triggers = []
@@ -575,6 +587,7 @@ class OriginsRules:
                 continue
             dead_ids = {u["id"] for u in dead}
             for unit in dead:
+                was_mighty = self.might(state, unit) >= 5
                 if unit.get("buff", 0):
                     for gear in state["players"][unit["owner"]]["gear"]:
                         if gear["code"] == "OGN-228":
@@ -636,6 +649,8 @@ class OriginsRules:
                         registry_deathknell_draw.append(unit["owner"])
                 if implementation and implementation.deathknell_effect == "play_gold_gear":
                     registry_deathknell_gold.append(unit["owner"])
+                if implementation and implementation.deathknell_effect == "draw_two_if_mighty" and was_mighty:
+                    registry_deathknell_draw_two.append(unit["owner"])
                 # Each Wraith source triggers once per turn when a friendly
                 # unit dies. Mark the surviving source itself so multiple
                 # Wraiths each trigger once, while recursive cleanup cannot
@@ -664,16 +679,13 @@ class OriginsRules:
             draw_rng = rng if rng is not None else random.Random(0)
             for player in registry_deathknell_draw:
                 self._draw(state, player, 1, draw_rng)
+        if registry_deathknell_draw_two:
+            draw_rng = rng if rng is not None else random.Random(0)
+            for player in registry_deathknell_draw_two:
+                self._draw(state, player, 2, draw_rng)
         if registry_deathknell_gold:
             for player in registry_deathknell_gold:
-                token = self._object(state)
-                state["cards"][token] = {"code": "SFD-T03", "owner": player}
-                state["players"][player]["gear"].append({
-                    "id": token, "card": token, "code": "SFD-T03",
-                    "owner": player, "card_owner": player,
-                    "location": f"base:{player}", "exhausted": True,
-                    "temporary": False,
-                })
+                self._play_gold_gear_token(state, player, exhausted=True)
         if wraith_draw:
             draw_rng = rng if rng is not None else random.Random(0)
             for player in wraith_draw:
@@ -3256,6 +3268,11 @@ class OriginsRules:
             if implementation and implementation.move_effect == "draw_one":
                 self._draw(state, unit["owner"], 1,
                            rng if rng is not None else random.Random(0))
+            if implementation and implementation.move_effect == "play_gold_gear":
+                self._play_gold_gear_token(state, unit["owner"], exhausted=True)
+            if (implementation and implementation.move_effect == "buff_self_two_from_field"
+                    and self._is_field(state, origin)):
+                unit["temporary"] += 2
         # Stealthy Pursuer follows a friendly move from its location only
         # through an explicit optional window.  The printed ability says
         # "may"; accepting the window exhausts the Pursuer and moves it to
@@ -3822,6 +3839,18 @@ class OriginsRules:
             if code is not None and self.cards.get(code, {}).get("token"):
                 return
             state["players"][self._card_owner(state, card, fallback)]["trash"].append(card)
+
+    def _play_gold_gear_token(self, state, player, *, exhausted=True):
+        """Create the SFD Gold gear token as a non-physical card object."""
+        token = self._object(state)
+        state["cards"][token] = {"code": "SFD-T03", "owner": player}
+        state["players"][player]["gear"].append({
+            "id": token, "card": token, "code": "SFD-T03",
+            "owner": player, "card_owner": player,
+            "location": f"base:{player}", "exhausted": exhausted,
+            "temporary": False,
+        })
+        return token
 
     def _trash_unit_card(self, state, unit):
         self._trash_card(state, unit.get("card"), self._unit_card_owner(state, unit))

@@ -28,6 +28,8 @@ class CardImplementation:
     target_scope: str | None = None
     target_min: int = 1
     target_max: int = 1
+    buff_effect: str | None = None
+    might_effect: str | None = None
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -37,7 +39,8 @@ class CardImplementation:
             raise ValueError("unknown implementation status")
         if self.status == "executable" and not any((
                 self.behavior_id, self.static_keywords, self.entry_effect,
-                self.move_effect, self.deathknell_effect, self.spell_effect)):
+                self.move_effect, self.deathknell_effect, self.spell_effect,
+                self.buff_effect, self.might_effect)):
             raise ValueError("executable implementation needs an explicit hook")
 
 
@@ -153,4 +156,22 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-155-221", sfd, "unit", "executable",
                            deathknell_effect="play_gold_gear",
                            notes="Deathknell; play an exhausted Gold gear token."),
+        CardImplementation("SFD-047-221", sfd, "unit", "executable",
+                           buff_effect="ready_self",
+                           notes="When buffed, ready this unit."),
+        CardImplementation("SFD-072-221", sfd, "unit", "executable",
+                           entry_effect="enter_ready_if_two_gear",
+                           notes="Enters ready if you control two or more gear."),
+        CardImplementation("SFD-130-221", sfd, "unit", "executable",
+                           move_effect="play_gold_gear",
+                           notes="When this unit moves, play an exhausted Gold gear token."),
+        CardImplementation("SFD-137-221", sfd, "unit", "executable",
+                           move_effect="buff_self_two_from_field",
+                           notes="When this unit moves from a battlefield, get +2 Might this turn."),
+        CardImplementation("SFD-159-221", sfd, "unit", "executable",
+                           might_effect="plus_one_if_another_friendly_here",
+                           notes="Gets +1 Might while you have another unit here."),
+        CardImplementation("SFD-167-221", sfd, "unit", "executable",
+                           deathknell_effect="draw_two_if_mighty",
+                           notes="Deathknell; if this was Mighty, draw 2."),
     ])

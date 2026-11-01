@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 22 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 28 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -50,6 +50,12 @@ python -m riftbound catalog --set SFD
 - `SFD-097-221` Punch First：点选单位，获得本回合 +5 临时战力；
 - `SFD-135-221` Factory Recall：点选任意 Gear 回到其物主手牌；
 - `SFD-155-221` Honest Broker：Deathknell，生成横置 Gold Gear 衍生物。
+- `SFD-047-221` Simian Ancestor：受到增益后就绪；
+- `SFD-072-221` Dropboarder：控制至少两个 Gear 时入场就绪；
+- `SFD-130-221` Treasure Hunter：移动后生成横置 Gold Gear 衍生物；
+- `SFD-137-221` Harpoon Squad：从战场移动时获得本回合 +2 临时战力；
+- `SFD-159-221` Trusty Ramhound：有另一名友方单位同处时获得 +1 静态战力；
+- `SFD-167-221` Unsung Hero：若死亡时为 Mighty，Deathknell 抽 2。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。签名牌 `SFD-204 On the Hunt` 暂缓注册，因为其合法套牌还依赖尚未执行的 Sivir/Battle Mistress 组合；装备附着、Repeat、Hidden、复杂衍生物和多步骤替代效果也继续保持 catalog-only。
 

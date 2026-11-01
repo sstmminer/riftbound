@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 22)
+        self.assertEqual(len(registry.executable_codes()), 28)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -60,6 +60,12 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-097-221").target_scope, "any_unit")
         self.assertEqual(registry.get("SFD-135-221").target_scope, "any_gear")
         self.assertEqual(registry.get("SFD-155-221").deathknell_effect, "play_gold_gear")
+        self.assertEqual(registry.get("SFD-047-221").buff_effect, "ready_self")
+        self.assertEqual(registry.get("SFD-072-221").entry_effect, "enter_ready_if_two_gear")
+        self.assertEqual(registry.get("SFD-130-221").move_effect, "play_gold_gear")
+        self.assertEqual(registry.get("SFD-137-221").move_effect, "buff_self_two_from_field")
+        self.assertEqual(registry.get("SFD-159-221").might_effect, "plus_one_if_another_friendly_here")
+        self.assertEqual(registry.get("SFD-167-221").deathknell_effect, "draw_two_if_mighty")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -275,6 +281,59 @@ class SpiritforgedExecutableTests(unittest.TestCase):
                 if gear["code"] == "SFD-T03"]
         self.assertEqual(len(gold), 1)
         self.assertTrue(gold[0]["exhausted"])
+
+    def test_registered_unit_entry_buff_might_and_move_hooks(self):
+        deck = legal_deck("SFD-047-221", "OGN-255", "OGN-066")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(48))
+        ancestor = rules._new_unit(state, "SFD-047-221", 0, "base:0", exhausted=True)
+        rules._apply_buff(state, ancestor)
+        self.assertFalse(ancestor["exhausted"])
+
+        entry_deck = legal_deck("SFD-072-221", "OGN-247", "OGN-039")
+        entry_rules = SpiritforgedRules([entry_deck, entry_deck])
+        entry_state = entry_rules.initial_state(random.Random(49))
+        for index in range(2):
+            entry_state["players"][0]["gear"].append({
+                "id": f"gear:entry:{index}", "card": None, "code": "OGN-040",
+                "owner": 0, "card_owner": 0, "location": "base:0",
+                "exhausted": False, "temporary": False})
+        self.assertTrue(entry_rules._entry_ready(entry_state, "SFD-072-221", 0))
+
+        move_deck = legal_deck("SFD-130-221", "OGN-267", "OGN-162")
+        move_rules = SpiritforgedRules([move_deck, move_deck])
+        move_state = move_rules.initial_state(random.Random(50))
+        move_state["fields"][0]["controller"] = 0
+        hunter = move_rules._new_unit(move_state, "SFD-130-221", 0, "base:0", exhausted=False)
+        move_rules._resolve_move(move_state, [hunter], 0, 0, random.Random(51))
+        self.assertTrue(any(g["code"] == "SFD-T03" for g in move_state["players"][0]["gear"]))
+
+        harpoon_deck = legal_deck("SFD-137-221", "OGN-267", "OGN-162")
+        harpoon_rules = SpiritforgedRules([harpoon_deck, harpoon_deck])
+        harpoon_state = harpoon_rules.initial_state(random.Random(52))
+        harpoon_state["fields"][0]["controller"] = 0
+        harpoon = harpoon_rules._new_unit(harpoon_state, "SFD-137-221", 0, 0, exhausted=False)
+        harpoon_rules._resolve_move(harpoon_state, [harpoon], "base:0", 0, random.Random(53))
+        self.assertEqual(harpoon["temporary"], 2)
+
+        ramhound_deck = legal_deck("SFD-159-221", "OGN-253", "OGN-243")
+        ramhound_rules = SpiritforgedRules([ramhound_deck, ramhound_deck])
+        ramhound_state = ramhound_rules.initial_state(random.Random(54))
+        ramhound = ramhound_rules._new_unit(ramhound_state, "SFD-159-221", 0, "base:0", exhausted=False)
+        ally = ramhound_rules._new_unit(ramhound_state, "OGN-001", 0, "base:0", exhausted=False)
+        self.assertEqual(ramhound_rules.might(ramhound_state, ramhound), 3)
+        ramhound_state["units"].remove(ally)
+        self.assertEqual(ramhound_rules.might(ramhound_state, ramhound), 2)
+
+        mighty_deck = legal_deck("SFD-167-221", "OGN-253", "OGN-243")
+        mighty_rules = SpiritforgedRules([mighty_deck, mighty_deck])
+        mighty_state = mighty_rules.initial_state(random.Random(55))
+        before = len(mighty_state["players"][0]["hand"])
+        mighty = mighty_rules._new_unit(mighty_state, "SFD-167-221", 0, 0, exhausted=False)
+        mighty["temporary"] = 3
+        mighty["damage"] = mighty_rules.might(mighty_state, mighty)
+        mighty_rules._cleanup(mighty_state, random.Random(56))
+        self.assertEqual(len(mighty_state["players"][0]["hand"]), before + 2)
 
 
 if __name__ == "__main__":

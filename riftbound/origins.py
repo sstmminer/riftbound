@@ -214,6 +214,7 @@ class OriginsRules:
         registry.register("ready_another_friendly_mech", self._effect_ready_another_friendly_mech)
         registry.register("play_four_gold_gear", self._effect_play_four_gold_gear)
         registry.register("optional_kill_gear", self._effect_optional_kill_gear)
+        registry.register("optional_kill_cheap_gear", self._effect_optional_kill_cheap_gear)
         registry.register("buff_another_on_move", self._effect_buff_another_on_move)
         registry.register("legend_toggle", self._effect_legend_toggle)
         registry.register("optional_draw_or_buff", self._effect_optional_draw_or_buff)
@@ -1796,6 +1797,21 @@ class OriginsRules:
             }
             state["phase"], state["actor"], state["passes"] = "decision", player, 0
             return False
+        if effect == "kill_cheap_gear":
+            gears = [gear["id"] for row in state["players"]
+                     for gear in row.get("gear", [])
+                     if self.cards.get(gear["code"], {}).get("energy", 99) <= 1]
+            if not gears:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": gears,
+                "item": {"effect": "kill_gear_optional", "owner": player,
+                          "source": item.get("source")},
+                "optional_gear_effect": True,
+                "play_gold": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
         if effect == "return_card_from_trash":
             row = state["players"][player]
             cards = [uid for uid in row["trash"]
@@ -2047,6 +2063,9 @@ class OriginsRules:
                     self._queue_optional(state, player, "adaptatron_conquer", source=unit["id"])
                 if unit["code"] == "OGN-112":
                     self._queue_optional(state, player, "kaisa_replay_spell", source=unit["id"])
+                implementation = self._card_implementation(unit["code"])
+                if implementation and implementation.conquer_effect == "play_gold_gear":
+                    self._play_gold_gear_token(state, player, exhausted=True)
             if code == "OGN-282":
                 # Monastery's optional draw lets the player choose which
                 # friendly buff to spend.  Do not silently take the first
@@ -4090,7 +4109,15 @@ class OriginsRules:
         if gear is None or gear["exhausted"]:
             return None
         gear["exhausted"] = True
+        self._gear_ability_used(state, item["owner"])
         return gear
+
+    def _gear_ability_used(self, state, player):
+        """Apply the shared post-activation listener for gear abilities."""
+        for unit in self._units(state, player):
+            implementation = self._card_implementation(unit["code"])
+            if implementation and implementation.global_effect == "prize_progress":
+                unit["temporary"] += 1
 
     def _effect_gear_damage(self, state, item, rng):
         if self._consume_gear(state, item) is None:
@@ -4686,6 +4713,14 @@ class OriginsRules:
         """Queue Disarming Rake's optional gear destruction."""
         if any(row.get("gear") for row in state["players"]):
             self._queue_optional(state, item["owner"], "kill_gear",
+                                 source=item.get("source"))
+        return True
+
+    def _effect_optional_kill_cheap_gear(self, state, item, rng):
+        """Queue Pickpocket's optional destruction of a low-cost gear."""
+        if any(self.cards.get(gear["code"], {}).get("energy", 99) <= 1
+               for row in state["players"] for gear in row.get("gear", [])):
+            self._queue_optional(state, item["owner"], "kill_cheap_gear",
                                  source=item.get("source"))
         return True
 
@@ -6713,13 +6748,17 @@ class OriginsRules:
                 if decision.get("optional_gear_effect"):
                     target_id = args["target"]
                     owner = player
+                    destroyed = False
                     for row in state["players"]:
                         gear = next((gear for gear in row.get("gear", [])
                                      if gear["id"] == target_id), None)
                         if gear is not None:
                             row["gear"].remove(gear)
                             self._trash_gear_card(state, gear)
+                            destroyed = True
                             break
+                    if destroyed and decision.get("play_gold"):
+                        self._play_gold_gear_token(state, owner, exhausted=True)
                     state["decision"] = None
                     state["optional_ordered"] = False
                     if state.get("optional"):
@@ -7393,7 +7432,8 @@ class OriginsRules:
             gear = next((g for g in row["gear"] if g["id"] == args["gear"]), None)
             if gear is None or gear["exhausted"]:
                 raise ValueError("gear resource is unavailable")
-            gear["exhausted"] = True
+            if self._consume_gear(state, {"owner": player, "gear": args["gear"]}) is None:
+                raise ValueError("gear resource is unavailable")
             if args.get("energy"):
                 row["energy"] += int(args["energy"])
             else:
@@ -7437,6 +7477,7 @@ class OriginsRules:
                 raise ValueError("gear is unavailable")
             row["gear"].remove(gear)
             self._trash_gear_card(state, gear)
+            self._gear_ability_used(state, player)
             self._draw(state, player, 1, rng)
             self._channel_rune(state, player, exhausted=True)
             state["passes"] = 0
@@ -7456,6 +7497,7 @@ class OriginsRules:
                 raise ValueError("Forge of the Future is unavailable")
             row["gear"].remove(gear)
             self._trash_gear_card(state, gear)
+            self._gear_ability_used(state, player)
             cards = [uid for owner in state["players"] for uid in owner["trash"]]
             self._open_reveal(state, owner=player, cards=cards, mode="select",
                               chooser=player, minimum=0, maximum=min(4, len(cards)),
@@ -7991,7 +8033,14 @@ class OriginsRules:
                 if code in {"OGN-030", "OGN-086", "OGN-100", "OGN-171", "OGN-174"}:
                     triggers.append({"effect": "discard_two" if code == "OGN-030" else "vision",
                                      "source": unit["id"], "owner": player})
-                elif any(other["code"] == "OGN-100" for other in self._units(state, player)):
+                elif any(
+                        other["code"] == "OGN-100"
+                        or (
+                            self._card_implementation(other["code"]) is not None
+                            and self._card_implementation(other["code"]).global_effect == "mechs_vision"
+                            and "Mech" in self.cards.get(code, {}).get("tags", [])
+                        )
+                        for other in self._units(state, player)):
                     triggers.append({"effect": "vision", "source": unit["id"], "owner": player})
                 if code in ACCELERATE:
                     # Keep the unit visible in its destination while the

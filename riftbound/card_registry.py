@@ -25,6 +25,7 @@ class CardImplementation:
     entry_trigger: str | None = None
     move_effect: str | None = None
     hold_effect: str | None = None
+    conquer_effect: str | None = None
     deathknell_effect: str | None = None
     spell_effect: str | None = None
     target_scope: str | None = None
@@ -45,6 +46,7 @@ class CardImplementation:
         if self.status == "executable" and not any((
                 self.behavior_id, self.static_keywords, self.entry_effect,
                 self.entry_trigger, self.move_effect, self.hold_effect,
+                self.conquer_effect,
                 self.deathknell_effect, self.spell_effect,
                 self.buff_effect, self.might_effect, self.global_effect,
                 self.additional_cost_effect)):
@@ -221,6 +223,18 @@ def spiritforged_registry() -> CardSetRegistry:
                            global_effect="mechs_deflect_ganking",
                            entry_effect="enter_ready_if_another_mech",
                            notes="Mechs have Deflect and Ganking; enters ready with another Mech."),
+        CardImplementation("SFD-065-221", sfd, "unit", "executable",
+                           global_effect="mechs_vision",
+                           notes="Your Mechs have Vision."),
+        CardImplementation("SFD-069-221", sfd, "unit", "executable",
+                           conquer_effect="play_gold_gear",
+                           notes="When this conquers, play an exhausted Gold gear token."),
+        CardImplementation("SFD-074-221", sfd, "unit", "executable",
+                           entry_trigger="optional_kill_cheap_gear",
+                           notes="When played, may kill a gear costing 1 or less, then play an exhausted Gold gear token."),
+        CardImplementation("SFD-075-221", sfd, "unit", "executable",
+                           global_effect="prize_progress",
+                           notes="When you use an activated gear ability, this gets +1 Might this turn."),
         CardImplementation("SFD-091-221", sfd, "unit", "executable",
                            entry_trigger="optional_draw_or_buff",
                            notes="When played, optionally draw 1 or buff this unit."),

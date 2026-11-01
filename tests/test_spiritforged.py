@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 46)
+        self.assertEqual(len(registry.executable_codes()), 50)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -79,6 +79,10 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-039-221").entry_trigger, "legend_toggle")
         self.assertEqual(registry.get("SFD-071-221").entry_effect, "enter_ready_if_another_mech")
         self.assertEqual(registry.get("SFD-071-221").global_effect, "mechs_deflect_ganking")
+        self.assertEqual(registry.get("SFD-065-221").global_effect, "mechs_vision")
+        self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
+        self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
+        self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
         self.assertEqual(registry.get("SFD-091-221").entry_trigger, "optional_draw_or_buff")
         self.assertEqual(registry.get("SFD-149-221").entry_trigger, "discard_one_draw_two")
         self.assertEqual(registry.get("SFD-157-221").entry_trigger, "play_sand_soldier")
@@ -614,6 +618,69 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertIn(trash_card, state["decision"]["targets"])
         rules.apply(state, Action.make("choose_target", target=trash_card), random.Random(115))
         self.assertIn(trash_card, state["players"][0]["hand"])
+
+    def test_batch_vision_conquer_and_gear_listener_hooks(self):
+        vision_deck = legal_deck("SFD-065-221", "OGN-247", "OGN-039")
+        vision_rules = SpiritforgedRules([vision_deck, vision_deck])
+        vision_state = vision_rules.initial_state(random.Random(116))
+        vision_card = move_code_to_hand(vision_state, 0, "SFD-065-221")
+        vision_state["phase"], vision_state["actor"] = "main", 0
+        vision_state["players"][0]["energy"] = 10
+        vision_state["players"][0]["power"] = ["mind"] * 10
+        play = next(action for action in vision_rules.legal_actions(vision_state)
+                    if action.kind == "play_unit"
+                    and __import__("json").loads(action.arguments)["card"] == vision_card)
+        vision_rules.apply(vision_state, play, random.Random(117))
+        vision_rules.apply(vision_state, Action.make("pass"), random.Random(118))
+        vision_rules.apply(vision_state, Action.make("pass"), random.Random(119))
+        self.assertEqual(vision_state["decision"]["kind"], "predict")
+
+        conquer_deck = legal_deck("SFD-069-221", "OGN-247", "OGN-039")
+        conquer_rules = SpiritforgedRules([conquer_deck, conquer_deck])
+        conquer_state = conquer_rules.initial_state(random.Random(120))
+        conquer_rules._new_unit(conquer_state, "SFD-069-221", 0, 0, exhausted=False)
+        before_gold = sum(g["code"] == "SFD-T03" for g in conquer_state["players"][0]["gear"])
+        conquer_rules._score(conquer_state, 0, 0, "conquer", random.Random(121))
+        after_gold = sum(g["code"] == "SFD-T03" for g in conquer_state["players"][0]["gear"])
+        self.assertEqual(after_gold, before_gold + 1)
+
+        pickpocket_deck = legal_deck("SFD-074-221", "OGN-247", "OGN-039")
+        pickpocket_rules = SpiritforgedRules([pickpocket_deck, pickpocket_deck])
+        pickpocket_state = pickpocket_rules.initial_state(random.Random(122))
+        pickpocket_state["phase"], pickpocket_state["actor"] = "main", 0
+        pickpocket_state["players"][1]["gear"].append({
+            "id": "gear:cheap", "card": None, "code": "OGN-040", "owner": 1,
+            "card_owner": 1, "location": "base:1", "exhausted": False,
+            "temporary": False,
+        })
+        source = pickpocket_rules._new_unit(pickpocket_state, "SFD-074-221", 0, 0, exhausted=False)
+        pickpocket_rules._effect_optional_kill_cheap_gear(
+            pickpocket_state, {"owner": 0, "source": source["id"]}, random.Random(123))
+        optional = pickpocket_state["optional"][0]
+        pickpocket_rules.apply(
+            pickpocket_state,
+            Action.make("optional_effect", optional=optional["id"], accept=True),
+            random.Random(124))
+        self.assertEqual(pickpocket_state["decision"]["targets"], ["gear:cheap"])
+        pickpocket_rules.apply(
+            pickpocket_state, Action.make("choose_target", target="gear:cheap"), random.Random(125))
+        self.assertEqual(sum(g["code"] == "SFD-T03" for g in pickpocket_state["players"][0]["gear"]), 1)
+
+        prize_deck = legal_deck("SFD-075-221", "OGN-247", "OGN-039")
+        prize_rules = SpiritforgedRules([prize_deck, prize_deck])
+        prize_state = prize_rules.initial_state(random.Random(126))
+        prize = prize_rules._new_unit(prize_state, "SFD-075-221", 0, "base:0", exhausted=False)
+        prize_state["players"][0]["gear"].append({
+            "id": "gear:prize", "card": None, "code": "OGN-040", "owner": 0,
+            "card_owner": 0, "location": "base:0", "exhausted": False,
+            "temporary": False,
+        })
+        prize_state["phase"], prize_state["actor"] = "main", 0
+        action = next(action for action in prize_rules.legal_actions(prize_state)
+                      if action.kind == "gear_resource"
+                      and __import__("json").loads(action.arguments)["gear"] == "gear:prize")
+        prize_rules.apply(prize_state, action, random.Random(127))
+        self.assertEqual(prize["temporary"], 1)
 
 
 if __name__ == "__main__":

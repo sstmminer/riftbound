@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 50 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 54 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -78,6 +78,10 @@ python -m riftbound catalog --set SFD
 - `SFD-069-221` Plundering Poro：征服时生成横置 Gold Gear；
 - `SFD-074-221` Pickpocket：入场时可确认并摧毁 Energy 不超过 1 的 Gear，随后生成横置 Gold Gear；
 - `SFD-075-221` Prize of Progress：己方 Gear 激活能力成功使用时获得本回合 +1 临时战力。
+- `SFD-031-221` Desert's Call：在己方基地生成 Sand Soldier；
+- `SFD-034-221` Feral Strength：Reaction，点选单位获得本回合 +2 战力；
+- `SFD-066-221` Frigid Touch：Reaction，点选单位获得本回合 -2 战力；
+- `SFD-076-221` Production Surge：控制 Mech 时 Energy 减 2，生成 3 Might Mech token 并抽 1。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。签名牌 `SFD-204 On the Hunt` 暂缓注册，因为其合法套牌还依赖尚未执行的 Sivir/Battle Mistress 组合；装备附着、Repeat、Hidden、复杂衍生物和多步骤替代效果也继续保持 catalog-only。
 

@@ -36,6 +36,7 @@ class CardImplementation:
     global_effect: str | None = None
     additional_cost_energy: int = 0
     additional_cost_effect: str | None = None
+    cost_reduction_effect: str | None = None
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -49,7 +50,7 @@ class CardImplementation:
                 self.conquer_effect,
                 self.deathknell_effect, self.spell_effect,
                 self.buff_effect, self.might_effect, self.global_effect,
-                self.additional_cost_effect)):
+                self.additional_cost_effect, self.cost_reduction_effect)):
             raise ValueError("executable implementation needs an explicit hook")
 
 
@@ -226,6 +227,19 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-065-221", sfd, "unit", "executable",
                            global_effect="mechs_vision",
                            notes="Your Mechs have Vision."),
+        CardImplementation("SFD-031-221", sfd, "spell", "executable",
+                           spell_effect="play_sand_soldier",
+                           notes="Play a Sand Soldier unit token."),
+        CardImplementation("SFD-034-221", sfd, "spell", "executable",
+                           reaction=True, spell_effect="buff_two", target_scope="any_unit",
+                           notes="Reaction; give a unit +2 Might this turn."),
+        CardImplementation("SFD-066-221", sfd, "spell", "executable",
+                           reaction=True, spell_effect="debuff_two", target_scope="any_unit",
+                           notes="Reaction; give a unit -2 Might this turn."),
+        CardImplementation("SFD-076-221", sfd, "spell", "executable",
+                           spell_effect="play_mech_token_draw",
+                           cost_reduction_effect="control_mech",
+                           notes="Costs 2 less while controlling a Mech; play a Mech token and draw 1."),
         CardImplementation("SFD-069-221", sfd, "unit", "executable",
                            conquer_effect="play_gold_gear",
                            notes="When this conquers, play an exhausted Gold gear token."),

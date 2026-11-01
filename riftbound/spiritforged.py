@@ -24,6 +24,14 @@ SFD_TOKEN_ROWS = (
         "energy": 0, "power_cost": 0, "might": 2, "text": "",
         "printed_text": "", "errata_status": "token",
     },
+    {
+        "id": "SFD-T05", "code": "SFD-T05", "name": "Mech",
+        "set_code": "SFD", "set_name": "Spiritforged", "type": "unit",
+        "domains": [], "tags": ["Mech"], "champion": False,
+        "signature": False, "token": True, "unique": False,
+        "energy": 0, "power_cost": 0, "might": 3, "text": "",
+        "printed_text": "", "errata_status": "token",
+    },
 )
 
 

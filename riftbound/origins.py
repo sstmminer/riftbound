@@ -2998,6 +2998,11 @@ class OriginsRules:
             implementation = self._card_implementation(code)
             if implementation and implementation.spell_effect:
                 spell_energy = max(0, data["energy"] - row.get("spell_discount", 0))
+                if (implementation.cost_reduction_effect == "control_mech"
+                        and any(unit["owner"] == player
+                                and "Mech" in self.cards.get(unit["code"], {}).get("tags", [])
+                                for unit in state["units"])):
+                    spell_energy = max(0, spell_energy - 2)
                 for payment in self._payments(state, player, spell_energy, data["domains"],
                                               data["power_cost"] or 0, spell=True):
                     if implementation.target_scope:
@@ -5414,6 +5419,13 @@ class OriginsRules:
             amount = sum(self.might(state, unit) >= 5 for unit in self._units(state, owner))
             self._draw(state, owner, amount, rng)
             return True
+        if implementation and implementation.spell_effect == "play_sand_soldier":
+            self._new_unit(state, "SFD-T04", owner, f"base:{owner}")
+            return True
+        if implementation and implementation.spell_effect == "play_mech_token_draw":
+            self._new_unit(state, "SFD-T05", owner, f"base:{owner}")
+            self._draw(state, owner, 1, rng)
+            return True
         if implementation and implementation.spell_effect == "return_all_units_gear":
             # Return physical cards to their owners' hands and remove token
             # objects.  This is the common return path used by ordinary
@@ -5430,6 +5442,16 @@ class OriginsRules:
             target = self._unit(state, (item.get("targets") or [None])[0])
             if target is not None:
                 target["temporary"] += 5
+            return True
+        if implementation and implementation.spell_effect == "buff_two":
+            target = self._unit(state, (item.get("targets") or [None])[0])
+            if target is not None:
+                target["temporary"] += 2
+            return True
+        if implementation and implementation.spell_effect == "debuff_two":
+            target = self._unit(state, (item.get("targets") or [None])[0])
+            if target is not None:
+                target["temporary"] -= 2
             return True
         if implementation and implementation.spell_effect == "buff_by_enemy":
             target = self._unit(state, (item.get("targets") or [None])[0])

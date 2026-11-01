@@ -25,6 +25,9 @@ class CardImplementation:
     move_effect: str | None = None
     deathknell_effect: str | None = None
     spell_effect: str | None = None
+    target_scope: str | None = None
+    target_min: int = 1
+    target_max: int = 1
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -134,4 +137,20 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-147-221", sfd, "spell", "executable",
                            spell_effect="return_all_units_gear",
                            notes="Return all units and gear to their owners' hands."),
+        CardImplementation("SFD-001-221", sfd, "spell", "executable",
+                           reaction=True, spell_effect="buff_by_enemy",
+                           target_scope="friendly_field_unit",
+                           notes="Give a friendly battlefield unit +2 Might per enemy there."),
+        CardImplementation("SFD-005-221", sfd, "spell", "executable",
+                           spell_effect="kill_gear_draw_two", target_scope="any_gear",
+                           notes="Kill a gear; its controller draws two."),
+        CardImplementation("SFD-097-221", sfd, "spell", "executable",
+                           spell_effect="buff_five", target_scope="any_unit",
+                           notes="Give a unit +5 Might this turn."),
+        CardImplementation("SFD-135-221", sfd, "spell", "executable",
+                           spell_effect="return_gear", target_scope="any_gear",
+                           notes="Return a gear to its owner's hand."),
+        CardImplementation("SFD-155-221", sfd, "unit", "executable",
+                           deathknell_effect="play_gold_gear",
+                           notes="Deathknell; play an exhausted Gold gear token."),
     ])

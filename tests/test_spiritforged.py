@@ -50,11 +50,16 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 17)
+        self.assertEqual(len(registry.executable_codes()), 22)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
         self.assertEqual(registry.get("SFD-147-221").spell_effect, "return_all_units_gear")
+        self.assertEqual(registry.get("SFD-001-221").target_scope, "friendly_field_unit")
+        self.assertEqual(registry.get("SFD-005-221").spell_effect, "kill_gear_draw_two")
+        self.assertEqual(registry.get("SFD-097-221").target_scope, "any_unit")
+        self.assertEqual(registry.get("SFD-135-221").target_scope, "any_gear")
+        self.assertEqual(registry.get("SFD-155-221").deathknell_effect, "play_gold_gear")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -183,6 +188,93 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         # The spell leaves hand and draws one card, so the net hand size is
         # unchanged while the draw hook has still consumed the top card.
         self.assertEqual(len(state["players"][0]["hand"]), draw_before)
+
+    def test_registered_targeted_spells_use_shared_target_window(self):
+        for code, legend, champion, target_scope, expected in (
+                ("SFD-001-221", "OGN-247", "OGN-039", "friendly_field_unit", 2),
+                ("SFD-097-221", "OGN-267", "OGN-162", "any_unit", 5),
+        ):
+            deck = legal_deck(code, legend, champion)
+            rules = SpiritforgedRules([deck, deck])
+            state = rules.initial_state(random.Random(31))
+            card = move_code_to_hand(state, 0, code)
+            target = rules._new_unit(state, "OGN-001", 0, 0, exhausted=False)
+            if target_scope == "friendly_field_unit":
+                rules._new_unit(state, "OGN-001", 1, 0, exhausted=False)
+            state["phase"], state["actor"] = "main", 0
+            state["players"][0]["energy"] = 5
+            state["players"][0]["power"] = list(rules.cards[code]["domains"]) * 5
+            play = next(action for action in rules.legal_actions(state)
+                        if action.kind == "play_spell_targeted"
+                        and __import__("json").loads(action.arguments)["card"] == card)
+            rules.apply(state, play, random.Random(32))
+            choose = next(action for action in rules.legal_actions(state)
+                          if action.kind == "choose_target"
+                          and __import__("json").loads(action.arguments)["target"] == target["id"])
+            rules.apply(state, choose, random.Random(33))
+            rules.apply(state, Action.make("pass"), random.Random(34))
+            rules.apply(state, Action.make("pass"), random.Random(35))
+            self.assertEqual(target["temporary"], expected)
+
+    def test_registered_gear_return_and_gold_deathknell(self):
+        deck = legal_deck("SFD-135-221", "OGN-267", "OGN-162")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(36))
+        card = move_code_to_hand(state, 0, "SFD-135-221")
+        gear = {"id": "gear:test", "card": None, "code": "OGN-040",
+                "owner": 1, "card_owner": 1, "location": "base:1",
+                "exhausted": False, "temporary": False}
+        state["players"][1]["gear"].append(gear)
+        state["phase"], state["actor"] = "main", 0
+        state["players"][0]["energy"] = 3
+        state["players"][0]["power"] = ["chaos"] * 3
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_spell_targeted"
+                    and __import__("json").loads(action.arguments)["card"] == card)
+        rules.apply(state, play, random.Random(37))
+        choose = next(action for action in rules.legal_actions(state)
+                      if action.kind == "choose_target"
+                      and __import__("json").loads(action.arguments)["target"] == "gear:test")
+        rules.apply(state, choose, random.Random(38))
+        rules.apply(state, Action.make("pass"), random.Random(39))
+        rules.apply(state, Action.make("pass"), random.Random(40))
+        self.assertNotIn(gear, state["players"][1]["gear"])
+
+        detonate_deck = legal_deck("SFD-005-221", "OGN-247", "OGN-039")
+        detonate_rules = SpiritforgedRules([detonate_deck, detonate_deck])
+        detonate_state = detonate_rules.initial_state(random.Random(43))
+        detonate_card = move_code_to_hand(detonate_state, 0, "SFD-005-221")
+        detonate_gear = {"id": "gear:detonate", "card": None, "code": "OGN-040",
+                         "owner": 1, "card_owner": 1, "location": "base:1",
+                         "exhausted": False, "temporary": False}
+        detonate_state["players"][1]["gear"].append(detonate_gear)
+        before_draw = len(detonate_state["players"][1]["hand"])
+        detonate_state["phase"], detonate_state["actor"] = "main", 0
+        detonate_state["players"][0]["energy"] = 3
+        detonate_state["players"][0]["power"] = ["fury"] * 3
+        play = next(action for action in detonate_rules.legal_actions(detonate_state)
+                    if action.kind == "play_spell_targeted"
+                    and __import__("json").loads(action.arguments)["card"] == detonate_card)
+        detonate_rules.apply(detonate_state, play, random.Random(44))
+        choose = next(action for action in detonate_rules.legal_actions(detonate_state)
+                      if action.kind == "choose_target"
+                      and __import__("json").loads(action.arguments)["target"] == "gear:detonate")
+        detonate_rules.apply(detonate_state, choose, random.Random(45))
+        detonate_rules.apply(detonate_state, Action.make("pass"), random.Random(46))
+        detonate_rules.apply(detonate_state, Action.make("pass"), random.Random(47))
+        self.assertNotIn(detonate_gear, detonate_state["players"][1]["gear"])
+        self.assertEqual(len(detonate_state["players"][1]["hand"]), before_draw + 2)
+
+        order_deck = legal_deck("SFD-155-221", "OGN-253", "OGN-243")
+        order_rules = SpiritforgedRules([order_deck, order_deck])
+        order_state = order_rules.initial_state(random.Random(41))
+        dead = order_rules._new_unit(order_state, "SFD-155-221", 0, 0, exhausted=False)
+        dead["damage"] = order_rules.might(order_state, dead)
+        order_rules._cleanup(order_state, random.Random(42))
+        gold = [gear for gear in order_state["players"][0]["gear"]
+                if gear["code"] == "SFD-T03"]
+        self.assertEqual(len(gold), 1)
+        self.assertTrue(gold[0]["exhausted"])
 
 
 if __name__ == "__main__":

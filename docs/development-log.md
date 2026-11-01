@@ -373,3 +373,14 @@ Undercover Agent、Mindsplitter、Vanguard Helm）已有聚焦回归场景，car
 同时触发排序按 RUP5 190.6–190.6.d、383.3.d–383.3.e 统一为回合玩家起始、按回合顺序逐玩家排序；
 开始阶段多个战场的 Hold 可选效果先统一收集，再通过同一选择队列处理。Navori Fighting Pit 打开目标
 窗口时，其他战场的延迟可选效果会在目标确认后继续进入队列。
+
+### Spiritforged 可执行扩展批次（2026-11-01）
+
+扩展分支 `expansion/sets-2-5` 当前有 22 张 SFD 卡牌通过命名空间化注册表进入执行集。新增批次包含
+Lonely Poro、Stellacorn Herder、Direwing、Show of Strength、Downwell、Against the Odds、Detonate、
+Punch First、Factory Recall 与 Honest Broker。新增的目标型法术通过注册表声明目标范围，复用统一的
+点选/确认窗口；Gold Gear 衍生物使用显式 token 对象，并在回手/弃置路径中保持衍生物不进入物理手牌。
+
+SFD-204 On the Hunt 暂缓注册，因为它是签名法术，合法套牌还依赖尚未执行的 Sivir/Battle Mistress
+组合。Equip/Quick-Draw、Repeat、Hidden、复杂衍生物生成、多步骤替代效果及复杂控制权仍保持
+`catalog-only`，避免把部分实现伪装成完整规则支持。Spiritforged 定向测试 10 项，全量回归 414 项。

@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有第一批 12 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 22 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -40,8 +40,18 @@ python -m riftbound catalog --set SFD
 - `SFD-231-221` Seal of Strength：横置后产生 Body 符能；
 - `SFD-234-221` Seal of Discord：横置后产生 Chaos 符能；
 - `SFD-238-221` Seal of Unity：横置后产生 Order 符能。
+- `SFD-036-221` Lonely Poro：Deathknell，在该战场没有其他友方单位时抽 1；
+- `SFD-048-221` Stellacorn Herder：移动后抽 1；
+- `SFD-094-221` Direwing：控制另一条 Dragon 时入场就绪；
+- `SFD-106-221` Show of Strength：Reaction，按己方 Mighty 单位数量抽牌；
+- `SFD-147-221` Downwell：将所有单位与 Gear 按物主回手；
+- `SFD-001-221` Against the Odds：Reaction，点选战场上的友方单位，按该处敌方单位数量获得临时战力；
+- `SFD-005-221` Detonate：点选 Gear，将其摧毁并让控制者抽 2；
+- `SFD-097-221` Punch First：点选单位，获得本回合 +5 临时战力；
+- `SFD-135-221` Factory Recall：点选任意 Gear 回到其物主手牌；
+- `SFD-155-221` Honest Broker：Deathknell，生成横置 Gold Gear 衍生物。
 
-它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。每张后续牌需要先注册统一的能力/效果实现，并补充目标窗口、资源支付、替代效果和回归场景后，才能加入可执行集合。
+它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。签名牌 `SFD-204 On the Hunt` 暂缓注册，因为其合法套牌还依赖尚未执行的 Sivir/Battle Mistress 组合；装备附着、Repeat、Hidden、复杂衍生物和多步骤替代效果也继续保持 catalog-only。
 
 最小测试方式：
 

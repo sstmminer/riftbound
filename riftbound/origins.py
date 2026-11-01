@@ -488,6 +488,7 @@ class OriginsRules:
         deathknell_recycle = []
         deathknell_undercover = []
         registry_deathknell_draw = []
+        registry_deathknell_gold = []
         wraith_draw = []
         vanguard_triggers = []
         kogmaw_fields = []
@@ -633,6 +634,8 @@ class OriginsRules:
                     )
                     if alone:
                         registry_deathknell_draw.append(unit["owner"])
+                if implementation and implementation.deathknell_effect == "play_gold_gear":
+                    registry_deathknell_gold.append(unit["owner"])
                 # Each Wraith source triggers once per turn when a friendly
                 # unit dies. Mark the surviving source itself so multiple
                 # Wraiths each trigger once, while recursive cleanup cannot
@@ -661,6 +664,16 @@ class OriginsRules:
             draw_rng = rng if rng is not None else random.Random(0)
             for player in registry_deathknell_draw:
                 self._draw(state, player, 1, draw_rng)
+        if registry_deathknell_gold:
+            for player in registry_deathknell_gold:
+                token = self._object(state)
+                state["cards"][token] = {"code": "SFD-T03", "owner": player}
+                state["players"][player]["gear"].append({
+                    "id": token, "card": token, "code": "SFD-T03",
+                    "owner": player, "card_owner": player,
+                    "location": f"base:{player}", "exhausted": True,
+                    "temporary": False,
+                })
         if wraith_draw:
             draw_rng = rng if rng is not None else random.Random(0)
             for player in wraith_draw:
@@ -2863,11 +2876,27 @@ class OriginsRules:
             data = self.cards[code]
             implementation = self._card_implementation(code)
             if implementation and implementation.spell_effect:
-                for payment in self._payments(state, player, data["energy"], data["domains"],
+                spell_energy = max(0, data["energy"] - row.get("spell_discount", 0))
+                for payment in self._payments(state, player, spell_energy, data["domains"],
                                               data["power_cost"] or 0, spell=True):
-                    result.append(Action.make("play_spell", card=card, targets=[],
-                                              destination=None, spend_buff=None,
-                                              payment=payment))
+                    if implementation.target_scope:
+                        candidates = self._registry_spell_target_candidates(
+                            state, player, implementation.target_scope)
+                        if not candidates:
+                            continue
+                        result.append(Action.make(
+                            "play_spell_targeted", card=card,
+                            target_candidates=candidates,
+                            target_min=implementation.target_min,
+                            target_max=implementation.target_max,
+                            allow_repeat=False, target_pairs=None,
+                            ordered_pairs=False, destination=None,
+                            destination_select=False, spend_buff=None,
+                            payment=payment, registry_targeted=True))
+                    else:
+                        result.append(Action.make("play_spell", card=card, targets=[],
+                                                  destination=None, spend_buff=None,
+                                                  payment=payment))
                 continue
             targeted_only = code in {"OGN-029", "OGN-104", "OGN-183", "OGN-248"}
             if code in {"OGN-045", "OGN-064", "OGN-080"}:
@@ -3081,6 +3110,24 @@ class OriginsRules:
                                     deck_options=list(row["main"][:3]) if code == "OGN-183" else None))
                                 targeted_added = True
         return result
+
+    def _registry_spell_target_candidates(self, state, player, scope):
+        """Resolve target ids for a registered expansion spell.
+
+        The registry stores the target shape, while this shared resolver owns
+        zone/ownership rules.  This keeps an expansion card from inventing a
+        one-off target path in ``apply`` and gives the GUI the same candidate
+        list as policies and replays.
+        """
+        if scope == "any_unit":
+            return [unit["id"] for unit in state["units"]]
+        if scope == "friendly_field_unit":
+            return [unit["id"] for unit in self._units(state, player)
+                    if self._is_field(state, unit["location"])]
+        if scope == "any_gear":
+            return [gear["id"] for row in state["players"]
+                    for gear in row.get("gear", [])]
+        raise ValueError(f"unknown registered spell target scope: {scope}")
 
     def _unit_actions(self, state):
         player = state["actor"]
@@ -3771,6 +3818,9 @@ class OriginsRules:
 
     def _trash_card(self, state, card, fallback):
         if card is not None:
+            code = state.get("cards", {}).get(card, {}).get("code")
+            if code is not None and self.cards.get(code, {}).get("token"):
+                return
             state["players"][self._card_owner(state, card, fallback)]["trash"].append(card)
 
     def _trash_unit_card(self, state, unit):
@@ -3779,6 +3829,9 @@ class OriginsRules:
     def _hand_unit_card(self, state, unit):
         card = unit.get("card")
         if card is not None:
+            code = state.get("cards", {}).get(card, {}).get("code")
+            if code is not None and self.cards.get(code, {}).get("token"):
+                return
             row = state["players"][self._unit_card_owner(state, unit)]
             if card not in row["hand"]:
                 row["hand"].append(card)
@@ -3789,6 +3842,9 @@ class OriginsRules:
     def _hand_gear_card(self, state, gear):
         card = gear.get("card")
         if card is not None:
+            code = state.get("cards", {}).get(card, {}).get("code")
+            if code is not None and self.cards.get(code, {}).get("token"):
+                return
             row = state["players"][self._gear_card_owner(state, gear)]
             if card not in row["hand"]:
                 row["hand"].append(card)
@@ -5071,6 +5127,38 @@ class OriginsRules:
                 for gear in list(row.get("gear", [])):
                     row["gear"].remove(gear)
                     self._hand_gear_card(state, gear)
+            return True
+        if implementation and implementation.spell_effect == "buff_five":
+            target = self._unit(state, (item.get("targets") or [None])[0])
+            if target is not None:
+                target["temporary"] += 5
+            return True
+        if implementation and implementation.spell_effect == "buff_by_enemy":
+            target = self._unit(state, (item.get("targets") or [None])[0])
+            if target is not None and target["owner"] == owner and self._is_field(state, target["location"]):
+                enemy_count = len(self._units(state, 1 - owner, target["location"]))
+                target["temporary"] += 2 * enemy_count
+            return True
+        if implementation and implementation.spell_effect == "return_gear":
+            target_id = (item.get("targets") or [None])[0]
+            for row in state["players"]:
+                gear = next((gear for gear in row.get("gear", [])
+                             if gear["id"] == target_id), None)
+                if gear is not None:
+                    row["gear"].remove(gear)
+                    self._hand_gear_card(state, gear)
+                    break
+            return True
+        if implementation and implementation.spell_effect == "kill_gear_draw_two":
+            target_id = (item.get("targets") or [None])[0]
+            for row in state["players"]:
+                gear = next((gear for gear in row.get("gear", [])
+                             if gear["id"] == target_id), None)
+                if gear is not None:
+                    row["gear"].remove(gear)
+                    self._trash_gear_card(state, gear)
+                    self._draw(state, gear["owner"], 2, rng)
+                    break
             return True
         # The Dreaming Tree trigger is generated when the spell's target was
         # chosen, before the spell resolves.  Resolve-time checks are too
@@ -7273,7 +7361,10 @@ class OriginsRules:
         elif kind == "play_spell_targeted":
             card = args["card"]
             code = state["cards"][card]["code"]
-            if code not in (SIMPLE_TARGET_SPELLS | PAIR_TARGET_SPELLS | DESTINATION_TARGET_SPELLS | OPTIONAL_TARGET_SPELLS | CONSTRAINED_MULTI_TARGET_SPELLS | SEQUENTIAL_TARGET_SPELLS | {"OGN-029", "OGN-104", "OGN-105", "OGN-183", "OGN-206", "OGN-248"}) or card not in row["hand"]:
+            implementation = self._card_implementation(code)
+            registry_targeted = bool(implementation and implementation.target_scope)
+            if ((code not in (SIMPLE_TARGET_SPELLS | PAIR_TARGET_SPELLS | DESTINATION_TARGET_SPELLS | OPTIONAL_TARGET_SPELLS | CONSTRAINED_MULTI_TARGET_SPELLS | SEQUENTIAL_TARGET_SPELLS | {"OGN-029", "OGN-104", "OGN-105", "OGN-183", "OGN-206", "OGN-248"})
+                 and not registry_targeted) or card not in row["hand"]):
                 raise ValueError("target-selection spell is unavailable")
             data = self.cards[code]
             payment = args.get("payment", [])
@@ -7333,6 +7424,7 @@ class OriginsRules:
                                   "target_might_limit": args.get("target_might_limit"),
                                   "same_location": bool(args.get("same_location", False)),
                                   "item": item, "play_targeted": True,
+                                  "registry_targeted": registry_targeted,
                                   "cancel_play": before if code in {"OGN-104", "OGN-183"} else None}
             state["phase"], state["actor"] = "decision", player
             state["passes"] = 0

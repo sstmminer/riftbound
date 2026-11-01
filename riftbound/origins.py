@@ -147,6 +147,12 @@ class OriginsRules:
                     and "Dragon" in self.cards.get(unit["code"], {}).get("tags", [])
                     for unit in state["units"]
                 )
+            if effect == "enter_ready_if_another_mech":
+                return any(
+                    unit["owner"] == player
+                    and "Mech" in self.cards.get(unit["code"], {}).get("tags", [])
+                    for unit in state["units"]
+                )
         return False
 
     def _build_effect_registry(self):
@@ -207,6 +213,14 @@ class OriginsRules:
         registry.register("return_gear_from_trash", self._effect_return_gear_from_trash)
         registry.register("ready_another_friendly_mech", self._effect_ready_another_friendly_mech)
         registry.register("play_four_gold_gear", self._effect_play_four_gold_gear)
+        registry.register("optional_kill_gear", self._effect_optional_kill_gear)
+        registry.register("buff_another_on_move", self._effect_buff_another_on_move)
+        registry.register("legend_toggle", self._effect_legend_toggle)
+        registry.register("optional_draw_or_buff", self._effect_optional_draw_or_buff)
+        registry.register("discard_one_draw_two", self._effect_discard_one_draw_two)
+        registry.register("play_sand_soldier", self._effect_play_sand_soldier)
+        registry.register("kill_small_unit_and_gold", self._effect_kill_small_unit_and_gold)
+        registry.register("buff_other_units_two", self._effect_buff_other_units_two)
         registry.register("tideturner_target", self._effect_tideturner_target)
         registry.register("ember_hidden_buff", self._effect_ember_hidden_buff)
         registry.register("karthus_deathknell", self._effect_karthus_deathknell)
@@ -450,8 +464,18 @@ class OriginsRules:
         refuge = (unit.get("buff", 0) > 0 and any(
             gear["code"] == "OGN-063"
             for gear in state["players"][unit["owner"]]["gear"]))
+        mech_aura = (
+            "Mech" in self.cards.get(unit["code"], {}).get("tags", [])
+            and any(
+                other["owner"] == unit["owner"]
+                and (self._card_implementation(other["code"]) is not None)
+                and self._card_implementation(other["code"]).global_effect == "mechs_deflect_ganking"
+                for other in state["units"]
+            )
+        )
         return int(unit["code"] in {"OGN-013", "OGN-041", "OGN-155", "OGN-161", "OGN-231"}
                    or self._has_static_keyword(unit["code"], "deflect")
+                   or mech_aura
                    or (unit["code"] == "OGN-232" and self.might(state, unit) >= 5)
                    or refuge)
 
@@ -479,8 +503,18 @@ class OriginsRules:
 
     def _ganking(self, state, unit):
         location = unit["location"]
+        mech_aura = (
+            "Mech" in self.cards.get(unit["code"], {}).get("tags", [])
+            and any(
+                other["owner"] == unit["owner"]
+                and (self._card_implementation(other["code"]) is not None)
+                and self._card_implementation(other["code"]).global_effect == "mechs_deflect_ganking"
+                for other in state["units"]
+            )
+        )
         return ((unit["code"] in {"OGN-112", "OGN-162", "OGN-194"})
                 or self._has_static_keyword(unit["code"], "ganking")
+                or mech_aura
                 or (unit["code"] == "OGN-125" and unit["buff"])
                 or (unit["code"] == "OGN-232" and self.might(state, unit) >= 5)
                 or unit.get("temporary_ganking", False)
@@ -1750,6 +1784,42 @@ class OriginsRules:
             target["exhausted"] = True
             self._complete_death_replacement(state, target["id"])
             return True
+        if effect == "kill_gear":
+            gears = [gear["id"] for row in state["players"] for gear in row.get("gear", [])]
+            if not gears:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": gears,
+                "item": {"effect": "kill_gear_optional", "owner": player,
+                          "source": item.get("source")},
+                "optional_gear_effect": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
+        if effect == "return_card_from_trash":
+            row = state["players"][player]
+            cards = [uid for uid in row["trash"]
+                     if self.cards.get(state["cards"][uid]["code"], {}).get("type")
+                     in {"unit", "gear"}]
+            if not cards:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": cards,
+                "item": {"effect": "return_card_from_trash", "owner": player},
+                "optional_return_card": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
+        if effect == "draw_or_buff":
+            state["decision"] = {
+                "kind": "choice", "player": player,
+                "options": ["draw", "buff"],
+                "item": {"effect": "draw_or_buff", "owner": player,
+                          "source": item.get("source")},
+                "draw_or_buff": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
         if effect == "replay_trash_unit":
             code = item.get("code")
             candidates = [uid for uid in state["players"][player]["trash"]
@@ -1919,6 +1989,13 @@ class OriginsRules:
                 if implementation and implementation.hold_effect == "play_two_gold_gear":
                     self._play_gold_gear_token(state, player, exhausted=True)
                     self._play_gold_gear_token(state, player, exhausted=True)
+                if (implementation
+                        and implementation.hold_effect == "optional_return_card_from_trash"
+                        and any(self.cards.get(state["cards"][uid]["code"], {}).get("type")
+                                in {"unit", "gear"}
+                                for uid in state["players"][player]["trash"])):
+                    self._queue_optional(state, player, "return_card_from_trash",
+                                         source=unit["id"])
         # These battlefield triggers are intentionally resolved at the score
         # event, after the point/draw result is known.  The closed engine has
         # no gear zone yet, so the effects here only touch existing card
@@ -3152,6 +3229,13 @@ class OriginsRules:
         if scope == "any_gear":
             return [gear["id"] for row in state["players"]
                     for gear in row.get("gear", [])]
+        if scope == "field_unit":
+            return [unit["id"] for unit in state["units"]
+                    if self._is_field(state, unit["location"])]
+        if scope == "field_unit_might_le_2":
+            return [unit["id"] for unit in state["units"]
+                    if self._is_field(state, unit["location"])
+                    and self.might(state, unit) <= 2]
         raise ValueError(f"unknown registered spell target scope: {scope}")
 
     def _unit_actions(self, state):
@@ -3259,6 +3343,7 @@ class OriginsRules:
         if not moved:
             return False
         origins = {unit["id"]: unit["location"] for unit in moved}
+        move_triggers = []
         for unit in moved:
             if unit["owner"] != initiator and not from_effect:
                 raise ValueError("cannot move an enemy unit with a normal move")
@@ -3291,6 +3376,15 @@ class OriginsRules:
             if (implementation and implementation.move_effect == "buff_self_two_from_field"
                     and self._is_field(state, origin)):
                 unit["temporary"] += 2
+            if (implementation and implementation.move_effect == "buff_another_on_move"
+                    and self._is_field(state, destination)):
+                move_triggers.append({"effect": "buff_another_on_move",
+                                       "source": unit["id"], "owner": unit["owner"],
+                                       "location": destination})
+            if (implementation and implementation.move_effect == "play_recruit_three"
+                    and self._is_field(state, destination)):
+                for _ in range(3):
+                    self._new_unit(state, TOKEN, unit["owner"], destination)
         # Stealthy Pursuer follows a friendly move from its location only
         # through an explicit optional window.  The printed ability says
         # "may"; accepting the window exhausts the Pursuer and moves it to
@@ -3332,6 +3426,8 @@ class OriginsRules:
                        and other["exhausted"] for other in state["units"]):
                     self._queue_optional(state, initiator, "miss_fortune_ready",
                                          source=unit["id"])
+        if move_triggers:
+            self._triggers(state, move_triggers, preserve_context=from_effect)
         return entered_showdown
 
     def legal_actions(self, state):
@@ -3594,6 +3690,10 @@ class OriginsRules:
             return [u["id"] for u in self._units(state, owner) if u["id"] != source]
         if effect == "buff_target":
             return [u["id"] for u in self._units(state, owner) if u["id"] != source]
+        if effect == "buff_another_on_move":
+            location = item.get("location")
+            return [u["id"] for u in self._units(state, owner, location)
+                    if u["id"] != source]
         if effect == "return_unit_trigger":
             return [uid for uid in state["players"][owner]["trash"]
                     if self.cards[state["cards"][uid]["code"]]["type"] == "unit"]
@@ -4582,6 +4682,80 @@ class OriginsRules:
             self._play_gold_gear_token(state, item["owner"], exhausted=True)
         return True
 
+    def _effect_optional_kill_gear(self, state, item, rng):
+        """Queue Disarming Rake's optional gear destruction."""
+        if any(row.get("gear") for row in state["players"]):
+            self._queue_optional(state, item["owner"], "kill_gear",
+                                 source=item.get("source"))
+        return True
+
+    def _effect_buff_another_on_move(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        source = self._unit(state, item.get("source"))
+        if (target is not None and source is not None
+                and target["owner"] == item["owner"]
+                and target["id"] != source["id"]
+                and target["location"] == item.get("location")):
+            self._apply_buff(state, target)
+        return True
+
+    def _effect_legend_toggle(self, state, item, rng):
+        row = state["players"][item["owner"]]
+        if row.get("legend") is None:
+            return True
+        state["decision"] = {
+            "kind": "choice", "player": item["owner"],
+            "options": ["ready", "exhaust"],
+            "item": item, "legend_toggle": True,
+        }
+        state["phase"], state["actor"], state["passes"] = "decision", item["owner"], 0
+        return False
+
+    def _effect_optional_draw_or_buff(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if source is not None and source["owner"] == item["owner"]:
+            self._queue_optional(state, item["owner"], "draw_or_buff",
+                                 source=source["id"])
+        return True
+
+    def _effect_discard_one_draw_two(self, state, item, rng):
+        hand = state["players"][item["owner"]]["hand"]
+        if not hand:
+            self._draw(state, item["owner"], 2, rng)
+            return True
+        state["decision"] = {
+            "kind": "discard", "player": item["owner"], "remaining": 1,
+            "item": item, "discard_one_draw_two": True,
+        }
+        state["phase"], state["actor"], state["passes"] = "decision", item["owner"], 0
+        return False
+
+    def _effect_play_sand_soldier(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if source is not None:
+            self._new_unit(state, "SFD-T04", item["owner"], source["location"])
+        return True
+
+    def _effect_kill_small_unit_and_gold(self, state, item, rng):
+        target = self._unit(state, (item.get("targets") or [None])[0])
+        if target is None or not self._is_field(state, target["location"]):
+            return True
+        if self.might(state, target) > 2:
+            return True
+        target_owner = target["owner"]
+        state["units"].remove(target)
+        self._trash_unit_card(state, target)
+        for _ in range(2 if target_owner == item["owner"] else 1):
+            self._play_gold_gear_token(state, item["owner"], exhausted=True)
+        return True
+
+    def _effect_buff_other_units_two(self, state, item, rng):
+        source = item.get("source")
+        for unit in self._units(state, item["owner"]):
+            if unit["id"] != source:
+                unit["temporary"] += 2
+        return True
+
     def _effect_tideturner_target(self, state, item, rng):
         """Resolve Tideturner's atomic location swap.
 
@@ -5248,6 +5422,18 @@ class OriginsRules:
                     self._trash_gear_card(state, gear)
                     self._draw(state, gear["owner"], 2, rng)
                     break
+            return True
+        if implementation and implementation.spell_effect == "kill_small_unit_and_gold":
+            target = self._unit(state, (item.get("targets") or [None])[0])
+            if target is None or not self._is_field(state, target["location"]):
+                return True
+            if self.might(state, target) > 2:
+                return True
+            target_owner = target["owner"]
+            state["units"].remove(target)
+            self._trash_unit_card(state, target)
+            for _ in range(2 if target_owner == owner else 1):
+                self._play_gold_gear_token(state, owner, exhausted=True)
             return True
         # The Dreaming Tree trigger is generated when the spell's target was
         # chosen, before the spell resolves.  Resolve-time checks are too
@@ -6288,6 +6474,39 @@ class OriginsRules:
                     if state.get("decision") is None and state.get("reveal") is None:
                         self._flush_deferred_battlefield_optionals(state)
                     return
+                if decision.get("legend_toggle"):
+                    if option not in {"ready", "exhaust"}:
+                        raise ValueError("invalid legend state choice")
+                    row = state["players"][player]
+                    row["legend_exhausted"] = option == "exhaust"
+                    item = decision.get("item")
+                    state["decision"] = None
+                    self._finish_resolution(state)
+                    return
+                if decision.get("draw_or_buff"):
+                    if option not in {"draw", "buff"}:
+                        raise ValueError("invalid draw or buff choice")
+                    item = decision.get("item", {})
+                    source = self._unit(state, item.get("source"))
+                    if option == "draw":
+                        self._draw(state, player, 1, rng)
+                    elif source is not None and source["owner"] == player:
+                        self._apply_buff(state, source)
+                    state["decision"] = None
+                    restored = state.pop("optional_return", None)
+                    state["optional_ordered"] = False
+                    if state.get("optional"):
+                        state["phase"], state["actor"] = "optional", state["optional"][0]["player"]
+                        state["passes"] = 0
+                    elif restored is None:
+                        state["phase"], state["actor"], state["passes"] = "main", player, 0
+                    elif restored["phase"] == "chain" and not state.get("chain"):
+                        self._finish_resolution(state)
+                    else:
+                        state["phase"], state["actor"], state["passes"] = (
+                            restored["phase"], restored["actor"], restored.get("passes", 0))
+                    self._cleanup(state, rng)
+                    return
                 if decision.get("counter_retarget_choice"):
                     item = decision["item"]
                     if option not in decision.get("options", []):
@@ -6393,6 +6612,13 @@ class OriginsRules:
                         state["decision"] = None
                         state["phase"], state["actor"], state["passes"] = "chain", player, 0
                     return
+                if decision.get("discard_one_draw_two"):
+                    self._draw(state, player, 2, rng)
+                    item = decision.get("item")
+                    state["decision"] = None
+                    self._finish_resolution(state)
+                    self._trigger_jinx_discard(state, player)
+                    return
                 if decision.get("zaun_warrens"):
                     state["decision"] = None
                     # The score helper starts this choice from Main after the
@@ -6484,6 +6710,57 @@ class OriginsRules:
                 decision = state["decision"]
                 if args["target"] not in decision["targets"]:
                     raise ValueError("invalid target choice")
+                if decision.get("optional_gear_effect"):
+                    target_id = args["target"]
+                    owner = player
+                    for row in state["players"]:
+                        gear = next((gear for gear in row.get("gear", [])
+                                     if gear["id"] == target_id), None)
+                        if gear is not None:
+                            row["gear"].remove(gear)
+                            self._trash_gear_card(state, gear)
+                            break
+                    state["decision"] = None
+                    state["optional_ordered"] = False
+                    if state.get("optional"):
+                        state["phase"], state["actor"] = "optional", state["optional"][0]["player"]
+                        state["passes"] = 0
+                    else:
+                        restored = state.pop("optional_return", None)
+                        if restored is None:
+                            state["phase"], state["actor"], state["passes"] = "main", owner, 0
+                        else:
+                            if restored["phase"] == "chain" and not state.get("chain"):
+                                self._finish_resolution(state)
+                            else:
+                                state["phase"], state["actor"], state["passes"] = (
+                                    restored["phase"], restored["actor"], restored.get("passes", 0))
+                    self._cleanup(state, rng)
+                    return
+                if decision.get("optional_return_card"):
+                    target_id = args["target"]
+                    row = state["players"][player]
+                    if target_id not in row["trash"]:
+                        raise ValueError("trash card is no longer available")
+                    row["trash"].remove(target_id)
+                    row["hand"].append(target_id)
+                    state["decision"] = None
+                    state["optional_ordered"] = False
+                    if state.get("optional"):
+                        state["phase"], state["actor"] = "optional", state["optional"][0]["player"]
+                        state["passes"] = 0
+                    else:
+                        restored = state.pop("optional_return", None)
+                        if restored is None:
+                            state["phase"], state["actor"], state["passes"] = "main", player, 0
+                        else:
+                            if restored["phase"] == "chain" and not state.get("chain"):
+                                self._finish_resolution(state)
+                            else:
+                                state["phase"], state["actor"], state["passes"] = (
+                                    restored["phase"], restored["actor"], restored.get("passes", 0))
+                    self._cleanup(state, rng)
+                    return
                 if decision.get("optional_ready_effect"):
                     target = self._unit(state, args["target"])
                     item = decision.get("item", {})

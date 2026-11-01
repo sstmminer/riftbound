@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 35 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 46 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -63,6 +63,17 @@ python -m riftbound catalog --set SFD
 - `SFD-171-221` Renata Glasc, Industrialist：己方衍生物入场时就绪；
 - `SFD-174-221` Trove Golem：入场后生成四个横置 Gold Gear。
 - `SFD-098-221` Sea Monkey：出牌时可额外支付 1 点法力，支付后获得增益。
+- `SFD-032-221` Disarming Rake：入场时先确认是否发动，再点选并摧毁任意 Gear；
+- `SFD-035-221` Guardian of the Passage：Hold 时确认是否从弃牌区点选一张单位或 Gear 回手；
+- `SFD-038-221` Ribbon Dancer：移动到战场后，通过同一目标窗口点选另一名友方单位并给予增益；
+- `SFD-039-221` Royal Entourage：入场结算时由玩家选择将己方 Legend 横置或待命；
+- `SFD-071-221` Breakneck Mech：Mech 共享 Deflect、Ganking，并按现有入场条件进入待命；
+- `SFD-091-221` Buhru Captain：入场先确认是否发动，再选择抽牌或给自身增益；
+- `SFD-149-221` Ezreal, Prodigy：入场打开弃牌选择，完成弃牌后抽两张；
+- `SFD-157-221` Royal Guard：入场生成 2 Might 的 Sand Soldier 衍生物；
+- `SFD-162-221` Blood Money：通过统一战场单位目标窗口点选 2 Might 以下单位，按其控制者生成 Gold；
+- `SFD-175-221` Undertitan：入场给予其他友方单位本回合 +2 Might；
+- `SFD-179-221` Corinna Veraza：从战场移动时在目的地生成三个 Recruit 衍生物。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。签名牌 `SFD-204 On the Hunt` 暂缓注册，因为其合法套牌还依赖尚未执行的 Sivir/Battle Mistress 组合；装备附着、Repeat、Hidden、复杂衍生物和多步骤替代效果也继续保持 catalog-only。
 

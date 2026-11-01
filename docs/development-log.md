@@ -376,12 +376,19 @@ Undercover Agent、Mindsplitter、Vanguard Helm）已有聚焦回归场景，car
 
 ### Spiritforged 可执行扩展批次（2026-11-01）
 
-扩展分支 `expansion/sets-2-5` 当前有 35 张 SFD 卡牌通过命名空间化注册表进入执行集。新增批次包含
+扩展分支 `expansion/sets-2-5` 当前有 46 张 SFD 卡牌通过命名空间化注册表进入执行集。新增批次包含
 Lonely Poro、Stellacorn Herder、Direwing、Show of Strength、Downwell、Against the Odds、Detonate、
 Punch First、Factory Recall、Honest Broker、Simian Ancestor、Dropboarder、Treasure Hunter、Harpoon Squad、
 Trusty Ramhound、Unsung Hero、Dunebreaker、Aspiring Engineer、Bubble Bot、Eminent Benefactor、Renata Glasc, Industrialist、Trove Golem 与 Sea Monkey。新增的目标型法术通过注册表声明目标范围，复用统一的
 点选/确认窗口；Gold Gear 衍生物使用显式 token 对象，并在回手/弃置路径中保持衍生物不进入物理手牌。
 
+本批继续加入 Disarming Rake、Guardian of the Passage、Ribbon Dancer、Royal Entourage、Breakneck Mech、
+Buhru Captain、Ezreal, Prodigy、Royal Guard、Blood Money、Undertitan 与 Corinna Veraza。它们分别复用
+可选 Gear 目标、弃牌区回收、移动后目标增益、Legend 状态选择、Mech 关键词/入场条件、抽牌或增益选择、
+弃牌后抽牌、Sand Soldier/Recruit 衍生物、战场单位目标伤害与全体临时增益窗口。Sand Soldier 作为
+Spiritforged 专用非构筑 token 注册，和现有 Recruit/Gold token 共用对象生命周期；每个可选效果均先显示
+确认窗口，目标和弃牌均通过统一的点击选择，未出现合法目标时会按规则移除触发而不会卡住结算链。
+
 SFD-204 On the Hunt 暂缓注册，因为它是签名法术，合法套牌还依赖尚未执行的 Sivir/Battle Mistress
 组合。Equip/Quick-Draw、Repeat、Hidden、复杂衍生物生成、多步骤替代效果及复杂控制权仍保持
-`catalog-only`，避免把部分实现伪装成完整规则支持。Spiritforged 定向测试 14 项，全量回归 418 项。
+`catalog-only`，避免把部分实现伪装成完整规则支持。Spiritforged 定向测试 18 项，全量回归 422 项。

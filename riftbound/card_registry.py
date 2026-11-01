@@ -442,4 +442,7 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-105-221", sfd, "unit", "executable",
                            static_keywords=frozenset({"untargetable_enemy"}),
                            notes="Ruin Runner; enemy target windows exclude this unit."),
+        CardImplementation("SFD-204-221", sfd, "spell", "executable",
+                           spell_effect="ready_friendly_units",
+                           notes="On the Hunt; ready all friendly units through the shared ready path."),
     ])

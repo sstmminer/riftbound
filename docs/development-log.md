@@ -440,6 +440,10 @@ Hidden、跨区免费打出和多步替代效果仍保持 catalog-only。
 谓词，并同时接入注册法术、普通法术目标规格和触发能力目标窗口；应用层也会拒绝过期或非法的敌方目标。
 这为后续“不能被敌方法术/能力选择”的牌提供了可复用入口。Spiritforged 定向测试 31 项，全量测试为
 435 项。
+
+本轮加入 Signature 法术 `SFD-204-221` On the Hunt，注册表规模从 105 增至 106。它不再依赖签名牌的
+硬编码分支，而是通过注册的 `ready_friendly_units` 复用统一就绪 helper，因此普通出牌、免费打出和
+后续能力复制都能共享状态更新。Spiritforged 定向测试 32 项，全量测试为 436 项。
 本轮继续批量扩展 11 张 Spiritforged 可执行牌，注册表规模从 85 增至 96：加入 Renata、Ahri、Yasuo、
 Darius、Karma、Mechanized Menace 与 Glorious Executioner 的普通/替代印刷。它们全部复用统一能力注册表、
 战斗触发目标窗口、回收事件、移动计数、Legend 全局能力和战斗胜利监听；没有为单张卡建立旁路结算。

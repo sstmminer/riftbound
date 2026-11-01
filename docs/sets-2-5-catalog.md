@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 110 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 114 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -130,8 +130,12 @@ python -m riftbound catalog --set SFD
 - `SFD-110A-221` Fiora, Peerless alternate print：复用单挑战斗加倍 Might 计算。
 - `SFD-233-221` / `SFD-233-STAR-221` Yone, Blademaster：复用征服无人战场后的基地伤害目标窗口。
 - `SFD-044-221` Legion Quartermaster：出牌动作中明确点选并回收一个友方 Gear 作为额外费用。
+- `SFD-004-221` Bushwhack：Hidden 关键词复用现有暗置路径；结算后本回合后续友方单位入场就绪，并生成横置 Gold Gear。
+- `SFD-122-221` Called Shot：结算时打开牌库顶两张的公开选择窗口，玩家抽取一张，另一张通过统一回收事件置于牌库底。
+- `SFD-132-221` Beast Below：入场后打开有序双目标窗口，必须选择另一名友方单位与一名敌方单位并分别回到物主手牌。
+- `SFD-138-221` Windsinger：Hidden 单位入场后先确认是否发动，再点选战场上 Might 不超过 3 的单位回手。
 
-它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。签名牌 `SFD-204 On the Hunt` 暂缓注册，因为其合法套牌还依赖尚未执行的 Sivir/Battle Mistress 组合；装备附着、Repeat、Hidden、复杂衍生物和多步骤替代效果也继续保持 catalog-only。
+它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。装备附着、Repeat、复杂衍生物和多步骤替代效果继续保持 catalog-only。
 
 最小测试方式：
 

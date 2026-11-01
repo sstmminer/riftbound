@@ -465,3 +465,10 @@ Tank 和 Hold 得分减费，Vayne 普通/替代印刷的 Assault 3、条件入�
 Hidden 判断、Shield 战力、每回合 Hold 计数、Legend 付费回手和注册能力动作均接入既有共享路径。Teemo
 的公开查看窗口由对手结束，Hidden 牌数量在窗口关闭后统一计算，避免提前结算。Spiritforged 定向测试
 30 项，全量测试为 434 项。
+
+本轮长时批量扩展继续沿用统一注册表和共享事件窗口，新增 4 张可执行牌，注册表规模从 110 增至
+114：Bushwhack（Hidden、回合内友方单位入场就绪与 Gold token）、Called Shot（牌库顶两张的公开
+选择/抽取/回收窗口）、Beast Below（另一名友方与一名敌方的有序成对回手目标窗口）以及 Windsinger
+（Hidden 入场后的可选低战力战场单位回手）。其中 Beast Below 的目标对在触发生成时固定，UI 每次点击
+都会通过共享 `target_pairs` 约束拒绝同侧目标；Called Shot 的另一张牌会走统一 recycle 事件，因此
+Karma/Vision 的回收监听不会被跳过。Spiritforged 定向新增 4 项，全量回归为 441 项。

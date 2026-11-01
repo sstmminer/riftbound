@@ -187,6 +187,8 @@ class OriginsRules:
         registry.register("riptide_damage", self._effect_riptide_damage)
         registry.register("fae_debuff", self._effect_fae_debuff)
         registry.register("return_field_unit", self._effect_return_field_unit)
+        registry.register("return_friendly_enemy", self._effect_return_friendly_enemy)
+        registry.register("optional_return_small_field_unit", self._effect_optional_return_small_field_unit)
         registry.register("move_field_unit", self._effect_move_field_unit)
         registry.register("poro_herder", self._effect_poro_herder)
         registry.register("sprite_mother", self._effect_sprite_mother)
@@ -1412,6 +1414,25 @@ class OriginsRules:
         if reveal is None:
             raise ValueError("no reveal window is active")
         effect = reveal.get("effect")
+        if effect == "draw_one_recycle_one":
+            owner = reveal["owner"]
+            row = state["players"][owner]
+            original = [uid for uid in reveal.get("cards", []) if uid in row["main"]]
+            chosen = selected[0] if selected else None
+            if chosen is not None and chosen in row["main"]:
+                row["main"].remove(chosen)
+                row["hand"].append(chosen)
+            remaining = [uid for uid in original if uid != chosen and uid in row["main"]]
+            if remaining:
+                self._recycle_cards_to_main(state, owner, remaining, source="main", rng=rng)
+            item = reveal.get("item")
+            state["reveal"] = None
+            if item is not None:
+                item["reveal_done"] = True
+                state["chain"].append(item)
+                state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                self._finish_resolution(state)
+            return
         if effect == "apprentice_smith":
             owner = reveal["owner"]
             row = state["players"][owner]
@@ -1760,6 +1781,22 @@ class OriginsRules:
     def _resolve_optional(self, state, item, rng):
         player = item["player"]
         effect = item["effect"]
+        if effect == "return_small_field_unit":
+            candidates = [unit["id"] for unit in state["units"]
+                          if self._is_field(state, unit["location"])
+                          and self.might(state, unit) <= 3
+                          and unit["id"] != item.get("source")]
+            if not candidates:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player,
+                "targets": candidates,
+                "item": {"effect": "return_field_unit", "owner": player,
+                          "source": item.get("source")},
+                "optional_return_field_unit": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
         if effect == "return_self":
             source = self._unit(state, item.get("source"))
             row = state["players"][player]
@@ -4027,6 +4064,13 @@ class OriginsRules:
         if effect == "return_field_unit":
             return [u["id"] for u in state["units"]
                     if u["id"] != source and self._is_field(state, u["location"])]
+        if effect == "return_friendly_enemy":
+            # Beast Below has one mandatory two-target trigger.  The trigger
+            # record carries the legal friendly/enemy pairs so the shared
+            # click-to-select window can reject a same-side or source target
+            # before the ability enters the Chain.
+            return [u["id"] for u in state["units"]
+                    if u["id"] != source]
         if effect == "move_field_unit":
             return [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
         if effect == "tideturner_target":
@@ -4064,6 +4108,8 @@ class OriginsRules:
                 "max": item.get("target_max", 2 if item.get("target_multi") else 1),
                 "allow_repeat": bool(item.get("target_allow_repeat")),
                 "selected": [],
+                "target_pairs": [list(pair) for pair in item.get("target_pairs", [])],
+                "ordered_pairs": bool(item.get("ordered_pairs", False)),
             }
             state["phase"], state["actor"] = "decision", item["owner"]
             state["passes"] = 0
@@ -4240,6 +4286,46 @@ class OriginsRules:
         card = target.get("card")
         if card is not None:
             self._hand_unit_card(state, target)
+        return True
+
+    def _effect_return_friendly_enemy(self, state, item, rng):
+        """Resolve Beast Below's paired return as one atomic effect.
+
+        Target legality is fixed when the triggered ability is finalized.  At
+        resolution each selected unit is still checked against its controller
+        and the source exclusion, then both physical cards are returned to
+        their owners' hands through the shared zone-transfer helper.
+        """
+        targets = list(item.get("targets") or [])
+        if len(targets) != 2:
+            return True
+        source = self._unit(state, item.get("source"))
+        units = [self._unit(state, target_id) for target_id in targets]
+        if any(unit is None for unit in units) or len({unit["id"] for unit in units}) != 2:
+            return True
+        friendly = next((unit for unit in units
+                         if unit["owner"] == item.get("owner")
+                         and (source is None or unit["id"] != source["id"])), None)
+        enemy = next((unit for unit in units
+                      if unit["owner"] != item.get("owner")), None)
+        if friendly is None or enemy is None:
+            return True
+        for unit in (friendly, enemy):
+            if unit in state["units"]:
+                state["units"].remove(unit)
+                self._hand_unit_card(state, unit)
+        return True
+
+    def _effect_optional_return_small_field_unit(self, state, item, rng):
+        """Queue Windsinger's optional small-unit return target."""
+        candidates = [unit["id"] for unit in state["units"]
+                      if self._is_field(state, unit["location"])
+                      and self.might(state, unit) <= 3
+                      and unit["id"] != item.get("source")]
+        if not candidates:
+            return True
+        self._queue_optional(state, item["owner"], "return_small_field_unit",
+                             source=item.get("source"), candidates=candidates)
         return True
 
     def _players_hand(self, state, player):
@@ -5776,6 +5862,20 @@ class OriginsRules:
             for unit in self._units(state, owner):
                 self._ready_unit(state, unit)
             return True
+        if implementation and implementation.spell_effect == "ready_friendly_and_gold":
+            state["players"][owner]["ready_play"] = True
+            self._play_gold_gear_token(state, owner, exhausted=True)
+            return True
+        if implementation and implementation.spell_effect == "draw_one_recycle_one":
+            row = state["players"][owner]
+            top = list(row["main"][:2])
+            if not top:
+                return True
+            self._open_reveal(state, owner=owner, cards=top, mode="select",
+                              chooser=owner, minimum=1, maximum=1,
+                              effect="draw_one_recycle_one", item=item,
+                              choices=top, rng=rng)
+            return False
         if implementation and implementation.spell_effect == "draw_three":
             self._draw(state, owner, 3, rng)
             return True
@@ -7295,6 +7395,28 @@ class OriginsRules:
                     self._draw(state, player, 1, rng)
                     self._cleanup(state, rng)
                     return
+                if decision.get("optional_return_field_unit"):
+                    target = self._unit(state, args["target"])
+                    if (target is None or not self._is_field(state, target["location"])
+                            or self.might(state, target) > 3):
+                        raise ValueError("optional return target is no longer legal")
+                    state["units"].remove(target)
+                    self._hand_unit_card(state, target)
+                    state["decision"] = None
+                    state["optional_ordered"] = False
+                    restored = state.pop("optional_return", None)
+                    if state.get("optional"):
+                        state["phase"], state["actor"], state["passes"] = (
+                            "optional", state["optional"][0]["player"], 0)
+                    elif restored is None:
+                        state["phase"], state["actor"], state["passes"] = "main", player, 0
+                    elif restored["phase"] == "chain" and not state.get("chain"):
+                        self._finish_resolution(state)
+                    else:
+                        state["phase"], state["actor"], state["passes"] = (
+                            restored["phase"], restored["actor"], restored.get("passes", 0))
+                    self._cleanup(state, rng)
+                    return
                 if decision.get("score_target"):
                     target = self._unit(state, args["target"])
                     if target is None or target["owner"] != player or target["buff"]:
@@ -8433,8 +8555,21 @@ class OriginsRules:
                 triggers = self._second_card_triggers(state, player)
                 implementation = self._card_implementation(code)
                 if implementation and implementation.entry_trigger:
-                    triggers.append({"effect": implementation.entry_trigger,
-                                     "source": unit["id"], "owner": player})
+                    trigger = {"effect": implementation.entry_trigger,
+                               "source": unit["id"], "owner": player}
+                    if implementation.entry_trigger == "return_friendly_enemy":
+                        friendly = [candidate["id"] for candidate in self._units(state, player)
+                                    if candidate["id"] != unit["id"]]
+                        enemy = [candidate["id"] for candidate in self._units(state, 1 - player)]
+                        trigger.update({
+                            "target_multi": True,
+                            "target_min": 2,
+                            "target_max": 2,
+                            "target_pairs": [[friendly_id, enemy_id]
+                                             for friendly_id in friendly
+                                             for enemy_id in enemy],
+                        })
+                    triggers.append(trigger)
                 if code == "OGN-067":
                     triggers.append({"effect": "blitz_move", "source": unit["id"], "owner": player})
                 if code == "OGN-016" and was_legion:

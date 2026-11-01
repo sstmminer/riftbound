@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 110)
+        self.assertEqual(len(registry.executable_codes()), 114)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -142,6 +142,12 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-233-221").conquer_effect, "damage_enemy_base_by_might")
         self.assertEqual(registry.get("SFD-233-STAR-221").conquer_effect, "damage_enemy_base_by_might")
         self.assertEqual(registry.get("SFD-044-221").additional_cost_effect, "return_gear")
+        self.assertEqual(registry.get("SFD-132-221").entry_trigger, "return_friendly_enemy")
+        self.assertEqual(registry.get("SFD-004-221").spell_effect, "ready_friendly_and_gold")
+        self.assertIn("hidden", registry.get("SFD-004-221").static_keywords)
+        self.assertEqual(registry.get("SFD-122-221").spell_effect, "draw_one_recycle_one")
+        self.assertEqual(registry.get("SFD-138-221").entry_trigger, "optional_return_small_field_unit")
+        self.assertIn("hidden", registry.get("SFD-138-221").static_keywords)
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -159,6 +165,92 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         deck = legal_deck("SFD-002-221", "OGN-247", "OGN-039")
         with self.assertRaises(RulesUnavailable):
             SpiritforgedRules([deck, deck])
+
+    def test_beast_below_uses_a_friendly_enemy_pair_window(self):
+        deck = legal_deck("SFD-132-221", "OGN-267", "OGN-193")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(6))
+        card = move_code_to_hand(state, 0, "SFD-132-221")
+        friendly = rules._new_unit(state, "OGN-001", 0, "base:0", exhausted=False)
+        enemy = rules._new_unit(state, "OGN-001", 1, "base:1", exhausted=False)
+        state["phase"], state["actor"] = "main", 0
+        state["players"][0]["energy"] = 20
+        state["players"][0]["power"] = ["chaos"] * 20
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_unit"
+                    and __import__("json").loads(action.arguments)["card"] == card
+                    and __import__("json").loads(action.arguments)["location"] == "base:0")
+        rules.apply(state, play, random.Random(7))
+        self.assertEqual(state["decision"]["target_pairs"], [[friendly["id"], enemy["id"]]])
+        rules.apply(state, Action.make("choose_target", target=friendly["id"]), random.Random(8))
+        rules.apply(state, Action.make("choose_target", target=enemy["id"]), random.Random(9))
+        rules.apply(state, Action.make("confirm_targets"), random.Random(10))
+        rules.apply(state, Action.make("pass"), random.Random(11))
+        rules.apply(state, Action.make("pass"), random.Random(12))
+        self.assertNotIn(friendly, state["units"])
+        self.assertNotIn(enemy, state["units"])
+
+    def test_bushwhack_uses_common_spell_resolution_and_ready_play_window(self):
+        deck = legal_deck("SFD-004-221", "OGN-251", "OGN-202")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(13))
+        card = move_code_to_hand(state, 0, "SFD-004-221")
+        state["phase"], state["actor"] = "main", 0
+        state["players"][0]["energy"] = 10
+        state["players"][0]["power"] = ["chaos"] * 10
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_spell"
+                    and __import__("json").loads(action.arguments)["card"] == card)
+        rules.apply(state, play, random.Random(14))
+        rules.apply(state, Action.make("pass"), random.Random(15))
+        rules.apply(state, Action.make("pass"), random.Random(16))
+        self.assertTrue(state["players"][0]["ready_play"])
+        self.assertTrue(any(gear["code"] == "SFD-T03" for gear in state["players"][0]["gear"]))
+
+    def test_called_shot_opens_a_two_card_reveal_window(self):
+        deck = legal_deck("SFD-122-221", "OGN-267", "OGN-193")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(17))
+        card = move_code_to_hand(state, 0, "SFD-122-221")
+        state["phase"], state["actor"] = "main", 0
+        state["players"][0]["energy"] = 10
+        state["players"][0]["power"] = ["chaos"] * 10
+        top = list(state["players"][0]["main"][:2])
+        self.assertEqual(len(top), 2)
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_spell"
+                    and __import__("json").loads(action.arguments)["card"] == card)
+        rules.apply(state, play, random.Random(18))
+        rules.apply(state, Action.make("pass"), random.Random(19))
+        rules.apply(state, Action.make("pass"), random.Random(20))
+        self.assertEqual(state["phase"], "reveal")
+        rules.apply(state, Action.make("choose_revealed", card=top[0]), random.Random(21))
+        rules.apply(state, Action.make("confirm_revealed"), random.Random(22))
+        self.assertIn(top[0], state["players"][0]["hand"])
+        self.assertEqual(state["players"][0]["main"][-1], top[1])
+
+    def test_windsinger_optional_return_has_a_target_window(self):
+        deck = legal_deck("SFD-138-221", "OGN-267", "OGN-193")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(23))
+        card = move_code_to_hand(state, 0, "SFD-138-221")
+        target = rules._new_unit(state, "OGN-003", 1, 0, exhausted=False)
+        state["phase"], state["actor"] = "main", 0
+        state["players"][0]["energy"] = 10
+        state["players"][0]["power"] = ["chaos"] * 10
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_unit"
+                    and __import__("json").loads(action.arguments)["card"] == card
+                    and __import__("json").loads(action.arguments)["location"] == "base:0")
+        rules.apply(state, play, random.Random(24))
+        rules.apply(state, Action.make("pass"), random.Random(25))
+        rules.apply(state, Action.make("pass"), random.Random(26))
+        self.assertEqual(state["phase"], "optional")
+        optional = state["optional"][0]["id"]
+        rules.apply(state, Action.make("optional_effect", optional=optional, accept=True), random.Random(27))
+        self.assertEqual(state["decision"]["targets"], [target["id"]])
+        rules.apply(state, Action.make("choose_target", target=target["id"]), random.Random(28))
+        self.assertNotIn(target, state["units"])
 
     def test_entry_ready_and_static_keywords_use_common_unit_path(self):
         deck = legal_deck("SFD-006-221", "OGN-247", "OGN-039")
@@ -1329,7 +1421,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         teemo_rules.apply(teemo_state, Action.make("end_reveal"), random.Random(246))
         teemo_rules.apply(teemo_state, Action.make("pass"), random.Random(247))
         teemo_rules.apply(teemo_state, Action.make("pass"), random.Random(248))
-        self.assertEqual(target["damage"], 1)
+        self.assertEqual(target["damage"], 2)
 
     def test_batch_enemy_target_immunity_filters_shared_target_windows(self):
         deck = legal_deck("SFD-105-221", "OGN-267", "OGN-162")

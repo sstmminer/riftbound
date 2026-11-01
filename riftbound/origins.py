@@ -215,6 +215,7 @@ class OriginsRules:
         registry.register("play_four_gold_gear", self._effect_play_four_gold_gear)
         registry.register("optional_kill_gear", self._effect_optional_kill_gear)
         registry.register("optional_kill_cheap_gear", self._effect_optional_kill_cheap_gear)
+        registry.register("ganking_target", self._effect_ganking_target)
         registry.register("buff_another_on_move", self._effect_buff_another_on_move)
         registry.register("legend_toggle", self._effect_legend_toggle)
         registry.register("optional_draw_or_buff", self._effect_optional_draw_or_buff)
@@ -327,6 +328,13 @@ class OriginsRules:
                 and any(other["id"] != unit["id"] and other["owner"] == unit["owner"]
                         and other["location"] == unit["location"]
                         for other in state["units"])):
+            value += 1
+        if ("Mech" in self.cards.get(unit["code"], {}).get("tags", [])
+                and any(
+                    other["owner"] == unit["owner"]
+                    and (self._card_implementation(other["code"]) is not None)
+                    and self._card_implementation(other["code"]).global_effect == "mechs_plus_one"
+                    for other in state["units"])):
             value += 1
         location = unit["location"]
         if unit["code"] == "OGN-028":
@@ -541,6 +549,7 @@ class OriginsRules:
         registry_deathknell_draw = []
         registry_deathknell_draw_two = []
         registry_deathknell_gold = []
+        registry_deathknell_mech = []
         wraith_draw = []
         vanguard_triggers = []
         kogmaw_fields = []
@@ -691,6 +700,8 @@ class OriginsRules:
                     registry_deathknell_gold.append(unit["owner"])
                 if implementation and implementation.deathknell_effect == "draw_two_if_mighty" and was_mighty:
                     registry_deathknell_draw_two.append(unit["owner"])
+                if implementation and implementation.deathknell_effect == "play_two_mech":
+                    registry_deathknell_mech.extend([unit["owner"], unit["owner"]])
                 # Each Wraith source triggers once per turn when a friendly
                 # unit dies. Mark the surviving source itself so multiple
                 # Wraiths each trigger once, while recursive cleanup cannot
@@ -726,6 +737,9 @@ class OriginsRules:
         if registry_deathknell_gold:
             for player in registry_deathknell_gold:
                 self._play_gold_gear_token(state, player, exhausted=True)
+        if registry_deathknell_mech:
+            for player in registry_deathknell_mech:
+                self._new_unit(state, "SFD-T05", player, f"base:{player}")
         if wraith_draw:
             draw_rng = rng if rng is not None else random.Random(0)
             for player in wraith_draw:
@@ -2005,6 +2019,8 @@ class OriginsRules:
                 if implementation and implementation.hold_effect == "play_two_gold_gear":
                     self._play_gold_gear_token(state, player, exhausted=True)
                     self._play_gold_gear_token(state, player, exhausted=True)
+                if implementation and implementation.hold_effect == "play_mech_token":
+                    self._new_unit(state, "SFD-T05", player, f"base:{player}")
                 if (implementation
                         and implementation.hold_effect == "optional_return_card_from_trash"
                         and any(self.cards.get(state["cards"][uid]["code"], {}).get("type")
@@ -3732,6 +3748,8 @@ class OriginsRules:
             return [u["id"] for u in state["units"] if u["owner"] != owner]
         if effect == "buff_two":
             return [u["id"] for u in self._units(state, owner) if u["id"] != source]
+        if effect == "ganking_target":
+            return [u["id"] for u in state["units"]]
         if effect == "kinkou_buff":
             return [u["id"] for u in self._units(state, owner) if u["id"] != source]
         if effect == "ahri_debuff":
@@ -4707,6 +4725,12 @@ class OriginsRules:
         if (target is not None and target["owner"] == item["owner"]
                 and "Mech" in self.cards.get(target["code"], {}).get("tags", [])):
             self._ready_unit(state, target)
+        return True
+
+    def _effect_ganking_target(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if target is not None:
+            target["temporary_ganking"] = True
         return True
 
     def _effect_play_four_gold_gear(self, state, item, rng):

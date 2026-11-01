@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 54)
+        self.assertEqual(len(registry.executable_codes()), 57)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -84,6 +84,9 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-034-221").spell_effect, "buff_two")
         self.assertEqual(registry.get("SFD-066-221").spell_effect, "debuff_two")
         self.assertEqual(registry.get("SFD-076-221").cost_reduction_effect, "control_mech")
+        self.assertEqual(registry.get("SFD-007-221").entry_trigger, "ganking_target")
+        self.assertEqual(registry.get("SFD-021-221").deathknell_effect, "play_two_mech")
+        self.assertEqual(registry.get("SFD-089-221").global_effect, "mechs_plus_one")
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -739,6 +742,42 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(sum(unit["code"] == "SFD-T05" for unit in surge_state["units"]), 1)
         self.assertEqual(len(surge_state["players"][0]["hand"]), before)
         self.assertIn(mech, surge_state["units"])
+
+    def test_batch_ganking_deathknell_and_mech_aura_hooks(self):
+        gank_deck = legal_deck("SFD-007-221", "OGN-247", "OGN-039")
+        gank_rules = SpiritforgedRules([gank_deck, gank_deck])
+        gank_state = gank_rules.initial_state(random.Random(142))
+        gank_card = move_code_to_hand(gank_state, 0, "SFD-007-221")
+        target = gank_rules._new_unit(gank_state, "OGN-001", 1, 0, exhausted=False)
+        gank_state["phase"], gank_state["actor"] = "main", 0
+        gank_state["players"][0]["energy"] = 10
+        gank_state["players"][0]["power"] = ["fury"] * 10
+        play = next(action for action in gank_rules.legal_actions(gank_state)
+                    if action.kind == "play_unit"
+                    and __import__("json").loads(action.arguments)["card"] == gank_card)
+        gank_rules.apply(gank_state, play, random.Random(143))
+        gank_rules.apply(gank_state, Action.make("choose_target", target=target["id"]), random.Random(144))
+        gank_rules.apply(gank_state, Action.make("pass"), random.Random(145))
+        gank_rules.apply(gank_state, Action.make("pass"), random.Random(146))
+        self.assertTrue(target["temporary_ganking"])
+
+        death_deck = legal_deck("SFD-021-221", "OGN-247", "OGN-039")
+        death_rules = SpiritforgedRules([death_deck, death_deck])
+        death_state = death_rules.initial_state(random.Random(147))
+        doomed = death_rules._new_unit(death_state, "SFD-021-221", 0, 0, exhausted=False)
+        doomed["damage"] = death_rules.might(death_state, doomed)
+        death_rules._cleanup(death_state, random.Random(148))
+        self.assertEqual(sum(unit["code"] == "SFD-T05" for unit in death_state["units"]), 2)
+
+        aura_deck = legal_deck("SFD-089-221", "OGN-255", "OGN-119")
+        aura_rules = SpiritforgedRules([aura_deck, aura_deck])
+        aura_state = aura_rules.initial_state(random.Random(149))
+        aura = aura_rules._new_unit(aura_state, "SFD-089-221", 0, 0, exhausted=False)
+        mech = aura_rules._new_unit(aura_state, "OGN-088", 0, 0, exhausted=False)
+        self.assertEqual(aura_rules.might(aura_state, mech), 9)
+        aura_state["fields"][0]["controller"] = 0
+        aura_rules._score(aura_state, 0, 0, "hold", random.Random(150))
+        self.assertEqual(sum(unit["code"] == "SFD-T05" for unit in aura_state["units"]), 1)
 
 
 if __name__ == "__main__":

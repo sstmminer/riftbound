@@ -376,7 +376,7 @@ Undercover Agent、Mindsplitter、Vanguard Helm）已有聚焦回归场景，car
 
 ### Spiritforged 可执行扩展批次（2026-11-01）
 
-扩展分支 `expansion/sets-2-5` 当前有 54 张 SFD 卡牌通过命名空间化注册表进入执行集。新增批次包含
+扩展分支 `expansion/sets-2-5` 当前有 57 张 SFD 卡牌通过命名空间化注册表进入执行集。新增批次包含
 Lonely Poro、Stellacorn Herder、Direwing、Show of Strength、Downwell、Against the Odds、Detonate、
 Punch First、Factory Recall、Honest Broker、Simian Ancestor、Dropboarder、Treasure Hunter、Harpoon Squad、
 Trusty Ramhound、Unsung Hero、Dunebreaker、Aspiring Engineer、Bubble Bot、Eminent Benefactor、Renata Glasc, Industrialist、Trove Golem 与 Sea Monkey。新增的目标型法术通过注册表声明目标范围，复用统一的
@@ -402,3 +402,7 @@ Gold；Prize of Progress 则通过统一的 Gear activated 事件监听获得本
 本批另加入 Desert's Call、Feral Strength、Frigid Touch 与 Production Surge。前三者复用统一的
 无目标衍生物生成或单位点选增减战力法术路径；Production Surge 通过声明式 Mech 控制减费、专用
 Mech token 对象和普通抽牌事件完成。测试总数更新为 424 项。
+
+本轮再加入 Gem Jammer、Ferrous Forerunner 与 Rumble, Scrapper。Gem Jammer 的入场 Ganking
+使用统一的触发目标窗口；Ferrous Forerunner 的 Deathknell 通过同一衍生 Mech token 生命周期生成
+两个单位；Rumble 的 Mech +1 Might 和 Hold token 使用声明式全局/持有事件。完整回归现为 425 项。

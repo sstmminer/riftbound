@@ -204,6 +204,8 @@ class OriginsRules:
         registry.register("wildclaw_optional", self._effect_wildclaw_optional)
         registry.register("wildclaw_ready", self._effect_wildclaw_ready)
         registry.register("return_unit_trigger", self._effect_return_unit_trigger)
+        registry.register("return_gear_from_trash", self._effect_return_gear_from_trash)
+        registry.register("ready_another_friendly_mech", self._effect_ready_another_friendly_mech)
         registry.register("tideturner_target", self._effect_tideturner_target)
         registry.register("ember_hidden_buff", self._effect_ember_hidden_buff)
         registry.register("karthus_deathknell", self._effect_karthus_deathknell)
@@ -3586,6 +3588,13 @@ class OriginsRules:
         if effect == "return_unit_trigger":
             return [uid for uid in state["players"][owner]["trash"]
                     if self.cards[state["cards"][uid]["code"]]["type"] == "unit"]
+        if effect == "return_gear_from_trash":
+            return [uid for uid in state["players"][owner]["trash"]
+                    if self.cards[state["cards"][uid]["code"]]["type"] == "gear"]
+        if effect == "ready_another_friendly_mech":
+            return [unit["id"] for unit in self._units(state, owner)
+                    if unit["id"] != source
+                    and "Mech" in self.cards.get(unit["code"], {}).get("tags", [])]
         if effect == "solari_target":
             return [u["id"] for u in state["units"] if u["owner"] != owner]
         if effect == "buff_two":
@@ -4527,6 +4536,23 @@ class OriginsRules:
         if item["target"] in trash:
             trash.remove(item["target"])
             state["players"][owner]["hand"].append(item["target"])
+        return True
+
+    def _effect_return_gear_from_trash(self, state, item, rng):
+        owner = item["owner"]
+        trash = state["players"][owner]["trash"]
+        target = item.get("target")
+        if target is not None and target in trash:
+            if self.cards[state["cards"][target]["code"]]["type"] == "gear":
+                trash.remove(target)
+                state["players"][owner]["hand"].append(target)
+        return True
+
+    def _effect_ready_another_friendly_mech(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if (target is not None and target["owner"] == item["owner"]
+                and "Mech" in self.cards.get(target["code"], {}).get("tags", [])):
+            self._ready_unit(state, target)
         return True
 
     def _effect_tideturner_target(self, state, item, rng):
@@ -7536,6 +7562,10 @@ class OriginsRules:
                     state.setdefault("legend_options", []).append({"owner": player,
                                                                       "source": unit["id"]})
                 triggers = self._second_card_triggers(state, player)
+                implementation = self._card_implementation(code)
+                if implementation and implementation.entry_trigger:
+                    triggers.append({"effect": implementation.entry_trigger,
+                                     "source": unit["id"], "owner": player})
                 if code == "OGN-067":
                     triggers.append({"effect": "blitz_move", "source": unit["id"], "owner": player})
                 if code == "OGN-016" and was_legion:

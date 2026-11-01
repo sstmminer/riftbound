@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 29)
+        self.assertEqual(len(registry.executable_codes()), 31)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -67,6 +67,8 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-159-221").might_effect, "plus_one_if_another_friendly_here")
         self.assertEqual(registry.get("SFD-167-221").deathknell_effect, "draw_two_if_mighty")
         self.assertEqual(registry.get("SFD-027-221").hold_effect, "draw_two")
+        self.assertEqual(registry.get("SFD-061-221").entry_trigger, "return_gear_from_trash")
+        self.assertEqual(registry.get("SFD-062-221").entry_trigger, "ready_another_friendly_mech")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -346,6 +348,50 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         before_hold_draw = len(dunebreaker_state["players"][0]["hand"])
         dunebreaker_rules._score(dunebreaker_state, 0, 0, "hold", random.Random(58))
         self.assertEqual(len(dunebreaker_state["players"][0]["hand"]), before_hold_draw + 2)
+
+    def test_registered_entry_trigger_target_windows(self):
+        engineer_deck = legal_deck("SFD-061-221", "OGN-255", "OGN-066")
+        engineer_rules = SpiritforgedRules([engineer_deck, engineer_deck])
+        engineer_state = engineer_rules.initial_state(random.Random(59))
+        engineer_card = move_code_to_hand(engineer_state, 0, "SFD-061-221")
+        gear_card = engineer_state["players"][0]["main"][-1]
+        engineer_state["cards"][gear_card]["code"] = "OGN-040"
+        engineer_state["players"][0]["main"].remove(gear_card)
+        engineer_state["players"][0]["trash"].append(gear_card)
+        engineer_state["phase"], engineer_state["actor"] = "main", 0
+        engineer_state["players"][0]["energy"] = 10
+        engineer_state["players"][0]["power"] = ["mind"] * 10
+        play = next(action for action in engineer_rules.legal_actions(engineer_state)
+                    if action.kind == "play_unit"
+                    and __import__("json").loads(action.arguments)["card"] == engineer_card)
+        engineer_rules.apply(engineer_state, play, random.Random(60))
+        choose = next(action for action in engineer_rules.legal_actions(engineer_state)
+                      if action.kind == "choose_target"
+                      and __import__("json").loads(action.arguments)["target"] == gear_card)
+        engineer_rules.apply(engineer_state, choose, random.Random(61))
+        engineer_rules.apply(engineer_state, Action.make("pass"), random.Random(62))
+        engineer_rules.apply(engineer_state, Action.make("pass"), random.Random(63))
+        self.assertIn(gear_card, engineer_state["players"][0]["hand"])
+
+        bot_deck = legal_deck("SFD-062-221", "OGN-247", "OGN-039")
+        bot_rules = SpiritforgedRules([bot_deck, bot_deck])
+        bot_state = bot_rules.initial_state(random.Random(64))
+        bot_card = move_code_to_hand(bot_state, 0, "SFD-062-221")
+        mech = bot_rules._new_unit(bot_state, "OGN-088", 0, "base:0", exhausted=True)
+        bot_state["phase"], bot_state["actor"] = "main", 0
+        bot_state["players"][0]["energy"] = 10
+        bot_state["players"][0]["power"] = ["mind"] * 10
+        play = next(action for action in bot_rules.legal_actions(bot_state)
+                    if action.kind == "play_unit"
+                    and __import__("json").loads(action.arguments)["card"] == bot_card)
+        bot_rules.apply(bot_state, play, random.Random(65))
+        choose = next(action for action in bot_rules.legal_actions(bot_state)
+                      if action.kind == "choose_target"
+                      and __import__("json").loads(action.arguments)["target"] == mech["id"])
+        bot_rules.apply(bot_state, choose, random.Random(66))
+        bot_rules.apply(bot_state, Action.make("pass"), random.Random(67))
+        bot_rules.apply(bot_state, Action.make("pass"), random.Random(68))
+        self.assertFalse(mech["exhausted"])
 
 
 if __name__ == "__main__":

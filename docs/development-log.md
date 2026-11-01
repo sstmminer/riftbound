@@ -376,12 +376,12 @@ Undercover Agent、Mindsplitter、Vanguard Helm）已有聚焦回归场景，car
 
 ### Spiritforged 可执行扩展批次（2026-11-01）
 
-扩展分支 `expansion/sets-2-5` 当前有 29 张 SFD 卡牌通过命名空间化注册表进入执行集。新增批次包含
+扩展分支 `expansion/sets-2-5` 当前有 31 张 SFD 卡牌通过命名空间化注册表进入执行集。新增批次包含
 Lonely Poro、Stellacorn Herder、Direwing、Show of Strength、Downwell、Against the Odds、Detonate、
 Punch First、Factory Recall、Honest Broker、Simian Ancestor、Dropboarder、Treasure Hunter、Harpoon Squad、
-Trusty Ramhound、Unsung Hero 与 Dunebreaker。新增的目标型法术通过注册表声明目标范围，复用统一的
+Trusty Ramhound、Unsung Hero、Dunebreaker、Aspiring Engineer 与 Bubble Bot。新增的目标型法术通过注册表声明目标范围，复用统一的
 点选/确认窗口；Gold Gear 衍生物使用显式 token 对象，并在回手/弃置路径中保持衍生物不进入物理手牌。
 
 SFD-204 On the Hunt 暂缓注册，因为它是签名法术，合法套牌还依赖尚未执行的 Sivir/Battle Mistress
 组合。Equip/Quick-Draw、Repeat、Hidden、复杂衍生物生成、多步骤替代效果及复杂控制权仍保持
-`catalog-only`，避免把部分实现伪装成完整规则支持。Spiritforged 定向测试 11 项，全量回归 415 项。
+`catalog-only`，避免把部分实现伪装成完整规则支持。Spiritforged 定向测试 12 项，全量回归 416 项。

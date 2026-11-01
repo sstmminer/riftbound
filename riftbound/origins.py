@@ -124,6 +124,9 @@ class OriginsRules:
         implementation = self._card_implementation(code)
         return bool(implementation and keyword in implementation.static_keywords)
 
+    def _is_accelerate_code(self, code):
+        return code in ACCELERATE or self._has_static_keyword(code, "accelerate")
+
     def _is_reaction_code(self, code):
         implementation = self._card_implementation(code)
         return code in REACTIONS or bool(implementation and implementation.reaction)
@@ -373,6 +376,8 @@ class OriginsRules:
             value += 1
         if role == "attacker":
             value += int(unit["code"] in {"OGN-210", "OGN-215"}) + unit["assault"]
+            if implementation and implementation.might_effect == "assault_by_enemy":
+                value += len(self._units(state, 1 - unit["owner"], location))
             value += 2 if unit["code"] == "OGN-037" else 0
             value += 3 if unit["code"] == "OGN-035" else 0
             value += 2 if unit["code"] in {"OGN-003", "OGN-030"} else 0
@@ -2006,6 +2011,13 @@ class OriginsRules:
         return True
 
     def _score(self, state, player, field, method, rng):
+        if (method in {"hold", "conquer"}
+                and any(unit["owner"] != player
+                        and unit["location"] == field
+                        and (self._card_implementation(unit["code"]) is not None)
+                        and self._card_implementation(unit["code"]).global_effect == "opponents_cant_score"
+                        for unit in state["units"])):
+            return
         board = Scoreboard(state["points"], [set(s) for s in state["scored"]], state["victory"], len(state["fields"]))
         result = board.score(player, field, method=method)
         state["scored"] = [sorted(s) for s in board.scored]
@@ -3379,6 +3391,11 @@ class OriginsRules:
     def _movable(self, state, destination):
         player = state["actor"]
         base = f"base:{player}"
+        if destination == base and any(
+                (self._card_implementation(unit["code"]) is not None)
+                and self._card_implementation(unit["code"]).global_effect == "no_base_moves"
+                for unit in state["units"]):
+            return []
         return [u["id"] for u in self._units(state, player) if not u["exhausted"]
                 and u["location"] != destination
                 and not (destination == base and self._is_field(state, u["location"])
@@ -3393,6 +3410,12 @@ class OriginsRules:
         moved = [unit for unit in moved if unit is not None]
         if not moved:
             return False
+        if (destination == f"base:{initiator}"
+                and any(
+                    (self._card_implementation(unit["code"]) is not None)
+                    and self._card_implementation(unit["code"]).global_effect == "no_base_moves"
+                    for unit in state["units"])):
+            raise ValueError("units cannot move to base while Minotaur Reckoner is in play")
         origins = {unit["id"]: unit["location"] for unit in moved}
         move_triggers = []
         for unit in moved:
@@ -8110,7 +8133,7 @@ class OriginsRules:
                         )
                         for other in self._units(state, player)):
                     triggers.append({"effect": "vision", "source": unit["id"], "owner": player})
-                if code in ACCELERATE:
+                if self._is_accelerate_code(code):
                     # Keep the unit visible in its destination while the
                     # controller completes the Accelerate payment.  This is a
                     # play-time decision (RUP5 805.2), so no later trigger or

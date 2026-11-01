@@ -376,7 +376,7 @@ Undercover Agent、Mindsplitter、Vanguard Helm）已有聚焦回归场景，car
 
 ### Spiritforged 可执行扩展批次（2026-11-01）
 
-扩展分支 `expansion/sets-2-5` 当前有 61 张 SFD 卡牌通过命名空间化注册表进入执行集。新增批次包含
+扩展分支 `expansion/sets-2-5` 当前有 64 张 SFD 卡牌通过命名空间化注册表进入执行集。新增批次包含
 Lonely Poro、Stellacorn Herder、Direwing、Show of Strength、Downwell、Against the Odds、Detonate、
 Punch First、Factory Recall、Honest Broker、Simian Ancestor、Dropboarder、Treasure Hunter、Harpoon Squad、
 Trusty Ramhound、Unsung Hero、Dunebreaker、Aspiring Engineer、Bubble Bot、Eminent Benefactor、Renata Glasc, Industrialist、Trove Golem 与 Sea Monkey。新增的目标型法术通过注册表声明目标范围，复用统一的
@@ -411,3 +411,7 @@ Mech token 对象和普通抽牌事件完成。测试总数更新为 424 项。
 通过声明式“本回合已完成出牌数”减费并保留最低 Energy 1；Perched Grimwyrm 只能在本回合已征服的
 战场出牌；Dauntless Vanguard 复用占据敌方战场的通用放置规则；Sandshifter 的入场消灭效果使用
 统一的敌方低战力目标窗口。测试总数更新为 426 项。
+
+本轮加入 Minotaur Reckoner、Tianna Crownguard 与 Ancient Warmonger。前两者把“禁止回基地”和
+“禁止对手得分”作为可组合的全局静态规则接入移动/得分入口；Ancient Warmonger 通过统一的
+Accelerate 识别和动态 Assault 计算，在战斗攻击者战力中按敌方单位数计入。完整回归现为 427 项。

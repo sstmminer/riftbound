@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 61)
+        self.assertEqual(len(registry.executable_codes()), 64)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -91,6 +91,9 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-015-221").placement_rule, "conquered_field_this_turn")
         self.assertEqual(registry.get("SFD-093-221").placement_rule, "occupied_enemy_field")
         self.assertEqual(registry.get("SFD-158-221").entry_trigger, "kill_small_enemy")
+        self.assertEqual(registry.get("SFD-014-221").global_effect, "no_base_moves")
+        self.assertEqual(registry.get("SFD-060-221").global_effect, "opponents_cant_score")
+        self.assertIn("accelerate", registry.get("SFD-131-221").static_keywords)
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -842,6 +845,36 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         shifter_rules.apply(shifter_state, Action.make("pass"), random.Random(157))
         shifter_rules.apply(shifter_state, Action.make("pass"), random.Random(158))
         self.assertNotIn(victim, shifter_state["units"])
+
+    def test_batch_global_movement_scoring_and_accelerate_hooks(self):
+        lock_deck = legal_deck("SFD-014-221", "OGN-247", "OGN-039")
+        lock_rules = SpiritforgedRules([lock_deck, lock_deck])
+        lock_state = lock_rules.initial_state(random.Random(159))
+        reckoner = lock_rules._new_unit(lock_state, "SFD-014-221", 0, "base:0", exhausted=False)
+        mover = lock_rules._new_unit(lock_state, "OGN-001", 0, 0, exhausted=False)
+        lock_state["phase"], lock_state["actor"] = "main", 0
+        self.assertEqual(lock_rules._movable(lock_state, "base:0"), [])
+        with self.assertRaisesRegex(ValueError, "cannot move to base"):
+            lock_rules._resolve_move(lock_state, [mover], "base:0", 0, random.Random(160))
+        self.assertIn(reckoner, lock_state["units"])
+
+        score_deck = legal_deck("SFD-060-221", "OGN-255", "OGN-119")
+        score_rules = SpiritforgedRules([score_deck, score_deck])
+        score_state = score_rules.initial_state(random.Random(161))
+        score_rules._new_unit(score_state, "SFD-060-221", 1, 0, exhausted=False)
+        score_state["fields"][0]["controller"] = 0
+        before_points = list(score_state["points"])
+        score_rules._score(score_state, 0, 0, "hold", random.Random(162))
+        self.assertEqual(score_state["points"], before_points)
+
+        warmonger_deck = legal_deck("SFD-131-221", "OGN-267", "OGN-193")
+        warmonger_rules = SpiritforgedRules([warmonger_deck, warmonger_deck])
+        warmonger_state = warmonger_rules.initial_state(random.Random(163))
+        warmonger = warmonger_rules._new_unit(warmonger_state, "SFD-131-221", 0, 0, exhausted=False)
+        warmonger_rules._new_unit(warmonger_state, "OGN-003", 1, 0, exhausted=False)
+        warmonger_state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+        self.assertTrue(warmonger_rules._is_accelerate_code("SFD-131-221"))
+        self.assertEqual(warmonger_rules.might(warmonger_state, warmonger), 5)
 
 
 if __name__ == "__main__":

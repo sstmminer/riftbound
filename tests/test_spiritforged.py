@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 64)
+        self.assertEqual(len(registry.executable_codes()), 65)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -94,6 +94,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-014-221").global_effect, "no_base_moves")
         self.assertEqual(registry.get("SFD-060-221").global_effect, "opponents_cant_score")
         self.assertIn("accelerate", registry.get("SFD-131-221").static_keywords)
+        self.assertIn("assault_1", registry.get("SFD-028-221").static_keywords)
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -875,6 +876,20 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         warmonger_state["battle"] = {"field": 0, "attacker": 0, "combat": True}
         self.assertTrue(warmonger_rules._is_accelerate_code("SFD-131-221"))
         self.assertEqual(warmonger_rules.might(warmonger_state, warmonger), 5)
+
+    def test_batch_lucian_attack_uses_combat_trigger_target_window(self):
+        deck = legal_deck("SFD-028-221", "OGN-247", "OGN-039")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(164))
+        lucian = rules._new_unit(state, "SFD-028-221", 0, 0, exhausted=False)
+        target = rules._new_unit(state, "OGN-003", 1, 0, exhausted=False)
+        state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+        before = target["damage"]
+        rules._effect_lucian_attack(
+            state, {"effect": "lucian_attack", "owner": 0,
+                    "source": lucian["id"], "target": target["id"], "field": 0},
+            random.Random(165))
+        self.assertEqual(target["damage"], before + 1)
 
 
 if __name__ == "__main__":

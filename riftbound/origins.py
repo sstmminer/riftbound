@@ -220,6 +220,7 @@ class OriginsRules:
         registry.register("optional_kill_cheap_gear", self._effect_optional_kill_cheap_gear)
         registry.register("ganking_target", self._effect_ganking_target)
         registry.register("kill_small_enemy", self._effect_kill_small_enemy)
+        registry.register("lucian_attack", self._effect_lucian_attack)
         registry.register("buff_another_on_move", self._effect_buff_another_on_move)
         registry.register("legend_toggle", self._effect_legend_toggle)
         registry.register("optional_draw_or_buff", self._effect_optional_draw_or_buff)
@@ -3871,7 +3872,8 @@ class OriginsRules:
             exhausted = False
         card_owner = state.get("cards", {}).get(card, {}).get("owner", owner) if card is not None else owner
         implementation = self._card_implementation(code)
-        assault = 2 if self._has_static_keyword(code, "assault_2") else 0
+        assault = (2 if self._has_static_keyword(code, "assault_2")
+                   else 1 if self._has_static_keyword(code, "assault_1") else 0)
         unit = {"id": self._object(state), "card": card, "card_owner": card_owner,
                 "code": code, "owner": owner,
                 "location": location, "exhausted": exhausted, "buff": 0,
@@ -4775,6 +4777,17 @@ class OriginsRules:
         if target is not None and target["owner"] != item["owner"] and self.might(state, target) <= 3:
             state["units"].remove(target)
             self._trash_unit_card(state, target)
+            self._cleanup(state, rng)
+        return True
+
+    def _effect_lucian_attack(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        target = self._unit(state, item.get("target"))
+        field = item.get("field") or state.get("battle", {}).get("field")
+        if (source is not None and target is not None
+                and target["owner"] != item["owner"]
+                and source["location"] == field and target["location"] == field):
+            self._deal_damage(state, target, source.get("assault", 0))
             self._cleanup(state, rng)
         return True
 
@@ -8469,6 +8482,11 @@ class OriginsRules:
                 {"effect": "ava_attack", "source": unit["id"],
                  "owner": unit["owner"], "field": field}
                 for unit in attackers if unit["code"] == "OGN-107"
+            ]
+            ahri_triggers += [
+                {"effect": "lucian_attack", "source": unit["id"],
+                 "owner": unit["owner"], "field": field}
+                for unit in attackers if unit["code"] == "SFD-028-221"
             ]
             battle["designation_triggers_added"] = True
             if ahri_triggers:

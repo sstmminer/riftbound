@@ -206,6 +206,7 @@ class OriginsRules:
         registry.register("return_unit_trigger", self._effect_return_unit_trigger)
         registry.register("return_gear_from_trash", self._effect_return_gear_from_trash)
         registry.register("ready_another_friendly_mech", self._effect_ready_another_friendly_mech)
+        registry.register("play_four_gold_gear", self._effect_play_four_gold_gear)
         registry.register("tideturner_target", self._effect_tideturner_target)
         registry.register("ember_hidden_buff", self._effect_ember_hidden_buff)
         registry.register("karthus_deathknell", self._effect_karthus_deathknell)
@@ -1915,6 +1916,9 @@ class OriginsRules:
                 implementation = self._card_implementation(unit["code"])
                 if implementation and implementation.hold_effect == "draw_two":
                     self._draw(state, player, 2, rng)
+                if implementation and implementation.hold_effect == "play_two_gold_gear":
+                    self._play_gold_gear_token(state, player, exhausted=True)
+                    self._play_gold_gear_token(state, player, exhausted=True)
         # These battlefield triggers are intentionally resolved at the score
         # event, after the point/draw result is known.  The closed engine has
         # no gear zone yet, so the effects here only touch existing card
@@ -3678,6 +3682,9 @@ class OriginsRules:
     def _new_unit(self, state, code, owner, location, *, card=None, exhausted=None):
         if exhausted is None:
             exhausted = not any(u["code"] == "OGN-011" for u in self._units(state, owner))
+        if (exhausted and self.cards.get(code, {}).get("token")
+                and self._tokens_enter_ready(state, owner)):
+            exhausted = False
         card_owner = state.get("cards", {}).get(card, {}).get("owner", owner) if card is not None else owner
         implementation = self._card_implementation(code)
         assault = 2 if self._has_static_keyword(code, "assault_2") else 0
@@ -3693,6 +3700,14 @@ class OriginsRules:
             unit["static_keywords"] = sorted(implementation.static_keywords)
         state["units"].append(unit)
         return unit
+
+    def _tokens_enter_ready(self, state, player):
+        return any(
+            unit["owner"] == player
+            and (self._card_implementation(unit["code"]) is not None)
+            and self._card_implementation(unit["code"]).global_effect == "tokens_enter_ready"
+            for unit in state["units"]
+        )
 
     def _second_card_triggers(self, state, player):
         # The current card is still pending when this helper is called.  A
@@ -3858,6 +3873,8 @@ class OriginsRules:
 
     def _play_gold_gear_token(self, state, player, *, exhausted=True):
         """Create the SFD Gold gear token as a non-physical card object."""
+        if exhausted and self._tokens_enter_ready(state, player):
+            exhausted = False
         token = self._object(state)
         state["cards"][token] = {"code": "SFD-T03", "owner": player}
         state["players"][player]["gear"].append({
@@ -4553,6 +4570,11 @@ class OriginsRules:
         if (target is not None and target["owner"] == item["owner"]
                 and "Mech" in self.cards.get(target["code"], {}).get("tags", [])):
             self._ready_unit(state, target)
+        return True
+
+    def _effect_play_four_gold_gear(self, state, item, rng):
+        for _ in range(4):
+            self._play_gold_gear_token(state, item["owner"], exhausted=True)
         return True
 
     def _effect_tideturner_target(self, state, item, rng):

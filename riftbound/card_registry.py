@@ -32,6 +32,7 @@ class CardImplementation:
     target_max: int = 1
     buff_effect: str | None = None
     might_effect: str | None = None
+    global_effect: str | None = None
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -43,7 +44,7 @@ class CardImplementation:
                 self.behavior_id, self.static_keywords, self.entry_effect,
                 self.entry_trigger, self.move_effect, self.hold_effect,
                 self.deathknell_effect, self.spell_effect,
-                self.buff_effect, self.might_effect)):
+                self.buff_effect, self.might_effect, self.global_effect)):
             raise ValueError("executable implementation needs an explicit hook")
 
 
@@ -187,4 +188,13 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-062-221", sfd, "unit", "executable",
                            entry_trigger="ready_another_friendly_mech",
                            notes="When played, choose another friendly Mech and ready it."),
+        CardImplementation("SFD-152-221", sfd, "unit", "executable",
+                           hold_effect="play_two_gold_gear",
+                           notes="When holding, play two exhausted Gold gear tokens."),
+        CardImplementation("SFD-171-221", sfd, "unit", "executable",
+                           global_effect="tokens_enter_ready",
+                           notes="Your tokens enter ready."),
+        CardImplementation("SFD-174-221", sfd, "unit", "executable",
+                           entry_trigger="play_four_gold_gear",
+                           notes="When played, play four exhausted Gold gear tokens."),
     ])

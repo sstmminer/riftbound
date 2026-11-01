@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 31)
+        self.assertEqual(len(registry.executable_codes()), 34)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -69,6 +69,9 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-027-221").hold_effect, "draw_two")
         self.assertEqual(registry.get("SFD-061-221").entry_trigger, "return_gear_from_trash")
         self.assertEqual(registry.get("SFD-062-221").entry_trigger, "ready_another_friendly_mech")
+        self.assertEqual(registry.get("SFD-152-221").hold_effect, "play_two_gold_gear")
+        self.assertEqual(registry.get("SFD-171-221").global_effect, "tokens_enter_ready")
+        self.assertEqual(registry.get("SFD-174-221").entry_trigger, "play_four_gold_gear")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -392,6 +395,40 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         bot_rules.apply(bot_state, Action.make("pass"), random.Random(67))
         bot_rules.apply(bot_state, Action.make("pass"), random.Random(68))
         self.assertFalse(mech["exhausted"])
+
+    def test_registered_gold_token_and_token_ready_hooks(self):
+        hold_deck = legal_deck("SFD-152-221", "OGN-253", "OGN-243")
+        hold_rules = SpiritforgedRules([hold_deck, hold_deck])
+        hold_state = hold_rules.initial_state(random.Random(69))
+        holder = hold_rules._new_unit(hold_state, "SFD-152-221", 0, 0, exhausted=False)
+        hold_state["fields"][0]["controller"] = 0
+        hold_rules._score(hold_state, 0, 0, "hold", random.Random(70))
+        self.assertEqual(sum(g["code"] == "SFD-T03" for g in hold_state["players"][0]["gear"]), 2)
+
+        ready_deck = legal_deck("SFD-171-221", "OGN-253", "OGN-243")
+        ready_rules = SpiritforgedRules([ready_deck, ready_deck])
+        ready_state = ready_rules.initial_state(random.Random(71))
+        ready_rules._new_unit(ready_state, "SFD-171-221", 0, "base:0", exhausted=False)
+        token = ready_rules._new_unit(ready_state, "OGN-273", 0, "base:0", exhausted=True)
+        self.assertFalse(token["exhausted"])
+        gold = ready_rules._play_gold_gear_token(ready_state, 0, exhausted=True)
+        created = next(g for g in ready_state["players"][0]["gear"] if g["id"] == gold)
+        self.assertFalse(created["exhausted"])
+
+        trove_deck = legal_deck("SFD-174-221", "OGN-253", "OGN-243")
+        trove_rules = SpiritforgedRules([trove_deck, trove_deck])
+        trove_state = trove_rules.initial_state(random.Random(72))
+        trove_card = move_code_to_hand(trove_state, 0, "SFD-174-221")
+        trove_state["phase"], trove_state["actor"] = "main", 0
+        trove_state["players"][0]["energy"] = 10
+        trove_state["players"][0]["power"] = ["order"] * 10
+        play = next(action for action in trove_rules.legal_actions(trove_state)
+                    if action.kind == "play_unit"
+                    and __import__("json").loads(action.arguments)["card"] == trove_card)
+        trove_rules.apply(trove_state, play, random.Random(73))
+        trove_rules.apply(trove_state, Action.make("pass"), random.Random(74))
+        trove_rules.apply(trove_state, Action.make("pass"), random.Random(75))
+        self.assertEqual(sum(g["code"] == "SFD-T03" for g in trove_state["players"][0]["gear"]), 4)
 
 
 if __name__ == "__main__":

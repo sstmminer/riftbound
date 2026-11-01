@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 85)
+        self.assertEqual(len(registry.executable_codes()), 96)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -116,6 +116,17 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-181-221").global_effect, "mechs_shield")
         self.assertEqual(registry.get("SFD-041-221").move_effect, "apprentice_smith")
         self.assertEqual(registry.get("SFD-104-221").global_effect, "friendly_deflect")
+        self.assertEqual(registry.get("SFD-171A-221").global_effect, "tokens_enter_ready")
+        self.assertEqual(registry.get("SFD-227-221").combat_effect, "ahri_debuff")
+        self.assertEqual(registry.get("SFD-227-STAR-221").combat_effect, "ahri_debuff")
+        self.assertEqual(registry.get("SFD-235-221").move_effect, "score_on_third_move")
+        self.assertEqual(registry.get("SFD-235-STAR-221").move_effect, "score_on_third_move")
+        self.assertEqual(registry.get("SFD-236-221").entry_effect, "enter_ready_if_legion")
+        self.assertEqual(registry.get("SFD-236-STAR-221").global_effect, "plus_one_friendly_here")
+        self.assertEqual(registry.get("SFD-237-221").global_effect, "vision_recycle")
+        self.assertEqual(registry.get("SFD-237-STAR-221").global_effect, "vision_recycle")
+        self.assertEqual(registry.get("SFD-240-221").global_effect, "mechs_shield")
+        self.assertEqual(registry.get("SFD-242-221").combat_effect, "draw_one_on_win")
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -1168,6 +1179,70 @@ class SpiritforgedExecutableTests(unittest.TestCase):
                     and __import__("json").loads(action.arguments)["card"] == shield)
         shield_rules.apply(shield_state, play, random.Random(222))
         self.assertTrue(shield_rules._deflect(shield_state, mech))
+
+    def test_batch_aliases_use_shared_trigger_and_resource_paths(self):
+        # Renata's alternate printing still uses the token-ready predicate.
+        renata_deck = legal_deck("SFD-171A-221", "OGN-253", "OGN-243")
+        renata_rules = SpiritforgedRules([renata_deck, renata_deck])
+        renata_state = renata_rules.initial_state(random.Random(223))
+        renata_rules._new_unit(renata_state, "SFD-171A-221", 0, "base:0", exhausted=False)
+        token = renata_rules._new_unit(renata_state, "OGN-273", 0, "base:0", exhausted=True)
+        self.assertFalse(token["exhausted"])
+
+        # Ahri's alternate printing opens the same pre-chain target window.
+        ahri_deck = legal_deck("SFD-227-221", "OGN-247", "OGN-039")
+        ahri_rules = SpiritforgedRules([ahri_deck, ahri_deck])
+        ahri_state = ahri_rules.initial_state(random.Random(224))
+        ahri = ahri_rules._new_unit(ahri_state, "SFD-227-221", 0, 0, exhausted=False)
+        enemy = ahri_rules._new_unit(ahri_state, "OGN-001", 1, 0, exhausted=False)
+        ahri_state.update(phase="showdown", actor=0, focus=0, passes=0,
+                          battle={"field": 0, "attacker": 0, "combat": True})
+        ahri_rules._close_showdown(ahri_state, random.Random(225))
+        self.assertEqual(ahri_state["decision"]["targets"], [enemy["id"]])
+        ahri_rules.apply(ahri_state, Action.make("choose_target", target=enemy["id"]), random.Random(226))
+        ahri_rules.apply(ahri_state, Action.make("pass"), random.Random(227))
+        ahri_rules.apply(ahri_state, Action.make("pass"), random.Random(228))
+        self.assertEqual(enemy["temporary"], -2)
+
+        # Darius's alternate printing grants a local aura and Legion entry check.
+        darius_deck = legal_deck("SFD-236-221", "OGN-253", "OGN-027")
+        darius_rules = SpiritforgedRules([darius_deck, darius_deck])
+        darius_state = darius_rules.initial_state(random.Random(229))
+        darius = darius_rules._new_unit(darius_state, "SFD-236-221", 0, 0, exhausted=False)
+        ally = darius_rules._new_unit(darius_state, "OGN-001", 0, 0, exhausted=False)
+        darius_state["players"][0]["finalized_played"] = 1
+        self.assertTrue(darius_rules._entry_ready(darius_state, darius["code"], 0))
+        self.assertEqual(darius_rules.might(darius_state, ally), 6)
+
+        # Karma's alternate printing is emitted for every ordinary recycle event.
+        karma_deck = legal_deck("SFD-237-221", "OGN-261", "OGN-238")
+        karma_rules = SpiritforgedRules([karma_deck, karma_deck])
+        karma_state = karma_rules.initial_state(random.Random(230))
+        karma_rules._new_unit(karma_state, "SFD-237-221", 0, "base:0", exhausted=False)
+        karma_rules._trigger_recycle_event(karma_state, 0)
+        self.assertEqual(karma_state["chain"][-1]["effect"], "karma_recycle")
+        self.assertEqual(karma_state["decision"]["kind"], "target")
+
+        # Glorious Executioner is a legend listener, so the legend path draws
+        # once when its controller wins a combat.
+        legend_deck = legal_deck("SFD-003-221", "OGN-253", "OGN-027")
+        legend_rules = SpiritforgedRules([legend_deck, legend_deck])
+        legend_state = legend_rules.initial_state(random.Random(231))
+        legend_state["players"][0]["legend"] = "SFD-242-221"
+        legend_rules._new_unit(legend_state, "OGN-001", 0, 0, exhausted=False)
+        before = len(legend_state["players"][0]["hand"])
+        legend_state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+        legend_rules._settle_battle(legend_state, random.Random(232))
+        self.assertEqual(len(legend_state["players"][0]["hand"]), before + 1)
+
+        # Yasuo's alternate move hook uses the common move counter.
+        yasuo_deck = legal_deck("SFD-235-221", "OGN-267", "OGN-162")
+        yasuo_rules = SpiritforgedRules([yasuo_deck, yasuo_deck])
+        yasuo_state = yasuo_rules.initial_state(random.Random(233))
+        yasuo = yasuo_rules._new_unit(yasuo_state, "SFD-235-221", 0, "base:0", exhausted=False)
+        yasuo["move_count"] = 2
+        yasuo_rules._resolve_move(yasuo_state, [yasuo], 0, 0, random.Random(234))
+        self.assertEqual(yasuo_state["points"][0], 1)
 
 
 if __name__ == "__main__":

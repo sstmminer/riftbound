@@ -435,3 +435,8 @@ Yordle Explorer 监听 finalized play 事件，避免 Accelerate/嵌套打出把
 Monument 接入临时 Gear 与 Deflect 谓词；Mechanized Menace 注册为 Legend 全局 Shield 能力并接入防守
 Might 计算。测试总数为 432 项；本批没有注册需要尚未实现签名英雄的 SFD 签名牌。复杂 Equip、Repeat、
 Hidden、跨区免费打出和多步替代效果仍保持 catalog-only。
+本轮继续批量扩展 11 张 Spiritforged 可执行牌，注册表规模从 85 增至 96：加入 Renata、Ahri、Yasuo、
+Darius、Karma、Mechanized Menace 与 Glorious Executioner 的普通/替代印刷。它们全部复用统一能力注册表、
+战斗触发目标窗口、回收事件、移动计数、Legend 全局能力和战斗胜利监听；没有为单张卡建立旁路结算。
+修复了动态同战场 +1 Might 接入时的局部变量回归，并为别名印刷补充了 token 就绪、Ahri 目标、第三次
+移动、Legion 入场、Karma 回收和 Legend 抽牌回归。Spiritforged 定向测试 29 项，全量测试为 433 项。

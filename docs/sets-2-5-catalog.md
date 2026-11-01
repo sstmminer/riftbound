@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 85 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 96 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -113,6 +113,13 @@ python -m riftbound catalog --set SFD
 - `SFD-123-221` Corrupt Enforcer：移动到战场后通过统一弃牌窗口弃 1；赢得战斗后抽 1。
 - `SFD-151-221` Bonds of Strength：Reaction，有序点选两名友方单位，各获得本回合 +1 Might。
 - `SFD-181-221` Mechanized Menace：注册为 Legend 全局能力，使己方 Mech 在防守时获得 Shield。
+- `SFD-171A-221` Renata Glasc alternate print：复用衍生物入场就绪规则。
+- `SFD-227-221` / `SFD-227-STAR-221` Ahri, Inquisitive：复用战斗指定阶段的敌方单位目标窗口并给予 -2 Might。
+- `SFD-235-221` / `SFD-235-STAR-221` Yasuo, Windrider：复用统一移动计数，在本回合第三次移动时得分。
+- `SFD-236-221` / `SFD-236-STAR-221` Darius, Executioner：有前一张已完成出牌时入场就绪，并为同战场的其他友方单位提供 +1 Might。
+- `SFD-237-221` / `SFD-237-STAR-221` Karma, Channeler：复用 Vision 与所有回收事件的目标触发路径。
+- `SFD-240-221` Mechanized Menace alternate print：复用 Legend 全局 Shield 能力。
+- `SFD-242-221` Glorious Executioner：复用战斗胜利后的 Legend 抽牌监听。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。签名牌 `SFD-204 On the Hunt` 暂缓注册，因为其合法套牌还依赖尚未执行的 Sivir/Battle Mistress 组合；装备附着、Repeat、Hidden、复杂衍生物和多步骤替代效果也继续保持 catalog-only。
 

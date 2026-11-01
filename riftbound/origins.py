@@ -144,6 +144,8 @@ class OriginsRules:
                 return len(state["players"][player].get("gear", [])) >= 2
             if effect == "enter_ready_if_small_hand":
                 return len(state["players"][player].get("hand", [])) <= 2
+            if effect == "enter_ready_if_legion":
+                return self._played_for_legion(state, player) > 0
             if effect == "enter_ready_if_dragon":
                 return any(
                     unit["owner"] == player
@@ -333,11 +335,21 @@ class OriginsRules:
     def might(self, state, unit):
         value = self.cards[unit["code"]]["might"] + unit["buff"] + unit["temporary"]
         implementation = self._card_implementation(unit["code"])
+        location = unit["location"]
         if (implementation and implementation.might_effect == "plus_one_if_another_friendly_here"
                 and any(other["id"] != unit["id"] and other["owner"] == unit["owner"]
                         and other["location"] == unit["location"]
                         for other in state["units"])):
             value += 1
+        if (implementation is None or implementation.global_effect != "plus_one_friendly_here"):
+            if (self._is_field(state, location)
+                    and any(
+                        other["id"] != unit["id"] and other["owner"] == unit["owner"]
+                        and other["location"] == location
+                        and (self._card_implementation(other["code"]) is not None)
+                        and self._card_implementation(other["code"]).global_effect == "plus_one_friendly_here"
+                        for other in state["units"])):
+                value += 1
         if ("Mech" in self.cards.get(unit["code"], {}).get("tags", [])
                 and any(
                     other["owner"] == unit["owner"]
@@ -345,7 +357,6 @@ class OriginsRules:
                     and self._card_implementation(other["code"]).global_effect == "mechs_plus_one"
                     for other in state["units"])):
             value += 1
-        location = unit["location"]
         if unit["code"] == "OGN-028":
             value += state["points"][unit["owner"]]
         if unit["code"] == "OGN-109":
@@ -916,7 +927,9 @@ class OriginsRules:
         triggers = [{"effect": "karma_recycle", "source": unit["id"],
                      "owner": player}
                     for unit in self._units(state, player)
-                    if unit["code"] == "OGN-235"]
+                    if unit["code"] == "OGN-235"
+                    or (self._card_implementation(unit["code"]) is not None
+                        and self._card_implementation(unit["code"]).global_effect == "vision_recycle")]
         if not triggers:
             return
         if not state.get("chain") and "chain_return" not in state:
@@ -3589,6 +3602,9 @@ class OriginsRules:
                     and self._is_field(state, destination)):
                 move_triggers.append({"effect": "apprentice_smith",
                                        "source": unit["id"], "owner": unit["owner"]})
+            if (implementation and implementation.move_effect == "score_on_third_move"
+                    and unit["move_count"] == 3):
+                state["points"][unit["owner"]] += 1
             if (implementation and implementation.move_effect == "play_recruit_three"
                     and self._is_field(state, destination)):
                 for _ in range(3):
@@ -8450,14 +8466,16 @@ class OriginsRules:
                     triggers.append({"effect": "drummer", "owner": player, "location": args["location"]})
                 if code == "OGN-223":
                     triggers.append({"effect": "peak", "source": unit["id"], "owner": player})
-                if code in {"OGN-030", "OGN-086", "OGN-100", "OGN-171", "OGN-174"}:
+                if (code in {"OGN-030", "OGN-086", "OGN-100", "OGN-171", "OGN-174"}
+                        or (implementation is not None
+                            and implementation.global_effect == "vision_recycle")):
                     triggers.append({"effect": "discard_two" if code == "OGN-030" else "vision",
                                      "source": unit["id"], "owner": player})
                 elif any(
                         other["code"] == "OGN-100"
                         or (
                             self._card_implementation(other["code"]) is not None
-                            and self._card_implementation(other["code"]).global_effect == "mechs_vision"
+                            and self._card_implementation(other["code"]).global_effect in {"mechs_vision", "vision_recycle"}
                             and "Mech" in self.cards.get(code, {}).get("tags", [])
                         )
                         for other in self._units(state, player)):
@@ -8769,11 +8787,17 @@ class OriginsRules:
             ahri_triggers = [
                 {"effect": "ahri_debuff", "source": unit["id"],
                  "owner": unit["owner"], "role": "attacker"}
-                for unit in attackers if unit["code"] == "OGN-119"
+                for unit in attackers
+                if unit["code"] == "OGN-119"
+                or (self._card_implementation(unit["code"]) is not None
+                    and self._card_implementation(unit["code"]).combat_effect == "ahri_debuff")
             ] + [
                 {"effect": "ahri_debuff", "source": unit["id"],
                  "owner": unit["owner"], "role": "defender"}
-                for unit in defenders if unit["code"] == "OGN-119"
+                for unit in defenders
+                if unit["code"] == "OGN-119"
+                or (self._card_implementation(unit["code"]) is not None
+                    and self._card_implementation(unit["code"]).combat_effect == "ahri_debuff")
             ] + [
                 {"effect": "crackshot_target", "source": unit["id"],
                  "owner": unit["owner"]}
@@ -8916,6 +8940,11 @@ class OriginsRules:
                     unit["owner"] for unit in self._units(state, winning_owner, field)
                     if (self._card_implementation(unit["code"]) is not None
                         and self._card_implementation(unit["code"]).combat_effect == "draw_one_on_win"))
+                legend = self.card_registry.get(
+                    state["players"][winning_owner].get("legend"))
+                if (legend is not None
+                        and legend.combat_effect == "draw_one_on_win"):
+                    combat_draws.append(winning_owner)
         symbol_tie = (battle["combat"]
                       and self._units(state, attacker, field)
                       and self._units(state, 1 - attacker, field)

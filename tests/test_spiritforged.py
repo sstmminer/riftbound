@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 109)
+        self.assertEqual(len(registry.executable_codes()), 110)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -141,6 +141,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-110A-221").might_effect, "double_one_on_one")
         self.assertEqual(registry.get("SFD-233-221").conquer_effect, "damage_enemy_base_by_might")
         self.assertEqual(registry.get("SFD-233-STAR-221").conquer_effect, "damage_enemy_base_by_might")
+        self.assertEqual(registry.get("SFD-044-221").additional_cost_effect, "return_gear")
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -1349,6 +1350,27 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules._effect_spell(state, {"code": "SFD-204-221", "owner": 0}, random.Random(251))
         self.assertFalse(first["exhausted"])
         self.assertFalse(second["exhausted"])
+
+    def test_batch_unit_additional_return_gear_is_selected_in_play_action(self):
+        deck = legal_deck("SFD-044-221", "OGN-261", "OGN-238")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(252))
+        card = move_code_to_hand(state, 0, "SFD-044-221")
+        gear = {"id": "gear:quartermaster", "card": None, "code": "OGN-040",
+                "owner": 0, "card_owner": 0, "location": "base:0",
+                "exhausted": False, "temporary": False}
+        state["players"][0]["gear"].append(gear)
+        state.update(phase="main", actor=0)
+        state["players"][0]["energy"] = 10
+        state["players"][0]["power"] = ["calm"] * 10
+        action = next(action for action in rules.legal_actions(state)
+                      if action.kind == "play_unit"
+                      and __import__("json").loads(action.arguments)["card"] == card)
+        args = __import__("json").loads(action.arguments)
+        self.assertEqual(args["additional_gear"], gear["id"])
+        rules.apply(state, action, random.Random(253))
+        self.assertNotIn(gear, state["players"][0]["gear"])
+        self.assertTrue(any(unit["code"] == "SFD-044-221" for unit in state["units"]))
 
 
 if __name__ == "__main__":

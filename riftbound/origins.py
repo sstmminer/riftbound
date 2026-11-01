@@ -3538,6 +3538,11 @@ class OriginsRules:
             kill_options = ([list(combo) for count in range(len(self._units(state, player)) + 1)
                             for combo in combinations([unit["id"] for unit in self._units(state, player)], count)]
                            if code == "OGN-231" else [[]])
+            additional_gear = ([gear["id"] for gear in row.get("gear", [])]
+                               if implementation and implementation.additional_cost_effect == "return_gear"
+                               else [None])
+            if implementation and implementation.additional_cost_effect == "return_gear" and not additional_gear:
+                continue
             # Accelerate is offered in a post-play payment window.  The
             # initial action therefore always pays only the printed unit cost;
             # the pending decision may later add one energy and one matching
@@ -3548,32 +3553,34 @@ class OriginsRules:
                         for discard_card in discard_cards:
                             for spend_buffs in buff_spends:
                                 for kill_units in kill_options:
-                                    total_energy = max(0, energy - (2 if discard_card else 0))
-                                    total_energy += additional_energy if additional_cost else 0
-                                    total_power = max(0, data["power_cost"] - len(spend_buffs) - len(kill_units))
-                                    for payment in self._payments(state, player, total_energy, data["domains"], total_power):
-                                        for location in permitted:
-                                            enter_targets = [None]
-                                            if code == "OGN-016" and self._played_for_legion(state, player):
-                                                candidates = [unit["id"] for unit in self._units(state, player)]
-                                                enter_targets = candidates or [None]
-                                            for enter_target in enter_targets:
-                                                result.append(Action.make(
-                                                    "play_unit", card=card, location=location,
-                                                    accelerate=accelerate, payment=payment,
-                                                    enter_target=enter_target,
-                                                    additional_cost=additional_cost,
-                                                    sacrifice=sacrifice,
-                                                    additional_discard=bool(discard_card),
-                                                    discard_card=discard_card,
-                                                    spend_buffs=spend_buffs,
-                                                    kill_units=kill_units))
-                                            if code == "OGN-016" and self._played_for_legion(state, player) and candidates:
-                                                result.append(Action.make(
-                                                    "play_unit_targeted", card=card, location=location,
-                                                    accelerate=accelerate, payment=payment,
-                                                    additional_cost=additional_cost, sacrifice=sacrifice,
-                                                    target_candidates=candidates))
+                                    for returned_gear in additional_gear:
+                                        total_energy = max(0, energy - (2 if discard_card else 0))
+                                        total_energy += additional_energy if additional_cost else 0
+                                        total_power = max(0, data["power_cost"] - len(spend_buffs) - len(kill_units))
+                                        for payment in self._payments(state, player, total_energy, data["domains"], total_power):
+                                            for location in permitted:
+                                                enter_targets = [None]
+                                                if code == "OGN-016" and self._played_for_legion(state, player):
+                                                    candidates = [unit["id"] for unit in self._units(state, player)]
+                                                    enter_targets = candidates or [None]
+                                                for enter_target in enter_targets:
+                                                    result.append(Action.make(
+                                                        "play_unit", card=card, location=location,
+                                                        accelerate=accelerate, payment=payment,
+                                                        enter_target=enter_target,
+                                                        additional_cost=additional_cost,
+                                                        sacrifice=sacrifice,
+                                                        additional_discard=bool(discard_card),
+                                                        discard_card=discard_card,
+                                                        additional_gear=returned_gear,
+                                                        spend_buffs=spend_buffs,
+                                                        kill_units=kill_units))
+                                                if code == "OGN-016" and self._played_for_legion(state, player) and candidates:
+                                                    result.append(Action.make(
+                                                        "play_unit_targeted", card=card, location=location,
+                                                        accelerate=accelerate, payment=payment,
+                                                        additional_cost=additional_cost, sacrifice=sacrifice,
+                                                        target_candidates=candidates))
         return result
 
     def _movable(self, state, destination):
@@ -8352,6 +8359,7 @@ class OriginsRules:
                 additional_cost = bool(args.get("additional_cost"))
                 sacrifice_id = args.get("sacrifice")
                 discard_card = args.get("discard_card")
+                additional_gear_id = args.get("additional_gear")
                 spend_buffs = list(args.get("spend_buffs") or [])
                 kill_units = list(args.get("kill_units") or [])
                 ignore_energy = bool(args.get("ignore_energy"))
@@ -8370,6 +8378,14 @@ class OriginsRules:
                     row["hand"].remove(discard_card)
                     row["trash"].append(discard_card)
                     row["discarded_this_turn"] = True
+                if (not ignore_cost and implementation is not None
+                        and implementation.additional_cost_effect == "return_gear"):
+                    gear = next((gear for gear in row.get("gear", [])
+                                 if gear["id"] == additional_gear_id), None)
+                    if gear is None:
+                        raise ValueError("Legion Quartermaster requires a friendly Gear to return")
+                    row["gear"].remove(gear)
+                    self._hand_gear_card(state, gear)
                 for uid in spend_buffs:
                     spent = self._unit(state, uid)
                     if spent is None or spent["owner"] != player or spent["buff"] <= 0:

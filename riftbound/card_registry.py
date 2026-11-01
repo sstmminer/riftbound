@@ -454,4 +454,7 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-233-STAR-221", sfd, "unit", "executable",
                            conquer_effect="damage_enemy_base_by_might",
                            notes="Alternate Yone, Blademaster printing."),
+        CardImplementation("SFD-044-221", sfd, "unit", "executable",
+                           additional_cost_effect="return_gear",
+                           notes="Legion Quartermaster; return a friendly Gear as an additional cost."),
     ])

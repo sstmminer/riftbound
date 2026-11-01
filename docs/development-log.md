@@ -482,3 +482,7 @@ Karma/Vision 的回收监听不会被跳过。Spiritforged 定向新增 4 项，
 `legend_rainbow` 资源动作：只在 Chain/Showdown 反应窗口（或 Accelerate 费用窗口）显示，横置
 Legend 后加入 `any` 法力，避免把资源能力误当成主阶段动作。注册表规模增至 118，Spiritforged
 定向测试 40 项，全量回归为 444 项。
+
+最后接入 `SFD-192-221` Shurelya's Requiem，注册表规模增至 119。它的“打出时使己方单位就绪”
+不再走 Gear 特例，而是使用注册触发 `ready_friendly_units`，与法术版本共享同一就绪处理器。全量
+回归为 445 项。

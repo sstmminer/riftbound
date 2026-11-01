@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 118)
+        self.assertEqual(len(registry.executable_codes()), 119)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -152,6 +152,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-128-221").combat_effect, "overzealous_fan_defend")
         self.assertEqual(registry.get("SFD-189-221").activated_effect, "legend_rainbow")
         self.assertEqual(registry.get("SFD-244-221").activated_effect, "legend_rainbow")
+        self.assertEqual(registry.get("SFD-192-221").entry_trigger, "ready_friendly_units")
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -303,6 +304,25 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, action, random.Random(41))
         self.assertTrue(state["players"][0]["legend_exhausted"])
         self.assertEqual(state["players"][0]["power"][-1], "any")
+
+    def test_shurelyas_requiem_uses_the_common_gear_entry_trigger(self):
+        deck = legal_deck("OGN-124", "OGN-267", "OGN-193")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(42))
+        gear_card = "p0:test-shurelya"
+        state["cards"][gear_card] = {"code": "SFD-192-221", "owner": 0}
+        state["players"][0]["hand"].append(gear_card)
+        unit = rules._new_unit(state, "OGN-003", 0, "base:0", exhausted=True)
+        state.update(phase="main", actor=0)
+        state["players"][0]["energy"] = 10
+        state["players"][0]["power"] = ["calm", "mind"]
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_gear"
+                    and __import__("json").loads(action.arguments)["card"] == gear_card)
+        rules.apply(state, play, random.Random(43))
+        rules.apply(state, Action.make("pass"), random.Random(44))
+        rules.apply(state, Action.make("pass"), random.Random(45))
+        self.assertFalse(unit["exhausted"])
 
     def test_entry_ready_and_static_keywords_use_common_unit_path(self):
         deck = legal_deck("SFD-006-221", "OGN-247", "OGN-039")

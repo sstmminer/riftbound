@@ -483,4 +483,7 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-244-221", sfd, "legend", "executable", reaction=True,
                            activated_effect="legend_rainbow",
                            notes="Fire Below the Mountain alternate printing; shared Legend resource ability."),
+        CardImplementation("SFD-192-221", sfd, "gear", "executable",
+                           entry_trigger="ready_friendly_units",
+                           notes="Shurelya's Requiem; when played, ready all friendly units."),
     ])

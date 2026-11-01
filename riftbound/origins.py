@@ -191,6 +191,7 @@ class OriginsRules:
         registry.register("optional_return_small_field_unit", self._effect_optional_return_small_field_unit)
         registry.register("loyal_pup_defend", self._effect_loyal_pup_defend)
         registry.register("overzealous_fan_defend", self._effect_overzealous_fan_defend)
+        registry.register("ready_friendly_units", self._effect_ready_friendly_units)
         registry.register("move_field_unit", self._effect_move_field_unit)
         registry.register("poro_herder", self._effect_poro_herder)
         registry.register("sprite_mother", self._effect_sprite_mother)
@@ -4390,6 +4391,11 @@ class OriginsRules:
         self._queue_optional(state, item["owner"], "fan_return_attacker",
                              source=source["id"], field=field,
                              resume="close_showdown")
+        return True
+
+    def _effect_ready_friendly_units(self, state, item, rng):
+        for unit in self._units(state, item["owner"]):
+            self._ready_unit(state, unit)
         return True
 
     def _players_hand(self, state, player):

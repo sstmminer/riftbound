@@ -243,6 +243,7 @@ class OriginsRules:
         registry.register("optional_kill_cheap_gear", self._effect_optional_kill_cheap_gear)
         registry.register("ganking_target", self._effect_ganking_target)
         registry.register("kill_small_enemy", self._effect_kill_small_enemy)
+        registry.register("blast_corps", self._effect_blast_corps)
         registry.register("lucian_attack", self._effect_lucian_attack)
         registry.register("buff_another_on_move", self._effect_buff_another_on_move)
         registry.register("legend_toggle", self._effect_legend_toggle)
@@ -4083,6 +4084,10 @@ class OriginsRules:
         if effect == "kill_small_enemy":
             return [u["id"] for u in state["units"]
                     if u["owner"] != owner and self.might(state, u) <= 3]
+        if effect == "blast_corps":
+            return [u["id"] for u in state["units"]
+                    if self._is_field(state, u["location"])
+                    and self._is_targetable(state, owner, u["id"])]
         if effect == "kinkou_buff":
             return [u["id"] for u in self._units(state, owner) if u["id"] != source]
         if effect == "ahri_debuff":
@@ -5208,6 +5213,13 @@ class OriginsRules:
         if target is not None and target["owner"] != item["owner"] and self.might(state, target) <= 3:
             state["units"].remove(target)
             self._trash_unit_card(state, target)
+            self._cleanup(state, rng)
+        return True
+
+    def _effect_blast_corps(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if target is not None and self._is_field(state, target["location"]):
+            self._deal_damage(state, target, 2)
             self._cleanup(state, rng)
         return True
 
@@ -8708,6 +8720,10 @@ class OriginsRules:
                                                                       "source": unit["id"]})
                 triggers = self._second_card_triggers(state, player)
                 implementation = self._card_implementation(code)
+                if (additional_cost and implementation is not None
+                        and implementation.additional_cost_effect == "blast_corps"):
+                    triggers.append({"effect": "blast_corps", "source": unit["id"],
+                                     "owner": player})
                 if implementation and implementation.entry_trigger:
                     trigger = {"effect": implementation.entry_trigger,
                                "source": unit["id"], "owner": player}

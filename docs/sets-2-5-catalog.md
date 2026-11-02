@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 123 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 124 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -141,6 +141,7 @@ python -m riftbound catalog --set SFD
 - `SFD-020-221` / `SFD-020A-221` Draven, Vanquisher：战斗胜利生成横置 Gold Gear，并在攻击/防守触发时通过可选窗口支付法力获得本回合 +2 Might。
 - `SFD-196-221` Defiant Dance：Reaction 通过共享多目标窗口依次点选两名不同单位，确认后分别给予本回合 +2 与 -2 Might。
 - `SFD-194-221` Counter Strike：Reaction 点选单位后设置本回合下一次伤害预防标记并抽 1，法术/能力伤害与战斗伤害共用该标记。
+- `SFD-013-221` Blast Corps Cadet：可选支付额外 Energy 与 Fury 后，入场触发通过共享目标窗口点选战场单位并造成 2 点伤害。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。装备附着、Repeat、复杂衍生物和多步骤替代效果继续保持 catalog-only。
 

@@ -501,4 +501,8 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-194-221", sfd, "spell", "executable", reaction=True,
                            spell_effect="prevent_next_damage_draw", target_scope="any_unit",
                            notes="Counter Strike; prevent the next damage to a unit this turn and draw 1."),
+        CardImplementation("SFD-013-221", sfd, "unit", "executable",
+                           additional_cost_energy=1,
+                           additional_cost_effect="blast_corps",
+                           notes="Blast Corps Cadet; optional extra payment opens a battlefield-unit damage target."),
     ])

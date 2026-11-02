@@ -5948,6 +5948,17 @@ class OriginsRules:
                 if target is not None and target["owner"] == owner:
                     target["temporary"] += 1
             return True
+        if implementation and implementation.spell_effect == "buff_debuff_pair":
+            targets = list(item.get("targets") or [])
+            if len(targets) < 2:
+                return True
+            first = self._unit(state, targets[0])
+            second = self._unit(state, targets[1])
+            if first is not None:
+                first["temporary"] += 2
+            if second is not None:
+                second["temporary"] -= 2
+            return True
         if implementation and implementation.spell_effect == "rally_the_troops":
             state.setdefault("rally_effects", []).append({"owner": owner, "turn": state["turn"]})
             self._draw(state, owner, 1, rng)

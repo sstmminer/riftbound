@@ -494,4 +494,8 @@ def spiritforged_registry() -> CardSetRegistry:
                            combat_effect="play_gold_gear",
                            global_effect="draven_combat_might",
                            notes="Alternate Draven, Vanquisher printing; shared combat and optional Might hooks."),
+        CardImplementation("SFD-196-221", sfd, "spell", "executable", reaction=True,
+                           spell_effect="buff_debuff_pair", target_scope="any_unit",
+                           target_min=2, target_max=2,
+                           notes="Defiant Dance; choose two distinct units, then apply +2 and -2 in order."),
     ])

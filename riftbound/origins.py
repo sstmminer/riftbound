@@ -244,6 +244,7 @@ class OriginsRules:
         registry.register("ganking_target", self._effect_ganking_target)
         registry.register("kill_small_enemy", self._effect_kill_small_enemy)
         registry.register("blast_corps", self._effect_blast_corps)
+        registry.register("frostcoat_debuff", self._effect_frostcoat_debuff)
         registry.register("lucian_attack", self._effect_lucian_attack)
         registry.register("buff_another_on_move", self._effect_buff_another_on_move)
         registry.register("legend_toggle", self._effect_legend_toggle)
@@ -3615,9 +3616,12 @@ class OriginsRules:
             additional_energy = (implementation.additional_cost_energy
                                  if implementation is not None else
                                  (1 if code == "OGN-044" else 0))
+            additional_power = (implementation.additional_cost_power
+                                if implementation is not None else 0)
             sacrifices = ([unit["id"] for unit in self._units(state, player)]
                           if code == "OGN-208" else [None])
-            extra_costs = ([False, True] if additional_energy and row["energy"] >= energy + additional_energy
+            extra_costs = ([False, True] if (additional_energy or additional_power)
+                           and row["energy"] >= energy + additional_energy
                            else [False])
             discard_cards = ([None] + [uid for uid in row["hand"] if uid != card]
                              if code == "OGN-002" else [None])
@@ -3648,6 +3652,7 @@ class OriginsRules:
                                         total_energy = max(0, energy - (2 if discard_card else 0))
                                         total_energy += additional_energy if additional_cost else 0
                                         total_power = max(0, data["power_cost"] - len(spend_buffs) - len(kill_units))
+                                        total_power += additional_power if additional_cost else 0
                                         for payment in self._payments(state, player, total_energy, data["domains"], total_power):
                                             for location in permitted:
                                                 enter_targets = [None]
@@ -4088,6 +4093,9 @@ class OriginsRules:
             return [u["id"] for u in state["units"]
                     if self._is_field(state, u["location"])
                     and self._is_targetable(state, owner, u["id"])]
+        if effect == "frostcoat_debuff":
+            return [u["id"] for u in state["units"]
+                    if self._is_targetable(state, owner, u["id"])]
         if effect == "kinkou_buff":
             return [u["id"] for u in self._units(state, owner) if u["id"] != source]
         if effect == "ahri_debuff":
@@ -5221,6 +5229,12 @@ class OriginsRules:
         if target is not None and self._is_field(state, target["location"]):
             self._deal_damage(state, target, 2)
             self._cleanup(state, rng)
+        return True
+
+    def _effect_frostcoat_debuff(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if target is not None:
+            target["temporary"] -= 2
         return True
 
     def _effect_lucian_attack(self, state, item, rng):
@@ -8658,7 +8672,10 @@ class OriginsRules:
                 energy = 0 if (ignore_cost or ignore_energy) else max(0, data["energy"] - energy_reduction - (2 if code == "OGN-012" and was_legion else 0)
                                                     - (2 if discard_card else 0)
                                                     + (additional_energy if additional_cost else 0))
+                additional_power = (implementation.additional_cost_power
+                                    if implementation is not None else 0)
                 power_cost = max(0, data["power_cost"] - len(spend_buffs) - len(kill_units))
+                power_cost += additional_power if additional_cost else 0
                 self._pay(row, energy, [] if ignore_cost else args["payment"])
                 if not ignore_cost and discard_card is not None:
                     if discard_card not in row["hand"] or discard_card == card:
@@ -8723,6 +8740,10 @@ class OriginsRules:
                 if (additional_cost and implementation is not None
                         and implementation.additional_cost_effect == "blast_corps"):
                     triggers.append({"effect": "blast_corps", "source": unit["id"],
+                                     "owner": player})
+                if (additional_cost and implementation is not None
+                        and implementation.additional_cost_effect == "frostcoat_debuff"):
+                    triggers.append({"effect": "frostcoat_debuff", "source": unit["id"],
                                      "owner": player})
                 if implementation and implementation.entry_trigger:
                     trigger = {"effect": implementation.entry_trigger,

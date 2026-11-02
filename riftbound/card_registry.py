@@ -37,6 +37,7 @@ class CardImplementation:
     might_effect: str | None = None
     global_effect: str | None = None
     additional_cost_energy: int = 0
+    additional_cost_power: int = 0
     additional_cost_effect: str | None = None
     cost_reduction_effect: str | None = None
     placement_rule: str | None = None
@@ -505,4 +506,8 @@ def spiritforged_registry() -> CardSetRegistry:
                            additional_cost_energy=1,
                            additional_cost_effect="blast_corps",
                            notes="Blast Corps Cadet; optional extra payment opens a battlefield-unit damage target."),
+        CardImplementation("SFD-067-221", sfd, "unit", "executable",
+                           additional_cost_power=1,
+                           additional_cost_effect="frostcoat_debuff",
+                           notes="Frostcoat Cub; optional extra Mind power opens a unit -2 Might target."),
     ])

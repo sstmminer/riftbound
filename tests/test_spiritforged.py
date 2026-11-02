@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 124)
+        self.assertEqual(len(registry.executable_codes()), 125)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -161,6 +161,8 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-194-221").spell_effect, "prevent_next_damage_draw")
         self.assertEqual(registry.get("SFD-194-221").target_scope, "any_unit")
         self.assertEqual(registry.get("SFD-013-221").additional_cost_effect, "blast_corps")
+        self.assertEqual(registry.get("SFD-067-221").additional_cost_effect, "frostcoat_debuff")
+        self.assertEqual(registry.get("SFD-067-221").additional_cost_power, 1)
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -261,7 +263,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(state["phase"], "optional")
         optional = state["optional"][0]["id"]
         rules.apply(state, Action.make("optional_effect", optional=optional, accept=True), random.Random(27))
-        self.assertEqual(state["decision"]["targets"], [target["id"]])
+        self.assertIn(target["id"], state["decision"]["targets"])
         rules.apply(state, Action.make("choose_target", target=target["id"]), random.Random(28))
         self.assertNotIn(target, state["units"])
 
@@ -584,6 +586,30 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, Action.make("pass"), random.Random(463))
         rules.apply(state, Action.make("pass"), random.Random(464))
         self.assertEqual(target["damage"], 2)
+
+    def test_frostcoat_optional_power_payment_uses_shared_target_window(self):
+        deck = legal_deck("OGN-124", "OGN-267", "OGN-193")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(465))
+        card = "p0:test-frostcoat-cub"
+        state["cards"][card] = {"code": "SFD-067-221", "owner": 0}
+        state["players"][0]["hand"].append(card)
+        target = rules._new_unit(state, "OGN-027", 1, "base:1", exhausted=False)
+        state["phase"], state["actor"] = "main", 0
+        state["players"][0]["energy"] = 10
+        state["players"][0]["power"] = ["mind"] * 10
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_unit"
+                    and __import__("json").loads(action.arguments)["card"] == card
+                    and __import__("json").loads(action.arguments)["additional_cost"])
+        args = __import__("json").loads(play.arguments)
+        self.assertEqual(len(args["payment"]), 4)
+        rules.apply(state, play, random.Random(466))
+        self.assertIn(target["id"], state["decision"]["targets"])
+        rules.apply(state, Action.make("choose_target", target=target["id"]), random.Random(467))
+        rules.apply(state, Action.make("pass"), random.Random(468))
+        rules.apply(state, Action.make("pass"), random.Random(469))
+        self.assertEqual(target["temporary"], -2)
 
     def test_registered_gear_return_and_gold_deathknell(self):
         deck = legal_deck("SFD-135-221", "OGN-267", "OGN-162")

@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 122)
+        self.assertEqual(len(registry.executable_codes()), 123)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -158,6 +158,8 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-196-221").spell_effect, "buff_debuff_pair")
         self.assertEqual(registry.get("SFD-196-221").target_scope, "any_unit")
         self.assertEqual(registry.get("SFD-196-221").target_max, 2)
+        self.assertEqual(registry.get("SFD-194-221").spell_effect, "prevent_next_damage_draw")
+        self.assertEqual(registry.get("SFD-194-221").target_scope, "any_unit")
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -532,6 +534,33 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, Action.make("pass"), random.Random(454))
         self.assertEqual(first["temporary"], 2)
         self.assertEqual(second["temporary"], -2)
+
+    def test_counter_strike_marks_target_and_prevents_next_damage(self):
+        deck = legal_deck("OGN-124", "OGN-267", "OGN-193")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(455))
+        card = "p0:test-counter-strike"
+        state["cards"][card] = {"code": "SFD-194-221", "owner": 0}
+        state["players"][0]["hand"].append(card)
+        target = rules._new_unit(state, "OGN-001", 0, "base:0", exhausted=False)
+        state["phase"], state["actor"] = "main", 0
+        state["players"][0]["energy"] = 5
+        state["players"][0]["power"] = ["body"] * 5
+        before_draw = len(state["players"][0]["hand"])
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_spell_targeted"
+                    and __import__("json").loads(action.arguments)["card"] == card)
+        rules.apply(state, play, random.Random(456))
+        rules.apply(state, Action.make("choose_target", target=target["id"]), random.Random(457))
+        rules.apply(state, Action.make("pass"), random.Random(458))
+        rules.apply(state, Action.make("pass"), random.Random(459))
+        self.assertEqual(target["prevent_next_damage"], 1)
+        self.assertEqual(len(state["players"][0]["hand"]), before_draw)
+        rules._deal_damage(state, target, 3)
+        self.assertEqual(target["damage"], 0)
+        self.assertEqual(target["prevent_next_damage"], 0)
+        rules._deal_damage(state, target, 3)
+        self.assertEqual(target["damage"], 3)
 
     def test_registered_gear_return_and_gold_deathknell(self):
         deck = legal_deck("SFD-135-221", "OGN-267", "OGN-162")

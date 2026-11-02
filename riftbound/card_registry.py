@@ -498,4 +498,7 @@ def spiritforged_registry() -> CardSetRegistry:
                            spell_effect="buff_debuff_pair", target_scope="any_unit",
                            target_min=2, target_max=2,
                            notes="Defiant Dance; choose two distinct units, then apply +2 and -2 in order."),
+        CardImplementation("SFD-194-221", sfd, "spell", "executable", reaction=True,
+                           spell_effect="prevent_next_damage_draw", target_scope="any_unit",
+                           notes="Counter Strike; prevent the next damage to a unit this turn and draw 1."),
     ])

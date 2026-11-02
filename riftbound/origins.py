@@ -505,6 +505,9 @@ class OriginsRules:
             return
         if amount <= 0:
             return
+        if unit.get("prevent_next_damage", 0):
+            unit["prevent_next_damage"] = 0
+            return
         if state.get("prevent_spell_ability_damage"):
             return
         if unit.get("code") == "OGN-189" and unit.get("move_count", 0) >= 2:
@@ -4184,7 +4187,7 @@ class OriginsRules:
                 "temporary_tank": False, "combat_shield": 0, "assault": assault,
                 "udyr_choices": [],
                 "damage": 0, "stunned": False, "move_count": 0,
-                "kill_on_damage": None}
+                "kill_on_damage": None, "prevent_next_damage": 0}
         if implementation and implementation.static_keywords:
             unit["static_keywords"] = sorted(implementation.static_keywords)
         state["units"].append(unit)
@@ -5958,6 +5961,12 @@ class OriginsRules:
                 first["temporary"] += 2
             if second is not None:
                 second["temporary"] -= 2
+            return True
+        if implementation and implementation.spell_effect == "prevent_next_damage_draw":
+            target = self._unit(state, (item.get("targets") or [None])[0])
+            if target is not None:
+                target["prevent_next_damage"] = 1
+            self._draw(state, owner, 1, rng)
             return True
         if implementation and implementation.spell_effect == "rally_the_troops":
             state.setdefault("rally_effects", []).append({"owner": owner, "turn": state["turn"]})
@@ -9004,6 +9013,7 @@ class OriginsRules:
             unit["damage"], unit["temporary"], unit["assault"], unit["stunned"] = 0, 0, 0, False
             unit["temporary_tank"] = False
             unit["kill_on_damage"] = None
+            unit["prevent_next_damage"] = 0
         for obj in state["players"]:
             obj["energy"], obj["power"] = 0, []
         for ready_player in state.pop("targon_pending", []):
@@ -9313,6 +9323,9 @@ class OriginsRules:
                 for uid, amount in allocations.items():
                     unit = self._unit(state, uid)
                     if unit is None or amount <= 0:
+                        continue
+                    if unit.get("prevent_next_damage", 0):
+                        unit["prevent_next_damage"] = 0
                         continue
                     unit["damage"] += amount
             self._settle_battle(state, rng)

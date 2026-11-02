@@ -486,4 +486,12 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-192-221", sfd, "gear", "executable",
                            entry_trigger="ready_friendly_units",
                            notes="Shurelya's Requiem; when played, ready all friendly units."),
+        CardImplementation("SFD-020-221", sfd, "unit", "executable",
+                           combat_effect="play_gold_gear",
+                           global_effect="draven_combat_might",
+                           notes="Draven, Vanquisher; creates Gold after winning combat and may pay Rainbow for +2 Might."),
+        CardImplementation("SFD-020A-221", sfd, "unit", "executable",
+                           combat_effect="play_gold_gear",
+                           global_effect="draven_combat_might",
+                           notes="Alternate Draven, Vanquisher printing; shared combat and optional Might hooks."),
     ])

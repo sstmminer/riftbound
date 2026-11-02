@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 119 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 121 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -138,6 +138,7 @@ python -m riftbound catalog --set SFD
 - `SFD-128-221` Overzealous Fan：防守触发先确认是否牺牲自身，再点选攻击方单位并将其回基地。
 - `SFD-189-221` / `SFD-244-221` Fire Below the Mountain：Legend 的 Reaction 资源能力接入统一资源动作，在反应窗口横置并加入一枚 Rainbow 法力。
 - `SFD-192-221` Shurelya's Requiem：出牌后的全体友方单位就绪通过统一 Gear 入场触发处理。
+- `SFD-020-221` / `SFD-020A-221` Draven, Vanquisher：战斗胜利生成横置 Gold Gear，并在攻击/防守触发时通过可选窗口支付法力获得本回合 +2 Might。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。装备附着、Repeat、复杂衍生物和多步骤替代效果继续保持 catalog-only。
 

@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 119)
+        self.assertEqual(len(registry.executable_codes()), 121)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -153,6 +153,8 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-189-221").activated_effect, "legend_rainbow")
         self.assertEqual(registry.get("SFD-244-221").activated_effect, "legend_rainbow")
         self.assertEqual(registry.get("SFD-192-221").entry_trigger, "ready_friendly_units")
+        self.assertEqual(registry.get("SFD-020-221").combat_effect, "play_gold_gear")
+        self.assertEqual(registry.get("SFD-020A-221").global_effect, "draven_combat_might")
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -323,6 +325,30 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, Action.make("pass"), random.Random(44))
         rules.apply(state, Action.make("pass"), random.Random(45))
         self.assertFalse(unit["exhausted"])
+
+    def test_draven_vanquisher_has_shared_combat_token_and_might_hooks(self):
+        deck = legal_deck("SFD-020-221", "OGN-253", "OGN-027")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(46))
+        draven = rules._new_unit(state, "SFD-020-221", 0, 0, exhausted=False)
+        state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+        rules._settle_battle(state, random.Random(47))
+        self.assertTrue(any(gear["code"] == "SFD-T03" for gear in state["players"][0]["gear"]))
+
+        state = rules.initial_state(random.Random(48))
+        draven = rules._new_unit(state, "SFD-020-221", 0, 0, exhausted=False)
+        rules._new_unit(state, "OGN-003", 1, 0, exhausted=False)
+        state["players"][0]["power"] = ["fury"]
+        state.update(phase="showdown", actor=0, focus=0, passes=0,
+                     battle={"field": 0, "attacker": 0, "combat": True})
+        rules._close_showdown(state, random.Random(49))
+        rules.apply(state, Action.make("pass"), random.Random(50))
+        rules.apply(state, Action.make("pass"), random.Random(51))
+        self.assertEqual(state["phase"], "optional")
+        optional = state["optional"][0]["id"]
+        rules.apply(state, Action.make("optional_effect", optional=optional, accept=True), random.Random(52))
+        self.assertEqual(draven["temporary"], 2)
+        self.assertEqual(state["players"][0]["power"], [])
 
     def test_entry_ready_and_static_keywords_use_common_unit_path(self):
         deck = legal_deck("SFD-006-221", "OGN-247", "OGN-039")

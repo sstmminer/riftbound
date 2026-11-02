@@ -486,3 +486,7 @@ Legend 后加入 `any` 法力，避免把资源能力误当成主阶段动作。
 最后接入 `SFD-192-221` Shurelya's Requiem，注册表规模增至 119。它的“打出时使己方单位就绪”
 不再走 Gear 特例，而是使用注册触发 `ready_friendly_units`，与法术版本共享同一就绪处理器。全量
 回归为 445 项。
+
+本轮补充 `SFD-020-221` 与 `SFD-020A-221` Draven, Vanquisher，注册表规模增至 121。战斗胜利的
+Gold Gear 生成接入统一战斗胜利结算；攻击/防守时的 +2 Might 使用共享无目标战斗触发和可选支付窗口，
+支付后继续回到同一 Showdown 结算流程。Spiritforged 定向测试增至 41 项。

@@ -192,6 +192,7 @@ class OriginsRules:
         registry.register("loyal_pup_defend", self._effect_loyal_pup_defend)
         registry.register("overzealous_fan_defend", self._effect_overzealous_fan_defend)
         registry.register("ready_friendly_units", self._effect_ready_friendly_units)
+        registry.register("draven_might", self._effect_draven_might)
         registry.register("move_field_unit", self._effect_move_field_unit)
         registry.register("poro_herder", self._effect_poro_herder)
         registry.register("sprite_mother", self._effect_sprite_mother)
@@ -1784,6 +1785,16 @@ class OriginsRules:
     def _resolve_optional(self, state, item, rng):
         player = item["player"]
         effect = item["effect"]
+        if effect == "draven_might":
+            source = self._unit(state, item.get("source"))
+            row = state["players"][player]
+            if (source is None or source["owner"] != player
+                    or source["location"] != item.get("field")
+                    or not row["power"]):
+                return True
+            row["power"].pop(0)
+            source["temporary"] += 2
+            return True
         if effect == "loyal_pup_move":
             source = self._unit(state, item.get("source"))
             destination = item.get("destination")
@@ -4396,6 +4407,19 @@ class OriginsRules:
     def _effect_ready_friendly_units(self, state, item, rng):
         for unit in self._units(state, item["owner"]):
             self._ready_unit(state, unit)
+        return True
+
+    def _effect_draven_might(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        field = item.get("field")
+        if (source is None or source["owner"] != item["owner"]
+                or source["location"] != field or not self._is_field(state, field)):
+            return True
+        if not state["players"][item["owner"]]["power"]:
+            return True
+        self._queue_optional(state, item["owner"], "draven_might",
+                             source=source["id"], field=field,
+                             resume="close_showdown")
         return True
 
     def _players_hand(self, state, player):
@@ -9186,6 +9210,13 @@ class OriginsRules:
                  "owner": unit["owner"], "field": field}
                 for unit in attackers if unit["code"] == "SFD-028-221"
             ]
+            for unit in attackers + defenders:
+                implementation = self._card_implementation(unit["code"])
+                if (implementation is not None
+                        and implementation.global_effect == "draven_combat_might"):
+                    ahri_triggers.append({"effect": "draven_might", "source": unit["id"],
+                                          "owner": unit["owner"], "field": field,
+                                          "target_required": False})
             battle["designation_triggers_added"] = True
             if ahri_triggers:
                 state["combat_trigger_queue"] = ahri_triggers
@@ -9289,6 +9320,11 @@ class OriginsRules:
                     unit["owner"] for unit in self._units(state, winning_owner, field)
                     if (self._card_implementation(unit["code"]) is not None
                         and self._card_implementation(unit["code"]).combat_effect == "draw_one_on_win"))
+                for unit in self._units(state, winning_owner, field):
+                    implementation = self._card_implementation(unit["code"])
+                    if (implementation is not None
+                            and implementation.combat_effect == "play_gold_gear"):
+                        self._play_gold_gear_token(state, winning_owner, exhausted=True)
                 legend = self.card_registry.get(
                     state["players"][winning_owner].get("legend"))
                 if (legend is not None

@@ -511,3 +511,7 @@ Might。针对性测试覆盖目标候选、重复点击拒绝、确认以及结
 本批继续加入 `SFD-083-221` Hextech Anomaly 与 `SFD-117-221` Ancient Henge，注册表规模增至 127。
 两张 Gear 共用数量选择式 Reaction 资源窗口：前者将 Rainbow power 转成 Energy，后者将 Energy 转成
 Rainbow power；玩家可选择具体数量，Gear 消耗、资源监听和链上时机均复用现有动作路径。完整回归为 451 项。
+
+本批再加入 `SFD-045-221` Not So Fast，注册表规模增至 128。新增 `counter_scope` 注册字段，反制动作会
+在 Chain 上列出所有当前确实选择了敌方控制单位或 Gear 的对手法术/能力；目标仍由玩家点击确认，随后走
+统一反制、移除 Chain 项和卡牌回收流程。完整回归为 452 项。

@@ -3296,6 +3296,15 @@ class OriginsRules:
                 continue
             data = self.cards[code]
             implementation = self._card_implementation(code)
+            if implementation and implementation.counter_scope == "friendly_target":
+                counter_targets = [f"chain:{index}" for index, item in enumerate(state.get("chain", []))
+                                   if self._chain_item_chooses_friendly_target(state, item, player)]
+                if counter_targets:
+                    for payment in self._payments(state, player, data["energy"], data["domains"],
+                                                  data["power_cost"] or 0):
+                        result.append(Action.make("play_counter", card=card, payment=payment,
+                                                  targets=counter_targets))
+                continue
             if implementation and implementation.spell_effect:
                 spell_energy = max(0, data["energy"] - row.get("spell_discount", 0))
                 if (implementation.cost_reduction_effect == "control_mech"
@@ -3577,6 +3586,26 @@ class OriginsRules:
                     and self.might(state, unit) <= 2
                     and self._is_targetable(state, player, unit["id"])]
         raise ValueError(f"unknown registered spell target scope: {scope}")
+
+    def _chain_item_chooses_friendly_target(self, state, item, counter_player):
+        """Whether an opposing Chain item currently chooses its controller's unit/Gear."""
+        if item.get("owner") == counter_player:
+            return False
+        target_ids = list(item.get("targets") or [])
+        if item.get("target") is not None:
+            target_ids.append(item["target"])
+        if not target_ids:
+            return False
+        owner = item.get("owner")
+        for target_id in target_ids:
+            unit = self._unit(state, target_id)
+            if unit is not None and unit.get("owner") == owner:
+                return True
+            gear = next((gear for row in state["players"] for gear in row.get("gear", [])
+                         if gear.get("id") == target_id), None)
+            if gear is not None and gear.get("owner") == owner:
+                return True
+        return False
 
     def _unit_actions(self, state):
         player = state["actor"]
@@ -5692,11 +5721,13 @@ class OriginsRules:
                 self._trash_card(state, item.get("card"), item["owner"])
             return True
         target = state["chain"][index]
-        if target is item or target.get("effect") != "spell":
+        code = item.get("code")
+        valid_target = (self._chain_item_chooses_friendly_target(state, target, item["owner"])
+                        if code == "SFD-045-221" else target.get("effect") == "spell")
+        if target is item or not valid_target:
             if item.get("card") is not None:
                 self._trash_card(state, item.get("card"), item["owner"])
             return True
-        code = item.get("code")
         data = self.cards.get(target.get("code"), {})
         if code == "OGN-045" and (data.get("energy", 99) > 4 or data.get("power_cost", 99) > 1):
             self._trash_card(state, item.get("card"), item["owner"])
@@ -8571,7 +8602,10 @@ class OriginsRules:
         elif kind == "play_counter":
             card = args["card"]
             code = state["cards"][card]["code"]
-            if code not in {"OGN-045", "OGN-064", "OGN-080"} or card not in row["hand"]:
+            implementation = self._card_implementation(code)
+            if ((code not in {"OGN-045", "OGN-064", "OGN-080"}
+                 and not (implementation and implementation.counter_scope))
+                    or card not in row["hand"]):
                 raise ValueError("counter spell is unavailable")
             data = self.cards[code]
             self._pay(row, data["energy"], args.get("payment", []))

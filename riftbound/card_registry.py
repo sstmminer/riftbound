@@ -30,6 +30,7 @@ class CardImplementation:
     deathknell_effect: str | None = None
     spell_effect: str | None = None
     activated_effect: str | None = None
+    counter_scope: str | None = None
     target_scope: str | None = None
     target_min: int = 1
     target_max: int = 1
@@ -54,6 +55,7 @@ class CardImplementation:
                 self.conquer_effect, self.combat_effect,
                 self.deathknell_effect, self.spell_effect,
                 self.activated_effect,
+                self.counter_scope,
                 self.buff_effect, self.might_effect, self.global_effect,
                 self.additional_cost_effect, self.cost_reduction_effect,
                 self.placement_rule)):
@@ -516,4 +518,7 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-117-221", sfd, "gear", "executable",
                            activated_effect="gear_rainbow_from_energy",
                            notes="Ancient Henge; exhaust and convert any amount of Energy to Rainbow power."),
+        CardImplementation("SFD-045-221", sfd, "spell", "executable", reaction=True,
+                           counter_scope="friendly_target",
+                           notes="Not So Fast; counter an enemy spell or ability that chooses a friendly unit or Gear."),
     ])

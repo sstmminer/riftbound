@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 130 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 132 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -147,6 +147,7 @@ python -m riftbound catalog --set SFD
 - `SFD-117-221` Ancient Henge：Reaction 资源转换动作允许玩家选择支付 1 至当前全部 Energy，并获得等量 Rainbow power。
 - `SFD-045-221` Not So Fast：通过注册的 Chain 目标筛选，反制选择了施法者己方单位或 Gear 的敌方法术/能力。
 - `SFD-025-221` / `SFD-025A-221` Rengar, Pouncing：Reaction 单位注册 Assault 2，并只能点选当前正在攻击的战场作为放置地。
+- `SFD-113-221` / `SFD-113A-221` Lucian, Merciless：征服结算通过共享注册能力在每回合首次征服后使自身待命。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。装备附着、Repeat、复杂衍生物和多步骤替代效果继续保持 catalog-only。
 

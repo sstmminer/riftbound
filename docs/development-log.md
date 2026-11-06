@@ -519,3 +519,7 @@ Rainbow power；玩家可选择具体数量，Gear 消耗、资源监听和链�
 本批加入 `SFD-025-221` 与 `SFD-025A-221` Rengar, Pouncing，注册表规模增至 130。新增的
 `attacking_battlefield` 放置规则复用普通单位费用和入场路径；同时修正共享动作入口，使 Reaction 单位在
 Chain/Showdown 中可被玩家看到并出牌，而普通单位仍被过滤。Spiritforged 回归增至 453 项。
+
+本批继续加入 `SFD-113-221` 与 `SFD-113A-221` Lucian, Merciless，注册表规模增至 132。征服结算点新增
+通用 `ready_self_once` 能力：使用单位记录的回合编号避免同回合重复触发，回合推进后自然重新开放，未引入
+单卡旁路。Spiritforged 全量回归为 454 项。

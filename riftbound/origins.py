@@ -2273,6 +2273,10 @@ class OriginsRules:
                 implementation = self._card_implementation(unit["code"])
                 if implementation and implementation.conquer_effect == "play_gold_gear":
                     self._play_gold_gear_token(state, player, exhausted=True)
+                if (implementation and implementation.conquer_effect == "ready_self_once"
+                        and unit.get("conquer_ready_turn") != state["turn"]):
+                    unit["conquer_ready_turn"] = state["turn"]
+                    self._ready_unit(state, unit)
                 if (implementation
                         and implementation.conquer_effect == "damage_enemy_base_by_might"
                         and uncontrolled):

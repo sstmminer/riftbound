@@ -529,4 +529,10 @@ def spiritforged_registry() -> CardSetRegistry:
                            static_keywords=frozenset({"assault_2"}),
                            placement_rule="attacking_battlefield",
                            notes="Alternate Rengar, Pouncing printing; shared attack-battlefield placement."),
+        CardImplementation("SFD-113-221", sfd, "unit", "executable",
+                           conquer_effect="ready_self_once",
+                           notes="Lucian, Merciless; ready after the first conquer each turn."),
+        CardImplementation("SFD-113A-221", sfd, "unit", "executable",
+                           conquer_effect="ready_self_once",
+                           notes="Alternate Lucian, Merciless printing; shared first-conquer ready hook."),
     ])

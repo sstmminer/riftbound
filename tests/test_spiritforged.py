@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 130)
+        self.assertEqual(len(registry.executable_codes()), 132)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -169,6 +169,8 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-025-221").placement_rule, "attacking_battlefield")
         self.assertEqual(registry.get("SFD-025-221").static_keywords, frozenset({"assault_2"}))
         self.assertEqual(registry.get("SFD-025A-221").placement_rule, "attacking_battlefield")
+        self.assertEqual(registry.get("SFD-113-221").conquer_effect, "ready_self_once")
+        self.assertEqual(registry.get("SFD-113A-221").conquer_effect, "ready_self_once")
         self.assertEqual(registry.get("SFD-069-221").conquer_effect, "play_gold_gear")
         self.assertEqual(registry.get("SFD-074-221").entry_trigger, "optional_kill_cheap_gear")
         self.assertEqual(registry.get("SFD-075-221").global_effect, "prize_progress")
@@ -705,6 +707,27 @@ class SpiritforgedExecutableTests(unittest.TestCase):
                       and unit["code"] == "SFD-025-221")
         self.assertEqual(rengar["assault"], 2)
         self.assertEqual(rules.might(state, rengar), 3)
+
+    def test_lucian_merciless_readies_on_first_conquer_each_turn(self):
+        deck = legal_deck("OGN-124", "OGN-267", "OGN-193")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(480))
+        lucian = rules._new_unit(state, "SFD-113-221", 0, 0, exhausted=True)
+        state["fields"][0]["controller"] = 0
+        state.update(phase="main", actor=0)
+        rules._score(state, 0, 0, "conquer", random.Random(481))
+        self.assertFalse(lucian["exhausted"])
+        self.assertEqual(lucian.get("conquer_ready_turn"), state["turn"])
+        lucian["exhausted"] = True
+        lucian["location"] = 1
+        state["fields"][1]["controller"] = 0
+        rules._score(state, 0, 1, "conquer", random.Random(482))
+        self.assertTrue(lucian["exhausted"])
+        state["turn"] += 1
+        lucian["location"] = 0
+        state["scored"][0] = []
+        rules._score(state, 0, 0, "conquer", random.Random(483))
+        self.assertFalse(lucian["exhausted"])
 
     def test_registered_gear_return_and_gold_deathknell(self):
         deck = legal_deck("SFD-135-221", "OGN-267", "OGN-162")

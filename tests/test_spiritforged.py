@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 148)
+        self.assertEqual(len(registry.executable_codes()), 151)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -198,6 +198,9 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-218-221").global_effect, "sunken_temple")
         self.assertEqual(registry.get("SFD-219-221").global_effect, "papertree")
         self.assertEqual(registry.get("SFD-220-221").global_effect, "treasure_hoard")
+        self.assertEqual(registry.get("SFD-207-221").global_effect, "emperor_dais")
+        self.assertEqual(registry.get("SFD-213-221").global_effect, "ornns_forge")
+        self.assertEqual(registry.get("SFD-214-221").global_effect, "power_nexus")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -2051,6 +2054,62 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertFalse(any(action.kind == "play_unit"
                              and __import__("json").loads(action.arguments).get("location") == 0
                              for action in actions))
+
+    def test_batch_emperor_dais_requires_target_then_returns_unit_and_creates_soldier(self):
+        deck = legal_deck("SFD-003-221", "OGN-253", "OGN-027")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(268))
+        state["fields"][0]["code"] = "SFD-207-221"
+        state["fields"][0]["controller"] = 0
+        state["players"][0]["energy"] = 1
+        unit = rules._new_unit(state, "OGN-001", 0, 0, exhausted=False, card=None)
+        state["scored"] = [[], []]
+        rules._score(state, 0, 0, "conquer", random.Random(269), uncontrolled=True)
+        self.assertEqual(state["optional"][0]["effect"], "emperor_dais")
+        optional = state["optional"][0]
+        rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(270))
+        rules.apply(state, Action.make("choose_target", target=unit["id"]), random.Random(271))
+        self.assertNotIn(unit, state["units"])
+        self.assertIn(unit.get("card"), state["players"][0]["hand"] if unit.get("card") else [None])
+        self.assertTrue(any(token["code"] == "SFD-T04" and token["location"] == 0
+                            for token in state["units"]))
+        self.assertEqual(state["players"][0]["energy"], 0)
+
+    def test_batch_ornns_forge_reduces_only_first_non_token_gear_each_turn(self):
+        deck = legal_deck("SFD-003-221", "OGN-253", "OGN-027")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(272))
+        state["fields"][0]["code"] = "SFD-213-221"
+        state["fields"][0]["controller"] = 0
+        gear_a = "p0:gear:a"
+        gear_b = "p0:gear:b"
+        state["cards"][gear_a] = {"code": "OGN-040", "owner": 0}
+        state["cards"][gear_b] = {"code": "OGN-040", "owner": 0}
+        state["players"][0]["hand"].extend([gear_a, gear_b])
+        state.update(phase="main", actor=0)
+        state["players"][0]["energy"] = 1
+        state["players"][0]["power"] = ["fury"]
+        actions = [action for action in rules.legal_actions(state)
+                   if action.kind == "play_gear"]
+        self.assertEqual(len(actions), 2)
+        rules.apply(state, actions[0], random.Random(273))
+        self.assertTrue(state["players"][0].get("ornns_forge_used"))
+
+    def test_batch_power_nexus_uses_four_rainbow_power_optional_score(self):
+        deck = legal_deck("SFD-003-221", "OGN-253", "OGN-027")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(274))
+        state["fields"][0]["code"] = "SFD-214-221"
+        state["fields"][0]["controller"] = 0
+        state["players"][0]["power"] = ["any"] * 4
+        state["scored"] = [[], []]
+        points = state["points"][0]
+        rules._score(state, 0, 0, "hold", random.Random(275))
+        self.assertEqual(state["optional"][0]["effect"], "power_nexus_score")
+        optional = state["optional"][0]
+        rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(276))
+        self.assertEqual(state["points"][0], points + 2)
+        self.assertEqual(state["players"][0]["power"], [])
 
 
 if __name__ == "__main__":

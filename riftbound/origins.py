@@ -1858,6 +1858,34 @@ class OriginsRules:
             state["players"][player]["energy"] -= 1
             self._play_gold_gear_token(state, player, exhausted=True)
             return True
+        if effect == "emperor_dais":
+            candidates = [unit["id"] for unit in self._units(state, player, item.get("field"))]
+            if state["players"][player]["energy"] < 1 or not candidates:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": candidates,
+                "item": {"effect": "emperor_dais", "owner": player,
+                          "field": item.get("field")},
+                "emperor_dais_target": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
+        if effect == "power_nexus_score":
+            row = state["players"][player]
+            if row["power"].count("any") < 4:
+                return True
+            removed = 0
+            kept = []
+            for power in row["power"]:
+                if power == "any" and removed < 4:
+                    removed += 1
+                else:
+                    kept.append(power)
+            row["power"] = kept
+            state["points"][player] += 1
+            if state["points"][player] >= state["victory"]:
+                state["winner"] = player
+            return True
         if effect == "guards_ready":
             source = self._unit(state, item.get("source"))
             row = state["players"][player]
@@ -2363,6 +2391,10 @@ class OriginsRules:
                 state["winner"] = player
             elif code == "OGN-288" and state["players"][player]["rune_deck"]:
                 self._queue_battlefield_optional(state, player, "channel_rune")
+            elif field_impl is not None and field_impl.global_effect == "power_nexus":
+                if state["players"][player]["power"].count("any") >= 4:
+                    self._queue_battlefield_optional(state, player, "power_nexus_score",
+                                                     field=field)
         if result in {"point", "draw"} and method == "hold":
             for unit in list(self._units(state, player, field)):
                 if unit["code"] == "OGN-067":
@@ -2442,6 +2474,11 @@ class OriginsRules:
                 if state["players"][player]["energy"] >= 1:
                     self._queue_battlefield_optional(state, player, "treasure_hoard_gold",
                                                      field=field)
+            elif field_impl is not None and field_impl.global_effect == "emperor_dais":
+                if (state["players"][player]["energy"] >= 1
+                        and self._units(state, player, field)):
+                    self._queue_battlefield_optional(state, player, "emperor_dais",
+                                                     field=field)
         if result == "draw":
             self._draw(state, player, 1, rng)
         self._cleanup(state, rng)
@@ -2467,6 +2504,7 @@ class OriginsRules:
             row["cards_locked_turn"] = False
             row["spell_discount"] = 0
             row["free_hide_turn"] = False
+            row["ornns_forge_used"] = False
         row = state["players"][player]
         row["legend_exhausted"] = False
         if row["turns"] == 0 and not state["beginning_awarded"][player]:
@@ -3068,7 +3106,13 @@ class OriginsRules:
                 if not (code in GEAR_CODES or self._is_executable_kind(code, "gear")):
                     continue
                 data = self.cards[code]
-                for payment in self._payments(state, player, data["energy"], data["domains"],
+                energy = data["energy"]
+                if (not data.get("token") and not row.get("ornns_forge_used")
+                        and any(field.get("controller") == player
+                                and field.get("code") == "SFD-213-221"
+                                for field in state["fields"])):
+                    energy = max(0, energy - 1)
+                for payment in self._payments(state, player, energy, data["domains"],
                                                data["power_cost"] or 0):
                     result.append(Action.make("play_gear", card=card, payment=payment))
         gear_resource = {"OGN-040": "fury", "OGN-081": "calm", "OGN-120": "mind",
@@ -7855,6 +7899,33 @@ class OriginsRules:
                                 restored["phase"], restored["actor"], restored.get("passes", 0))
                     self._cleanup(state, rng)
                     return
+                if decision.get("emperor_dais_target"):
+                    target = self._unit(state, args["target"])
+                    field = decision.get("item", {}).get("field")
+                    if (target is None or target["owner"] != player
+                            or target["location"] != field
+                            or state["players"][player]["energy"] < 1):
+                        raise ValueError("Emperor's Dais target is no longer legal")
+                    state["players"][player]["energy"] -= 1
+                    state["units"].remove(target)
+                    self._hand_unit_card(state, target)
+                    self._new_unit(state, "SFD-T04", player, field)
+                    state["decision"] = None
+                    state["optional_ordered"] = False
+                    if state.get("optional"):
+                        state["phase"], state["actor"], state["passes"] = (
+                            "optional", state["optional"][0]["player"], 0)
+                    else:
+                        restored = state.pop("optional_return", None)
+                        if restored is None:
+                            state["phase"], state["actor"], state["passes"] = "main", player, 0
+                        elif restored["phase"] == "chain" and not state.get("chain"):
+                            self._finish_resolution(state)
+                        else:
+                            state["phase"], state["actor"], state["passes"] = (
+                                restored["phase"], restored["actor"], restored.get("passes", 0))
+                    self._cleanup(state, rng)
+                    return
                 if decision.get("optional_yone_target"):
                     target = self._unit(state, args["target"])
                     item = decision.get("item", {})
@@ -8526,6 +8597,12 @@ class OriginsRules:
                                 "location": f"base:{player}",
                                 "exhausted": code == "OGN-017",
                                 "temporary": code == "SFD-104-221"})
+            if (not self.cards.get(code, {}).get("token")
+                    and not row.get("ornns_forge_used")
+                    and any(field.get("controller") == player
+                            and field.get("code") == "SFD-213-221"
+                            for field in state["fields"])):
+                row["ornns_forge_used"] = True
             # Gear has no open target-selection step: it is finalized as soon
             # as payment and placement into the Base complete.
             self._mark_play_finalized(state, player, card,

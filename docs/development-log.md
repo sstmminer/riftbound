@@ -523,3 +523,17 @@ Chain/Showdown 中可被玩家看到并出牌，而普通单位仍被过滤。Sp
 本批继续加入 `SFD-113-221` 与 `SFD-113A-221` Lucian, Merciless，注册表规模增至 132。征服结算点新增
 通用 `ready_self_once` 能力：使用单位记录的回合编号避免同回合重复触发，回合推进后自然重新开放，未引入
 单卡旁路。Spiritforged 全量回归为 454 项。
+
+本轮长时批量扩展继续加入 3 张可执行牌，注册表规模增至 135：`SFD-154-221` Guards! 复用 Hidden
+暗置/反应与普通法术链，结算生成 Sand Soldier 后通过统一可选窗口支付一枚 Order 符能使其待命；
+`SFD-198-221` Arise! 按控制的 Gear 数量生成 Sand Soldier，并通过共享多目标确认窗口选择至多两个
+单位待命；`SFD-063-221` Chemtech Cask 通过法术完成后的统一 post-trigger 在对手回合触发，进入可选
+窗口后横置自身并生成横置 Gold Gear。新增定向回归覆盖 Hidden 结算、重复目标确认、资源支付和对手回合
+触发，Spiritforged 测试共 51 项；随后继续执行 Origins 全量回归与固定种子对局。
+
+同一长时循环继续扩展 3 张牌，注册表规模增至 138：`SFD-160-221` Zaun Punk 的可选友方 Gear
+额外费用复用普通单位支付组合，实际支付后通过共享入场目标窗口强制选择并击杀一个 Gear；`SFD-142-221`
+Jae Medarda 和 `SFD-144-221` Spirit Wheel 接入新的“法术目标已确认”事件。该事件在目标确认时生成
+Chain 触发，所以即使原法术随后被反制，Jae 的抽牌和 Spirit Wheel 的可选 Energy 支付仍按规则保留；
+Spirit Wheel 的支付只在触发解析时检查 Gear 与 Energy，避免目标窗口中出现额外资源菜单。新增测试覆盖跨控制者
+Jae 触发、Spirit Wheel 可选窗口和 Zaun Punk 的额外 Gear 费用/入场击杀；Spiritforged 定向测试增至 52 项。

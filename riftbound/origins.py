@@ -253,6 +253,12 @@ class OriginsRules:
         registry.register("apprentice_smith", self._effect_apprentice_smith)
         registry.register("yordle_explorer", self._effect_yordle_explorer)
         registry.register("play_sand_soldier", self._effect_play_sand_soldier)
+        registry.register("play_sand_soldier_optional_order", self._effect_play_sand_soldier_optional_order)
+        registry.register("arise_sand_soldiers", self._effect_arise_sand_soldiers)
+        registry.register("chemtech_cask", self._effect_chemtech_cask)
+        registry.register("chemtech_gold", self._effect_chemtech_gold)
+        registry.register("kill_gear_trigger", self._effect_kill_gear_trigger)
+        registry.register("spirit_wheel", self._effect_spirit_wheel)
         registry.register("kill_small_unit_and_gold", self._effect_kill_small_unit_and_gold)
         registry.register("buff_other_units_two", self._effect_buff_other_units_two)
         registry.register("tideturner_target", self._effect_tideturner_target)
@@ -1790,6 +1796,36 @@ class OriginsRules:
     def _resolve_optional(self, state, item, rng):
         player = item["player"]
         effect = item["effect"]
+        if effect == "guards_ready":
+            source = self._unit(state, item.get("source"))
+            row = state["players"][player]
+            if (source is None or source["owner"] != player or not source["exhausted"]
+                    or "order" not in row["power"]):
+                return True
+            row["power"].remove("order")
+            self._ready_unit(state, source)
+            return True
+        if effect == "chemtech_gold":
+            source = next((gear for gear in state["players"][player].get("gear", [])
+                           if gear["id"] == item.get("source")
+                           and gear["code"] == "SFD-063-221"
+                           and not gear.get("exhausted")), None)
+            if source is None:
+                return True
+            source["exhausted"] = True
+            self._play_gold_gear_token(state, player, exhausted=True)
+            return True
+        if effect == "spirit_wheel_draw":
+            source = next((gear for gear in state["players"][player].get("gear", [])
+                           if gear["id"] == item.get("source")
+                           and gear["code"] == "SFD-144-221"
+                           and not gear.get("exhausted")), None)
+            if source is None or state["players"][player]["energy"] < 1:
+                return True
+            state["players"][player]["energy"] -= 1
+            source["exhausted"] = True
+            self._draw(state, player, 1, rng)
+            return True
         if effect == "draven_might":
             source = self._unit(state, item.get("source"))
             row = state["players"][player]
@@ -3234,6 +3270,41 @@ class OriginsRules:
                 {"effect": "viktor_innovator", "source": source["id"], "owner": player}
                 for source in self._units(state, player) if source["code"] == "OGN-117"
             )
+            triggers.extend(
+                {"effect": "chemtech_cask", "source": gear["id"], "owner": player}
+                for gear in state["players"][player].get("gear", [])
+                if self._card_implementation(gear["code"]) is not None
+                and self._card_implementation(gear["code"]).global_effect == "chemtech_cask"
+            )
+        return triggers
+
+    def _spell_choice_triggers(self, state, chooser, item, target_ids):
+        """Generate triggers caused by a spell choosing units as targets.
+
+        This is called at target confirmation, before priority is passed again,
+        so target-triggered abilities remain independent of whether the spell
+        later resolves, is countered, or loses a target.
+        """
+        if item.get("spell_choice_triggers_done"):
+            return []
+        item["spell_choice_triggers_done"] = True
+        chosen = {uid for uid in target_ids}
+        triggers = []
+        for uid in chosen:
+            target = self._unit(state, uid)
+            if target is None:
+                continue
+            implementation = self._card_implementation(target["code"])
+            if implementation and implementation.global_effect == "draw_when_chosen_spell":
+                triggers.append({"effect": "draw_one", "source": target["id"],
+                                 "owner": target["owner"]})
+            if target["owner"] == chooser:
+                for gear in state["players"][chooser].get("gear", []):
+                    gear_impl = self._card_implementation(gear["code"])
+                    if (gear_impl and gear_impl.global_effect == "draw_on_friendly_spell_target"
+                            and not gear.get("exhausted")):
+                        triggers.append({"effect": "spirit_wheel", "source": gear["id"],
+                                         "owner": chooser})
         return triggers
 
     def _played_for_legion(self, state, player):
@@ -3672,9 +3743,14 @@ class OriginsRules:
                                 if implementation is not None else 0)
             sacrifices = ([unit["id"] for unit in self._units(state, player)]
                           if code == "OGN-208" else [None])
-            extra_costs = ([False, True] if (additional_energy or additional_power)
-                           and row["energy"] >= energy + additional_energy
-                           else [False])
+            optional_additional = bool(additional_energy or additional_power
+                                       or (implementation and implementation.additional_cost_effect == "kill_gear"))
+            if implementation and implementation.additional_cost_effect == "return_gear":
+                extra_costs = [True]
+            else:
+                extra_costs = ([False, True] if optional_additional
+                               and row["energy"] >= energy + additional_energy
+                               else [False])
             discard_cards = ([None] + [uid for uid in row["hand"] if uid != card]
                              if code == "OGN-002" else [None])
             buff_slots = [unit["id"] for unit in self._units(state, player)
@@ -3686,10 +3762,12 @@ class OriginsRules:
                             for combo in combinations([unit["id"] for unit in self._units(state, player)], count)]
                            if code == "OGN-231" else [[]])
             additional_gear = ([gear["id"] for gear in row.get("gear", [])]
-                               if implementation and implementation.additional_cost_effect == "return_gear"
+                               if implementation and implementation.additional_cost_effect in {"return_gear", "kill_gear"}
                                else [None])
-            if implementation and implementation.additional_cost_effect == "return_gear" and not additional_gear:
+            if implementation and implementation.additional_cost_effect in {"return_gear", "kill_gear"} and not additional_gear:
                 continue
+            if implementation and implementation.additional_cost_effect in {"return_gear", "kill_gear"}:
+                additional_gear = [None, *additional_gear]
             # Accelerate is offered in a post-play payment window.  The
             # initial action therefore always pays only the printed unit cost;
             # the pending decision may later add one energy and one matching
@@ -3701,6 +3779,11 @@ class OriginsRules:
                             for spend_buffs in buff_spends:
                                 for kill_units in kill_options:
                                     for returned_gear in additional_gear:
+                                        gear_additional = bool(
+                                            implementation
+                                            and implementation.additional_cost_effect in {"return_gear", "kill_gear"})
+                                        if gear_additional and additional_cost != (returned_gear is not None):
+                                            continue
                                         total_energy = max(0, energy - (2 if discard_card else 0))
                                         total_energy += additional_energy if additional_cost else 0
                                         total_power = max(0, data["power_cost"] - len(spend_buffs) - len(kill_units))
@@ -4145,6 +4228,9 @@ class OriginsRules:
         if effect == "kill_small_enemy":
             return [u["id"] for u in state["units"]
                     if u["owner"] != owner and self.might(state, u) <= 3]
+        if effect == "kill_gear_trigger":
+            return [gear["id"] for row in state["players"]
+                    for gear in row.get("gear", [])]
         if effect == "blast_corps":
             return [u["id"] for u in state["units"]
                     if self._is_field(state, u["location"])
@@ -5371,6 +5457,80 @@ class OriginsRules:
             self._new_unit(state, "SFD-T04", item["owner"], source["location"])
         return True
 
+    def _effect_play_sand_soldier_optional_order(self, state, item, rng):
+        """Guards!: create the token, then expose the printed optional cost.
+
+        The optional payment is deliberately a plain yes/no window.  The
+        player pays Order through the existing resource state, so the GUI
+        does not expose a second artificial rune-selection menu.
+        """
+        if item.get("guards_token") is None:
+            token = self._new_unit(state, "SFD-T04", item["owner"], f"base:{item['owner']}")
+            item["guards_token"] = token["id"]
+            self._queue_optional(state, item["owner"], "guards_ready",
+                                 source=token["id"])
+        return True
+
+    def _effect_arise_sand_soldiers(self, state, item, rng):
+        """Arise!: create one Sand Soldier per controlled Gear, then ready up to two."""
+        if not item.get("arise_created"):
+            count = len(state["players"][item["owner"]].get("gear", []))
+            tokens = [self._new_unit(state, "SFD-T04", item["owner"], f"base:{item['owner']}")
+                      for _ in range(count)]
+            item["arise_created"] = True
+            item["arise_tokens"] = [token["id"] for token in tokens]
+            if not tokens:
+                return True
+            return self._open_target_choice(
+                state, item, tokens, multi=True, minimum=0,
+                maximum=min(2, len(tokens)))
+        for uid in item.get("targets", []):
+            target = self._unit(state, uid)
+            if target is not None and target["owner"] == item["owner"]:
+                self._ready_unit(state, target)
+        return True
+
+    def _effect_chemtech_cask(self, state, item, rng):
+        """Resolve Chemtech Cask's optional spell-play trigger."""
+        gear = next((gear for gear in state["players"][item["owner"]].get("gear", [])
+                     if gear["id"] == item.get("source")
+                     and gear["code"] == "SFD-063-221"), None)
+        if gear is not None and not gear.get("exhausted"):
+            self._queue_optional(state, item["owner"], "chemtech_gold",
+                                 source=gear["id"])
+        return True
+
+    def _effect_chemtech_gold(self, state, item, rng):
+        gear = next((gear for gear in state["players"][item["player"]].get("gear", [])
+                     if gear["id"] == item.get("source")
+                     and gear["code"] == "SFD-063-221"
+                     and not gear.get("exhausted")), None)
+        if gear is None:
+            return True
+        gear["exhausted"] = True
+        self._play_gold_gear_token(state, item["player"], exhausted=True)
+        return True
+
+    def _effect_kill_gear_trigger(self, state, item, rng):
+        target_id = item.get("target")
+        for row in state["players"]:
+            gear = next((gear for gear in row.get("gear", []) if gear["id"] == target_id), None)
+            if gear is not None:
+                row["gear"].remove(gear)
+                self._trash_gear_card(state, gear)
+                break
+        return True
+
+    def _effect_spirit_wheel(self, state, item, rng):
+        gear = next((gear for gear in state["players"][item["owner"]].get("gear", [])
+                     if gear["id"] == item.get("source")
+                     and gear["code"] == "SFD-144-221"
+                     and not gear.get("exhausted")), None)
+        if gear is not None:
+            self._queue_optional(state, item["owner"], "spirit_wheel_draw",
+                                 source=gear["id"])
+        return True
+
     def _effect_kill_small_unit_and_gold(self, state, item, rng):
         target = self._unit(state, (item.get("targets") or [None])[0])
         if target is None or not self._is_field(state, target["location"]):
@@ -6084,6 +6244,11 @@ class OriginsRules:
         if implementation and implementation.spell_effect == "play_sand_soldier":
             self._new_unit(state, "SFD-T04", owner, f"base:{owner}")
             return True
+        if implementation and implementation.spell_effect in {
+                "play_sand_soldier_optional_order", "arise_sand_soldiers"}:
+            if implementation.spell_effect == "play_sand_soldier_optional_order":
+                return self._effect_play_sand_soldier_optional_order(state, item, rng)
+            return self._effect_arise_sand_soldiers(state, item, rng)
         if implementation and implementation.spell_effect == "play_mech_token_draw":
             self._new_unit(state, "SFD-T05", owner, f"base:{owner}")
             self._draw(state, owner, 1, rng)
@@ -7995,13 +8160,20 @@ class OriginsRules:
                     self._open_combat_trigger_target(state)
                     return
                 if decision.get("play_targeted"):
+                    choice_triggers = []
                     for entry in reversed(state["chain"]):
                         if entry.get("card") == item.get("card"):
                             entry["targets"] = [args["target"]]
                             self._mark_play_finalized(
                                 state, entry.get("played_by", item["owner"]),
                                 entry.get("card"), item=entry)
+                            choice_triggers = self._spell_choice_triggers(
+                                state, player, entry, [args["target"]])
                             break
+                    if choice_triggers:
+                        self._triggers(state, choice_triggers, preserve_context=True)
+                        if state.get("phase") in {"trigger_order", "optional"}:
+                            return
                 else:
                     self.effects.dispatch(item["effect"], state, item, rng)
             elif kind == "confirm_targets":
@@ -8070,15 +8242,22 @@ class OriginsRules:
                 item["targets"] = selected
                 state["decision"] = None
                 if decision.get("play_targeted"):
+                    choice_triggers = []
                     for entry in reversed(state["chain"]):
                         if entry.get("card") == item.get("card"):
                             entry["targets"] = selected
                             self._mark_play_finalized(
                                 state, entry.get("played_by", item["owner"]),
                                 entry.get("card"), item=entry)
+                            choice_triggers = self._spell_choice_triggers(
+                                state, player, entry, selected)
                             if item.get("code") == "OGN-256":
                                 entry["fox_fire_initial_targets"] = list(selected)
                             break
+                    if choice_triggers:
+                        self._triggers(state, choice_triggers, preserve_context=True)
+                        if state.get("phase") in {"trigger_order", "optional"}:
+                            return
                 else:
                     self.effects.dispatch(item["effect"], state, item, rng)
             if state["decision"] is None:
@@ -8780,6 +8959,14 @@ class OriginsRules:
                         raise ValueError("Legion Quartermaster requires a friendly Gear to return")
                     row["gear"].remove(gear)
                     self._hand_gear_card(state, gear)
+                if (not ignore_cost and implementation is not None
+                        and implementation.additional_cost_effect == "kill_gear"):
+                    gear = next((gear for gear in row.get("gear", [])
+                                 if gear["id"] == additional_gear_id), None)
+                    if gear is None:
+                        raise ValueError("Zaun Punk requires a friendly Gear to kill")
+                    row["gear"].remove(gear)
+                    self._trash_gear_card(state, gear)
                 for uid in spend_buffs:
                     spent = self._unit(state, uid)
                     if spent is None or spent["owner"] != player or spent["buff"] <= 0:
@@ -9194,6 +9381,14 @@ class OriginsRules:
                                 and self._card_implementation(source["code"]) is not None
                                 and self._card_implementation(source["code"]).global_effect == "draw_on_power_two"):
                             generated.append({"effect": "yordle_explorer",
+                                              "source": source["id"],
+                                              "owner": played_by})
+                    elif spec.get("effect") == "chemtech_cask":
+                        source = next((gear for gear in state["players"][played_by].get("gear", [])
+                                       if gear["id"] == spec.get("source")
+                                       and gear["code"] == "SFD-063-221"), None)
+                        if source is not None:
+                            generated.append({"effect": "chemtech_cask",
                                               "source": source["id"],
                                               "owner": played_by})
                 if generated:

@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 132 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 138 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -148,6 +148,12 @@ python -m riftbound catalog --set SFD
 - `SFD-045-221` Not So Fast：通过注册的 Chain 目标筛选，反制选择了施法者己方单位或 Gear 的敌方法术/能力。
 - `SFD-025-221` / `SFD-025A-221` Rengar, Pouncing：Reaction 单位注册 Assault 2，并只能点选当前正在攻击的战场作为放置地。
 - `SFD-113-221` / `SFD-113A-221` Lucian, Merciless：征服结算通过共享注册能力在每回合首次征服后使自身待命。
+- `SFD-154-221` Guards!：Hidden 复用统一暗置/反应路径，结算时生成 Sand Soldier，并以可选窗口支付 Order 使其待命。
+- `SFD-198-221` Arise!：按控制的 Gear 数量生成 Sand Soldier，再通过多目标点击窗口选择至多两个待命。
+- `SFD-063-221` Chemtech Cask：在对手回合施放法术后进入统一的可选触发窗口，横置自身生成横置 Gold Gear。
+- `SFD-160-221` Zaun Punk：可选击杀友方 Gear 作为额外费用；支付后由统一入场目标窗口选择一个 Gear 击杀。
+- `SFD-142-221` Jae Medarda：法术目标确认时触发控制者抽牌，触发点早于法术结算并复用普通 Chain。
+- `SFD-144-221` Spirit Wheel：法术选择友方单位后进入可选支付窗口，支付 Energy 并横置自身抽 1。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。装备附着、Repeat、复杂衍生物和多步骤替代效果继续保持 catalog-only。
 

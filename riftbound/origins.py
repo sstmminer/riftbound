@@ -258,6 +258,7 @@ class OriginsRules:
         registry.register("chemtech_cask", self._effect_chemtech_cask)
         registry.register("chemtech_gold", self._effect_chemtech_gold)
         registry.register("card_sharp", self._effect_card_sharp)
+        registry.register("ravenbloom_conservatory", self._effect_ravenbloom_conservatory)
         registry.register("kill_gear_trigger", self._effect_kill_gear_trigger)
         registry.register("spirit_wheel", self._effect_spirit_wheel)
         registry.register("kill_small_unit_and_gold", self._effect_kill_small_unit_and_gold)
@@ -1478,6 +1479,25 @@ class OriginsRules:
                 state["chain"].append(item)
                 state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                 self._finish_resolution(state)
+            return
+        if effect == "ravenbloom_conservatory":
+            owner = reveal["owner"]
+            row = state["players"][owner]
+            card = next((uid for uid in reveal.get("cards", []) if uid in row["main"]), None)
+            if card is not None:
+                row["main"].remove(card)
+                if self.cards[state["cards"][card]["code"]]["type"] == "spell":
+                    row["hand"].append(card)
+                else:
+                    self._recycle_cards_to_main(state, owner, [card], source="main", rng=rng)
+            item = reveal.get("item")
+            state["reveal"] = None
+            if item is not None:
+                item["reveal_done"] = True
+                state["chain"].append(item)
+                state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                self._finish_resolution(state)
+            self._cleanup(state, rng)
             return
         if effect == "dazzling_aurora":
             owner = reveal["owner"]
@@ -5675,6 +5695,19 @@ class OriginsRules:
                              source=item.get("source"), beneficiary=owner)
         return True
 
+    def _effect_ravenbloom_conservatory(self, state, item, rng):
+        """Reveal the top card before the defending combat damage step."""
+        if item.get("reveal_done"):
+            return True
+        owner = item["owner"]
+        top = list(state["players"][owner]["main"][:1])
+        if not top:
+            return True
+        self._open_reveal(state, owner=owner, cards=top, mode="display",
+                          closer=1 - owner, effect="ravenbloom_conservatory",
+                          item=item, rng=rng)
+        return False
+
     def _effect_kill_gear_trigger(self, state, item, rng):
         target_id = item.get("target")
         for row in state["players"]:
@@ -7060,6 +7093,9 @@ class OriginsRules:
                     self._finish_reveal(state, [], rng)
                     return
                 if reveal.get("effect") == "apprentice_smith":
+                    self._finish_reveal(state, [], rng)
+                    return
+                if reveal.get("effect") == "ravenbloom_conservatory":
                     self._finish_reveal(state, [], rng)
                     return
                 if reveal.get("effect") == "mindsplitter":
@@ -9761,6 +9797,12 @@ class OriginsRules:
                     and self._card_implementation(unit["code"]).global_effect == "teemo_defend")
             ]
             defender_owner = 1 - battle["attacker"]
+            field_impl = self._card_implementation(state["fields"][field]["code"])
+            if (field_impl is not None
+                    and field_impl.global_effect == "ravenbloom_conservatory"):
+                ahri_triggers.append({"effect": "ravenbloom_conservatory",
+                                      "owner": defender_owner, "field": field,
+                                      "target_required": False})
             for unit in self._units(state, defender_owner):
                 implementation = self._card_implementation(unit["code"])
                 if (implementation is None

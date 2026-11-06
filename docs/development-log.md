@@ -556,3 +556,8 @@ Gear 出牌支付组合中提供本回合首次非衍生物 Gear 的 1 点 Energ
 确认是否横置 Legend 生成 Gold；同时把 SFD Gold token 接入既有 Gear Add 动作，接近胜利分数时将其
 产出的 Energy 按卡面提高到 2。这样之前各批次生成的 Gold 现在可以在主阶段正常横置使用，仍遵守
 Gear 消耗监听和资源状态验证。
+
+再加入 `SFD-215-221` Ravenbloom Conservatory，注册表规模增至 153。防守战斗的共享指定触发队列会加入
+一个无目标战场触发；结算时由统一公开 Reveal 窗口翻开防守者牌库顶牌，法术进入手牌，非符文牌通过
+统一 recycle 事件回到牌库底，因此 Karma/Vision 监听仍然有效。对手负责关闭公开窗口，符合现有 GUI 的
+展示交互约定。

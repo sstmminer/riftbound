@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 152)
+        self.assertEqual(len(registry.executable_codes()), 153)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -202,6 +202,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-213-221").global_effect, "ornns_forge")
         self.assertEqual(registry.get("SFD-214-221").global_effect, "power_nexus")
         self.assertEqual(registry.get("SFD-201-221").global_effect, "chem_baroness")
+        self.assertEqual(registry.get("SFD-215-221").global_effect, "ravenbloom_conservatory")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -2137,6 +2138,22 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, action, random.Random(280))
         self.assertEqual(state["players"][0]["energy"], 2)
         self.assertTrue(gold["exhausted"])
+
+    def test_batch_ravenbloom_conservatory_uses_public_defense_reveal(self):
+        deck = legal_deck("SFD-081-221", "OGN-265", "OGN-117")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(281))
+        card = "p1:conservatory-spell"
+        state["cards"][card] = {"code": "SFD-087-221", "owner": 1}
+        state["players"][1]["main"].insert(0, card)
+        state.update(phase="main", actor=1)
+        item = {"effect": "ravenbloom_conservatory", "owner": 1}
+        self.assertFalse(rules._effect_ravenbloom_conservatory(state, item, random.Random(282)))
+        self.assertEqual(state["phase"], "reveal")
+        self.assertEqual(state["actor"], 0)
+        rules.apply(state, Action.make("end_reveal"), random.Random(283))
+        self.assertIn(card, state["players"][1]["hand"])
+        self.assertNotIn(card, state["players"][1]["main"])
 
 
 if __name__ == "__main__":

@@ -515,3 +515,7 @@ Rainbow power；玩家可选择具体数量，Gear 消耗、资源监听和链�
 本批再加入 `SFD-045-221` Not So Fast，注册表规模增至 128。新增 `counter_scope` 注册字段，反制动作会
 在 Chain 上列出所有当前确实选择了敌方控制单位或 Gear 的对手法术/能力；目标仍由玩家点击确认，随后走
 统一反制、移除 Chain 项和卡牌回收流程。完整回归为 452 项。
+
+本批加入 `SFD-025-221` 与 `SFD-025A-221` Rengar, Pouncing，注册表规模增至 130。新增的
+`attacking_battlefield` 放置规则复用普通单位费用和入场路径；同时修正共享动作入口，使 Reaction 单位在
+Chain/Showdown 中可被玩家看到并出牌，而普通单位仍被过滤。Spiritforged 回归增至 453 项。

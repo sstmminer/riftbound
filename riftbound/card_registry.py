@@ -521,4 +521,12 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-045-221", sfd, "spell", "executable", reaction=True,
                            counter_scope="friendly_target",
                            notes="Not So Fast; counter an enemy spell or ability that chooses a friendly unit or Gear."),
+        CardImplementation("SFD-025-221", sfd, "unit", "executable", reaction=True,
+                           static_keywords=frozenset({"assault_2"}),
+                           placement_rule="attacking_battlefield",
+                           notes="Rengar, Pouncing; Reaction Assault 2 unit playable to the battlefield being attacked."),
+        CardImplementation("SFD-025A-221", sfd, "unit", "executable", reaction=True,
+                           static_keywords=frozenset({"assault_2"}),
+                           placement_rule="attacking_battlefield",
+                           notes="Alternate Rengar, Pouncing printing; shared attack-battlefield placement."),
     ])

@@ -3620,9 +3620,19 @@ class OriginsRules:
             code = state["cards"][card]["code"]
             if not (code in UNIT_CODES or self._is_executable_kind(code, "unit")):
                 continue
+            if state["phase"] in {"chain", "showdown"} and not self._is_reaction_code(code):
+                continue
             data = self.cards[code]
             implementation = self._card_implementation(code)
             permitted = locations.copy()
+            if implementation and implementation.placement_rule == "attacking_battlefield":
+                battle = state.get("battle")
+                if (state["phase"] in {"chain", "showdown"} and battle is not None
+                        and battle.get("attacker") == player
+                        and self._is_field(state, battle.get("field"))):
+                    permitted = [battle["field"]]
+                else:
+                    permitted = []
             if implementation and implementation.placement_rule == "occupied_enemy_field":
                 permitted += [i for i in range(len(state["fields"]))
                               if any(unit["owner"] != player and unit["location"] == i
@@ -4012,6 +4022,10 @@ class OriginsRules:
             return tuple(Action.make("assign_damage", target=u["id"]) for u in choices)
         result = self._resource_actions(state) + self._gear_actions(state) + self._hidden_actions(state) + self._spell_actions(state)
         if phase in {"chain", "showdown"}:
+            # Reaction units use the same payment and placement path as main-
+            # phase units; `_unit_actions` filters out non-Reaction units and
+            # therefore safely exposes only legal response plays here.
+            result.extend(self._unit_actions(state))
             result.append(Action.make("pass"))
         elif phase == "main":
             result.extend(self._unit_actions(state))

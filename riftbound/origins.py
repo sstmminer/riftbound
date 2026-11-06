@@ -1886,6 +1886,13 @@ class OriginsRules:
             if state["points"][player] >= state["victory"]:
                 state["winner"] = player
             return True
+        if effect == "chem_baroness_gold":
+            row = state["players"][player]
+            if row.get("legend") != "SFD-201-221" or row.get("legend_exhausted"):
+                return True
+            row["legend_exhausted"] = True
+            self._play_gold_gear_token(state, player, exhausted=True)
+            return True
         if effect == "guards_ready":
             source = self._unit(state, item.get("source"))
             row = state["players"][player]
@@ -2338,6 +2345,9 @@ class OriginsRules:
             if field_impl is not None and field_impl.global_effect == "papertree":
                 for channel_player in (0, 1):
                     self._channel_rune(state, channel_player, exhausted=True)
+            if (state["players"][player].get("legend") == "SFD-201-221"
+                    and not state["players"][player].get("legend_exhausted")):
+                self._queue_battlefield_optional(state, player, "chem_baroness_gold")
             for unit in self._units(state, player, field):
                 implementation = self._card_implementation(unit["code"])
                 if implementation and implementation.hold_effect == "draw_two":
@@ -3162,6 +3172,9 @@ class OriginsRules:
                 result.append(Action.make("gear_resource", gear=gear["id"], domain=gear_resource[behavior]))
             elif gear["code"] == "OGN-098":
                 result.append(Action.make("gear_resource", gear=gear["id"], energy=1))
+            elif gear["code"] == "SFD-T03":
+                amount = 2 if state["victory"] - state["points"][player] <= 3 else 1
+                result.append(Action.make("gear_resource", gear=gear["id"], energy=amount))
             elif gear["code"] == "OGN-017":
                 candidates = [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
                 if candidates:

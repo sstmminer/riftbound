@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 151)
+        self.assertEqual(len(registry.executable_codes()), 152)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -201,6 +201,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-207-221").global_effect, "emperor_dais")
         self.assertEqual(registry.get("SFD-213-221").global_effect, "ornns_forge")
         self.assertEqual(registry.get("SFD-214-221").global_effect, "power_nexus")
+        self.assertEqual(registry.get("SFD-201-221").global_effect, "chem_baroness")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -2110,6 +2111,32 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(276))
         self.assertEqual(state["points"][0], points + 2)
         self.assertEqual(state["players"][0]["power"], [])
+
+    def test_batch_chem_baroness_and_gold_use_the_same_optional_resource_path(self):
+        deck = legal_deck("SFD-081-221", "OGN-265", "OGN-117")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(277))
+        state["players"][0]["legend"] = "SFD-201-221"
+        state["players"][0]["legend_exhausted"] = False
+        state["fields"][0]["controller"] = 0
+        state["scored"] = [[], []]
+        rules._score(state, 0, 0, "hold", random.Random(278))
+        self.assertEqual(state["optional"][0]["effect"], "chem_baroness_gold")
+        optional = state["optional"][0]
+        rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(279))
+        self.assertTrue(state["players"][0]["legend_exhausted"])
+        gold = next(gear for gear in state["players"][0]["gear"] if gear["code"] == "SFD-T03")
+        gold["exhausted"] = False
+        state["phase"], state["actor"] = "main", 0
+        state["points"][0] = state["victory"] - 3
+        state["players"][0]["energy"] = 0
+        action = next(action for action in rules.legal_actions(state)
+                      if action.kind == "gear_resource" and
+                      __import__("json").loads(action.arguments)["gear"] == gold["id"])
+        self.assertEqual(__import__("json").loads(action.arguments)["energy"], 2)
+        rules.apply(state, action, random.Random(280))
+        self.assertEqual(state["players"][0]["energy"], 2)
+        self.assertTrue(gold["exhausted"])
 
 
 if __name__ == "__main__":

@@ -510,4 +510,10 @@ def spiritforged_registry() -> CardSetRegistry:
                            additional_cost_power=1,
                            additional_cost_effect="frostcoat_debuff",
                            notes="Frostcoat Cub; optional extra Mind power opens a unit -2 Might target."),
+        CardImplementation("SFD-083-221", sfd, "gear", "executable",
+                           activated_effect="gear_energy_from_rainbow",
+                           notes="Hextech Anomaly; exhaust and convert any amount of Rainbow power to Energy."),
+        CardImplementation("SFD-117-221", sfd, "gear", "executable",
+                           activated_effect="gear_rainbow_from_energy",
+                           notes="Ancient Henge; exhaust and convert any amount of Energy to Rainbow power."),
     ])

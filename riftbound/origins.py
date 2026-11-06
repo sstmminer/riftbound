@@ -2943,17 +2943,26 @@ class OriginsRules:
                 continue
             behavior = self._behavior_code(gear["code"])
             implementation = self._card_implementation(gear["code"])
+            activated = implementation.activated_effect if implementation else None
             gear_resource_codes = {"OGN-040", "OGN-081", "OGN-120", "OGN-163",
                                    "OGN-204", "OGN-245", "OGN-098"}
             if (state["phase"] not in {"main", "decision"}
                     and gear["code"] not in gear_resource_codes
-                    and behavior not in gear_resource):
+                    and behavior not in gear_resource
+                    and activated not in {"gear_energy_from_rainbow", "gear_rainbow_from_energy"}):
                 continue
-            activated = implementation.activated_effect if implementation else None
             if activated == "gear_draw":
                 for payment in self._payments(state, player, 1, ["calm"], 0):
                     result.append(Action.make("gear_activate", gear=gear["id"],
                                               effect=activated, payment=payment))
+            elif activated == "gear_energy_from_rainbow":
+                for amount in range(1, row["power"].count("any") + 1):
+                    result.append(Action.make("gear_activate", gear=gear["id"],
+                                              effect=activated, amount=amount))
+            elif activated == "gear_rainbow_from_energy":
+                for amount in range(1, row["energy"] + 1):
+                    result.append(Action.make("gear_activate", gear=gear["id"],
+                                              effect=activated, amount=amount))
             elif activated == "gear_buff_three":
                 candidates = [u["id"] for u in state["units"]]
                 if candidates:
@@ -8075,15 +8084,43 @@ class OriginsRules:
         elif kind == "gear_activate":
             gear = next((g for g in row["gear"] if g["id"] == args["gear"]), None)
             implementation = self._card_implementation(gear["code"]) if gear else None
+            effect = args.get("effect")
             if (gear is None or gear["exhausted"]
                     or implementation is None
-                    or implementation.activated_effect != args.get("effect")
-                    or args.get("effect") != "gear_draw"):
+                    or implementation.activated_effect != effect
+                    or effect not in {"gear_draw", "gear_energy_from_rainbow",
+                                      "gear_rainbow_from_energy"}):
                 raise ValueError("gear activation is unavailable")
-            self._pay(row, 1, args.get("payment", []))
-            self.effects.dispatch(args["effect"], state,
-                                  {"effect": args["effect"], "owner": player,
-                                   "gear": gear["id"]}, rng)
+            if effect == "gear_draw":
+                self._pay(row, 1, args.get("payment", []))
+                self.effects.dispatch(effect, state,
+                                      {"effect": effect, "owner": player,
+                                       "gear": gear["id"]}, rng)
+            else:
+                amount = int(args.get("amount", 0))
+                if amount < 1:
+                    raise ValueError("resource conversion amount must be positive")
+                if effect == "gear_energy_from_rainbow":
+                    if row["power"].count("any") < amount:
+                        raise ValueError("not enough Rainbow power")
+                    if self._consume_gear(state, {"owner": player, "gear": gear["id"]}) is None:
+                        raise ValueError("gear activation is unavailable")
+                    removed = 0
+                    kept = []
+                    for power in row["power"]:
+                        if power == "any" and removed < amount:
+                            removed += 1
+                        else:
+                            kept.append(power)
+                    row["power"] = kept
+                    row["energy"] += amount
+                else:
+                    if row["energy"] < amount:
+                        raise ValueError("not enough Energy")
+                    if self._consume_gear(state, {"owner": player, "gear": gear["id"]}) is None:
+                        raise ValueError("gear activation is unavailable")
+                    row["energy"] -= amount
+                    row["power"].extend(["any"] * amount)
             state["passes"] = 0
         elif kind == "gear_tokens":
             gear = next((g for g in row["gear"] if g["id"] == args["gear"]), None)

@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 138)
+        self.assertEqual(len(registry.executable_codes()), 148)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -184,10 +184,20 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-160-221").additional_cost_effect, "kill_gear")
         self.assertEqual(registry.get("SFD-142-221").global_effect, "draw_when_chosen_spell")
         self.assertEqual(registry.get("SFD-144-221").global_effect, "draw_on_friendly_spell_target")
+        self.assertEqual(registry.get("SFD-169-221").global_effect, "altar_of_memories")
+        self.assertEqual(registry.get("SFD-081-221").entry_trigger, "card_sharp")
         self.assertEqual(registry.get("SFD-162-221").spell_effect, "kill_small_unit_and_gold")
         self.assertEqual(registry.get("SFD-162-221").target_scope, "field_unit_might_le_2")
         self.assertEqual(registry.get("SFD-175-221").entry_trigger, "buff_other_units_two")
         self.assertEqual(registry.get("SFD-179-221").move_effect, "play_recruit_three")
+        self.assertEqual(registry.get("SFD-209-221").global_effect, "forgotten_monument")
+        self.assertEqual(registry.get("SFD-210-221").global_effect, "hall_of_legends")
+        self.assertEqual(registry.get("SFD-212-221").global_effect, "minefield")
+        self.assertEqual(registry.get("SFD-216-221").global_effect, "rockfall_path")
+        self.assertEqual(registry.get("SFD-217-221").global_effect, "seat_of_power")
+        self.assertEqual(registry.get("SFD-218-221").global_effect, "sunken_temple")
+        self.assertEqual(registry.get("SFD-219-221").global_effect, "papertree")
+        self.assertEqual(registry.get("SFD-220-221").global_effect, "treasure_hoard")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -1960,6 +1970,87 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, action, random.Random(253))
         self.assertNotIn(gear, state["players"][0]["gear"])
         self.assertTrue(any(unit["code"] == "SFD-044-221" for unit in state["units"]))
+
+    def test_batch_altar_memories_uses_draw_and_hand_destination_window(self):
+        deck = legal_deck("SFD-003-221", "OGN-253", "OGN-027")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(254))
+        altar = {"id": "gear:altar", "card": None, "code": "SFD-169-221",
+                 "owner": 0, "card_owner": 0, "location": "base:0",
+                 "exhausted": False, "temporary": False}
+        state["players"][0]["gear"].append(altar)
+        victim = rules._new_unit(state, "OGN-001", 0, 0, exhausted=False)
+        victim["damage"] = rules.might(state, victim)
+        before_main = list(state["players"][0]["main"])
+        rules._cleanup(state, random.Random(255))
+        self.assertEqual(state["phase"], "optional")
+        self.assertEqual(state["optional"][0]["effect"], "altar_memories")
+        optional = state["optional"][0]
+        rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(256))
+        self.assertEqual(state["decision"]["options"], ["top", "bottom"])
+        rules.apply(state, Action.make("choose_option", option="top"), random.Random(257))
+        chosen = state["decision"]["cards"][0]
+        rules.apply(state, Action.make("choose_card", card=chosen), random.Random(258))
+        self.assertTrue(altar["exhausted"])
+        self.assertEqual(state["players"][0]["main"][0], chosen)
+        self.assertNotIn(chosen, state["players"][0]["hand"])
+        self.assertNotIn(victim, state["units"])
+        self.assertEqual(len(state["players"][0]["main"]), len(before_main))
+
+    def test_batch_card_sharp_opponent_choice_grants_the_matching_gold(self):
+        deck = legal_deck("SFD-081-221", "OGN-247", "OGN-039")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(259))
+        state.update(phase="main", actor=0)
+        rules._effect_card_sharp(state, {"effect": "card_sharp", "owner": 0, "source": "u"}, random.Random(260))
+        self.assertEqual([item["effect"] for item in state["optional"]],
+                         ["card_sharp_self", "card_sharp_opponent"])
+        first = state["optional"][0]
+        rules.apply(state, Action.make("optional_effect", optional=first["id"], accept=True), random.Random(261))
+        second = state["optional"][0]
+        rules.apply(state, Action.make("optional_effect", optional=second["id"], accept=True), random.Random(262))
+        self.assertEqual(sum(g["code"] == "SFD-T03" for g in state["players"][0]["gear"]), 2)
+        self.assertEqual(sum(g["code"] == "SFD-T03" for g in state["players"][1]["gear"]), 1)
+
+    def test_batch_spiritforged_battlefields_share_score_rules(self):
+        deck = legal_deck("SFD-003-221", "OGN-253", "OGN-027")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(263))
+        state["players"][0]["turns"] = 2
+        state["fields"][0]["code"] = "SFD-209-221"
+        state["fields"][0]["controller"] = 0
+        points = list(state["points"])
+        rules._score(state, 0, 0, "hold", random.Random(264))
+        self.assertEqual(state["points"], points)
+
+        state["players"][0]["turns"] = 3
+        state["fields"][0]["code"] = "SFD-212-221"
+        state["fields"][0]["controller"] = None
+        state["scored"] = [[], []]
+        before_trash = len(state["players"][0]["trash"])
+        rules._score(state, 0, 0, "conquer", random.Random(265), uncontrolled=True)
+        self.assertEqual(len(state["players"][0]["trash"]), before_trash + 2)
+
+        state["fields"][0]["code"] = "SFD-219-221"
+        state["fields"][0]["controller"] = 0
+        state["scored"] = [[], []]
+        state["players"][0]["rune_deck"] = [{"id": "r0", "code": "OGN-007", "exhausted": False}]
+        state["players"][1]["rune_deck"] = [{"id": "r1", "code": "OGN-042", "exhausted": False}]
+        rules._score(state, 0, 0, "hold", random.Random(266))
+        self.assertEqual(len(state["players"][0]["runes"]), 1)
+        self.assertEqual(len(state["players"][1]["runes"]), 1)
+
+    def test_batch_rockfall_path_removes_unit_destination(self):
+        deck = legal_deck("SFD-003-221", "OGN-253", "OGN-027")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(267))
+        state["fields"][0]["code"] = "SFD-216-221"
+        state["fields"][0]["controller"] = 0
+        state.update(phase="main", actor=0)
+        actions = rules.legal_actions(state)
+        self.assertFalse(any(action.kind == "play_unit"
+                             and __import__("json").loads(action.arguments).get("location") == 0
+                             for action in actions))
 
 
 if __name__ == "__main__":

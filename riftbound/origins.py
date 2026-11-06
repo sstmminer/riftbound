@@ -257,6 +257,7 @@ class OriginsRules:
         registry.register("arise_sand_soldiers", self._effect_arise_sand_soldiers)
         registry.register("chemtech_cask", self._effect_chemtech_cask)
         registry.register("chemtech_gold", self._effect_chemtech_gold)
+        registry.register("card_sharp", self._effect_card_sharp)
         registry.register("kill_gear_trigger", self._effect_kill_gear_trigger)
         registry.register("spirit_wheel", self._effect_spirit_wheel)
         registry.register("kill_small_unit_and_gold", self._effect_kill_small_unit_and_gold)
@@ -623,6 +624,7 @@ class OriginsRules:
         registry_deathknell_gold = []
         registry_deathknell_mech = []
         wraith_draw = []
+        altar_triggers = []
         vanguard_triggers = []
         kogmaw_fields = []
         viktor_tokens = []
@@ -722,6 +724,14 @@ class OriginsRules:
                 if unit["card"] is not None:
                     owner_row = state["players"][unit.get("card_owner", unit["owner"])]
                     owner_row["trash"].append(unit["card"])
+                # Altar of Memories observes the completed friendly-unit
+                # death event.  Keep one opportunity per ready source per
+                # death, then expose the optional payment only after all
+                # lethal units have left the board.
+                for gear in state["players"][unit["owner"]].get("gear", []):
+                    if gear["code"] == "SFD-169-221" and not gear.get("exhausted"):
+                        altar_triggers.append({"source": gear["id"],
+                                               "owner": unit["owner"]})
                 if unit.get("stunned"):
                     for player in (0, 1):
                         if player != unit["owner"]:
@@ -833,8 +843,11 @@ class OriginsRules:
             state.setdefault("undercover_pending", []).extend(deathknell_undercover)
             if state.get("decision") is None:
                 self._begin_undercover_discard(state, rng)
+        for altar in altar_triggers:
+            self._queue_optional(state, altar["owner"], "altar_memories",
+                                 source=altar["source"])
         if vanguard_triggers:
-            if state.get("decision") is None:
+            if state.get("decision") is None and not state.get("optional"):
                 self._triggers(state, vanguard_triggers)
             else:
                 state.setdefault("deferred_triggers", []).extend(vanguard_triggers)
@@ -1796,6 +1809,55 @@ class OriginsRules:
     def _resolve_optional(self, state, item, rng):
         player = item["player"]
         effect = item["effect"]
+        if effect == "altar_memories":
+            source = next((gear for gear in state["players"][player].get("gear", [])
+                           if gear["id"] == item.get("source")
+                           and gear["code"] == "SFD-169-221"
+                           and not gear.get("exhausted")), None)
+            if source is None:
+                return True
+            source["exhausted"] = True
+            self._draw(state, player, 1, rng)
+            hand = list(state["players"][player]["hand"])
+            if not hand:
+                return True
+            state["decision"] = {
+                "kind": "choice", "player": player,
+                "options": ["top", "bottom"],
+                "item": {"effect": "altar_memories", "owner": player,
+                          "source": source["id"]},
+                "altar_destination": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
+        if effect == "card_sharp_self":
+            self._play_gold_gear_token(state, player, exhausted=True)
+            return True
+        if effect == "card_sharp_opponent":
+            self._play_gold_gear_token(state, player, exhausted=True)
+            beneficiary = item.get("beneficiary")
+            if beneficiary in (0, 1):
+                self._play_gold_gear_token(state, beneficiary, exhausted=True)
+            return True
+        if effect == "hall_of_legends_ready":
+            row = state["players"][player]
+            if row.get("legend") is None or row.get("legend_exhausted") or row["energy"] < 1:
+                return True
+            row["energy"] -= 1
+            row["legend_exhausted"] = False
+            return True
+        if effect == "sunken_temple_draw":
+            if state["players"][player]["energy"] < 1:
+                return True
+            state["players"][player]["energy"] -= 1
+            self._draw(state, player, 1, rng)
+            return True
+        if effect == "treasure_hoard_gold":
+            if state["players"][player]["energy"] < 1:
+                return True
+            state["players"][player]["energy"] -= 1
+            self._play_gold_gear_token(state, player, exhausted=True)
+            return True
         if effect == "guards_ready":
             source = self._unit(state, item.get("source"))
             row = state["players"][player]
@@ -2230,6 +2292,12 @@ class OriginsRules:
                         and self._card_implementation(unit["code"]).global_effect == "opponents_cant_score"
                         for unit in state["units"])):
             return
+        field_code = state["fields"][field]["code"]
+        field_impl = self._card_implementation(field_code)
+        if (field_impl is not None
+                and field_impl.global_effect == "forgotten_monument"
+                and state["players"][player].get("turns", 0) < 3):
+            return
         board = Scoreboard(state["points"], [set(s) for s in state["scored"]], state["victory"], len(state["fields"]))
         result = board.score(player, field, method=method)
         state["scored"] = [sorted(s) for s in board.scored]
@@ -2239,6 +2307,9 @@ class OriginsRules:
             if result == "point":
                 state.setdefault("hold_points", [0, 0])[player] += 1
         if result in {"point", "draw"} and method == "hold":
+            if field_impl is not None and field_impl.global_effect == "papertree":
+                for channel_player in (0, 1):
+                    self._channel_rune(state, channel_player, exhausted=True)
             for unit in self._units(state, player, field):
                 implementation = self._card_implementation(unit["code"])
                 if implementation and implementation.hold_effect == "draw_two":
@@ -2298,7 +2369,7 @@ class OriginsRules:
                     state["units"].remove(unit)
                     self._hand_unit_card(state, unit)
         if result in {"point", "draw"} and method == "conquer":
-            code = state["fields"][field]["code"]
+            code = field_code
             if any(unit["code"] == "OGN-155" for unit in self._units(state, player, field)):
                 self._queue_optional(state, player, "qiyana_conquer")
             for unit in self._units(state, player, field):
@@ -2347,6 +2418,30 @@ class OriginsRules:
                                           "remaining": 1, "zaun_warrens": True}
                     state["phase"], state["actor"], state["passes"] = "decision", player, 0
                     return
+            elif field_impl is not None and field_impl.global_effect == "hall_of_legends":
+                row = state["players"][player]
+                if row.get("legend") is not None and row.get("legend_exhausted") and row["energy"] >= 1:
+                    self._queue_battlefield_optional(state, player, "hall_of_legends_ready",
+                                                     field=field)
+            elif field_impl is not None and field_impl.global_effect == "minefield":
+                row = state["players"][player]
+                for _ in range(min(2, len(row["main"]))):
+                    row["trash"].append(row["main"].pop(0))
+            elif field_impl is not None and field_impl.global_effect == "seat_of_power":
+                other_controlled = sum(
+                    index != field and state["fields"][index].get("controller") == player
+                    for index in range(len(state["fields"])))
+                if other_controlled:
+                    self._draw(state, player, other_controlled, rng)
+            elif field_impl is not None and field_impl.global_effect == "sunken_temple":
+                if (any(self.might(state, unit) >= 5 for unit in self._units(state, player, field))
+                        and state["players"][player]["energy"] >= 1):
+                    self._queue_battlefield_optional(state, player, "sunken_temple_draw",
+                                                     field=field)
+            elif field_impl is not None and field_impl.global_effect == "treasure_hoard":
+                if state["players"][player]["energy"] >= 1:
+                    self._queue_battlefield_optional(state, player, "treasure_hoard_gold",
+                                                     field=field)
         if result == "draw":
             self._draw(state, player, 1, rng)
         self._cleanup(state, rng)
@@ -3700,6 +3795,9 @@ class OriginsRules:
             data = self.cards[code]
             implementation = self._card_implementation(code)
             permitted = locations.copy()
+            permitted = [destination for destination in permitted
+                         if not (self._is_field(state, destination)
+                                 and state["fields"][destination]["code"] == "SFD-216-221")]
             if implementation and implementation.placement_rule == "attacking_battlefield":
                 battle = state.get("battle")
                 if (state["phase"] in {"chain", "showdown"} and battle is not None
@@ -5511,6 +5609,15 @@ class OriginsRules:
         self._play_gold_gear_token(state, item["player"], exhausted=True)
         return True
 
+    def _effect_card_sharp(self, state, item, rng):
+        """Offer Card Sharp's two-player Gold choices in controller order."""
+        owner = item["owner"]
+        opponent = 1 - owner
+        self._queue_optional(state, owner, "card_sharp_self", source=item.get("source"))
+        self._queue_optional(state, opponent, "card_sharp_opponent",
+                             source=item.get("source"), beneficiary=owner)
+        return True
+
     def _effect_kill_gear_trigger(self, state, item, rng):
         target_id = item.get("target")
         for row in state["players"]:
@@ -7214,6 +7321,21 @@ class OriginsRules:
                     self._complete_free_play_target(
                         state, {"free_play": info}, list(info.get("selected", [])), rng)
                     return
+                if decision.get("altar_destination"):
+                    item = dict(decision.get("item") or {})
+                    if option not in {"top", "bottom"}:
+                        raise ValueError("invalid Altar destination")
+                    hand = list(state["players"][player]["hand"])
+                    if not hand:
+                        state["decision"] = None
+                        return
+                    state["decision"] = {
+                        "kind": "hand_card", "player": player,
+                        "cards": hand, "item": item,
+                        "altar_destination": option,
+                    }
+                    state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                    return
                 if decision.get("nocturne_reveal"):
                     reveal = state.get("reveal")
                     card = decision["nocturne_reveal"]["card"]
@@ -7598,6 +7720,28 @@ class OriginsRules:
                     if not decision.get("mindsplitter"):
                         raise ValueError("chosen card is no longer in hand")
                 item = decision.get("item", {})
+                if decision.get("altar_destination") in {"top", "bottom"}:
+                    row["hand"].remove(card)
+                    if decision["altar_destination"] == "top":
+                        row["main"].insert(0, card)
+                    else:
+                        row["main"].append(card)
+                    state["decision"] = None
+                    restored = state.pop("optional_return", None)
+                    state["optional_ordered"] = False
+                    if state.get("optional"):
+                        state["phase"], state["actor"], state["passes"] = (
+                            "optional", state["optional"][0]["player"], 0)
+                    elif restored is not None:
+                        if restored["phase"] == "chain" and not state.get("chain"):
+                            self._finish_resolution(state)
+                        else:
+                            state["phase"], state["actor"], state["passes"] = (
+                                restored["phase"], restored["actor"], restored.get("passes", 0))
+                    else:
+                        state["phase"], state["actor"], state["passes"] = "main", player, 0
+                    self._cleanup(state, rng)
+                    return
                 if decision.get("mindsplitter"):
                     opponent = 1 - player
                     opponent_row = state["players"][opponent]

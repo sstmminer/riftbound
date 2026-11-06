@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 138 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 148 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -154,6 +154,16 @@ python -m riftbound catalog --set SFD
 - `SFD-160-221` Zaun Punk：可选击杀友方 Gear 作为额外费用；支付后由统一入场目标窗口选择一个 Gear 击杀。
 - `SFD-142-221` Jae Medarda：法术目标确认时触发控制者抽牌，触发点早于法术结算并复用普通 Chain。
 - `SFD-144-221` Spirit Wheel：法术选择友方单位后进入可选支付窗口，支付 Energy 并横置自身抽 1。
+- `SFD-169-221` Altar of Memories：友方单位死亡后可横置自身抽 1，再通过“牌库顶/底 → 手牌卡牌”两步窗口完成放置。
+- `SFD-081-221` Card Sharp：入场时分别向双方开放是否生成横置 Gold 的可选窗口，对手接受时额外为控制者生成一枚。
+- `SFD-209-221` Forgotten Monument：统一计分入口在控制者第三回合前禁止 Hold/Conquer 得分。
+- `SFD-210-221` Hall of Legends：征服后可支付 1 Energy 使己方 Legend 待命。
+- `SFD-212-221` Minefield：征服后将主牌堆顶两张放入弃牌区。
+- `SFD-216-221` Rockfall Path：统一单位放置候选中过滤该战场。
+- `SFD-217-221` Seat of Power：征服后按己方其他受控战场数量抽牌。
+- `SFD-218-221` Sunken Temple：以 Mighty 单位征服后可支付 1 Energy 抽牌。
+- `SFD-219-221` The Papertree：Hold 后双方各横置回收一枚符文。
+- `SFD-220-221` Treasure Hoard：征服后可支付 1 Energy 生成横置 Gold Gear。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。装备附着、Repeat、复杂衍生物和多步骤替代效果继续保持 catalog-only。
 

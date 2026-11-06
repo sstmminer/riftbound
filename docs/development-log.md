@@ -537,3 +537,12 @@ Jae Medarda 和 `SFD-144-221` Spirit Wheel 接入新的“法术目标已确认�
 Chain 触发，所以即使原法术随后被反制，Jae 的抽牌和 Spirit Wheel 的可选 Energy 支付仍按规则保留；
 Spirit Wheel 的支付只在触发解析时检查 Gear 与 Energy，避免目标窗口中出现额外资源菜单。新增测试覆盖跨控制者
 Jae 触发、Spirit Wheel 可选窗口和 Zaun Punk 的额外 Gear 费用/入场击杀；Spiritforged 定向测试增至 52 项。
+
+本批一次加入 10 张可执行 Spiritforged 卡牌，注册表规模增至 148。`SFD-169-221` Altar of Memories
+复用死亡事件与可选队列，接受后依次打开抽牌、选择牌库顶/底、选择手牌卡牌三个明确窗口；`SFD-081-221`
+Card Sharp 将双方的 Gold 选择拆成控制者和对手两个可选窗口，对手接受时额外为控制者生成一枚 Gold。
+另外接入 8 张战场：Forgotten Monument 在统一计分入口阻止第三回合前得分，Hall of Legends、Sunken Temple
+和 Treasure Hoard 复用战场可选支付窗口，Minefield、Seat of Power 和 The Papertree 复用统一弃牌、抽牌
+和横置符文路径，Rockfall Path 直接由单位放置候选过滤。新增回归覆盖这些窗口和固定状态，运行前先完成
+Spiritforged 定向测试，再执行全量回归与固定种子终局检查；如某一方拥有多个同时触发的战场能力，仍由已有
+APNAP/控制者排序窗口处理。

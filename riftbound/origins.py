@@ -3455,12 +3455,17 @@ class OriginsRules:
         player = state["actor"]
         row = state["players"][player]
         result = []
-        if state["phase"] == "main" and not self._cards_locked(state, player):
+        if (state["phase"] in {"main", "chain", "showdown"}
+                and not self._cards_locked(state, player)):
             for card in row["hand"]:
                 code = state["cards"][card]["code"]
                 if not (code in GEAR_CODES or self._is_executable_kind(code, "gear")):
                     continue
                 data = self.cards[code]
+                implementation = self._card_implementation(code)
+                quick_draw = bool(implementation and "quick_draw" in implementation.static_keywords)
+                if state["phase"] != "main" and not quick_draw:
+                    continue
                 energy = data["energy"]
                 if (not data.get("token") and not row.get("ornns_forge_used")
                         and any(field.get("controller") == player
@@ -3469,7 +3474,14 @@ class OriginsRules:
                     energy = max(0, energy - 1)
                 for payment in self._payments(state, player, energy, data["domains"],
                                                data["power_cost"] or 0):
-                    result.append(Action.make("play_gear", card=card, payment=payment))
+                    if quick_draw:
+                        candidates = [unit["id"] for unit in self._units(state, player)]
+                        if candidates:
+                            result.append(Action.make(
+                                "play_gear_targeted", card=card, payment=payment,
+                                target_candidates=candidates))
+                    else:
+                        result.append(Action.make("play_gear", card=card, payment=payment))
         gear_resource = {"OGN-040": "fury", "OGN-081": "calm", "OGN-120": "mind",
                          "OGN-163": "body", "OGN-204": "chaos", "OGN-245": "order"}
         for gear in row["gear"]:
@@ -8895,6 +8907,18 @@ class OriginsRules:
                         state["phase"], state["actor"] = "main", player
                         state["passes"] = 0
                     return
+                if decision.get("quick_draw_gear"):
+                    target = self._unit(state, args["target"])
+                    item = decision["item"]
+                    if target is None or target["owner"] != player:
+                        raise ValueError("Quick-Draw target is unavailable")
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = (
+                        "chain" if state.get("chain") else "main", player, 0)
+                    self.apply(state, Action.make(
+                        "play_gear", card=item["card"], payment=item["payment"],
+                        ignore_energy=False, quick_draw_target=target["id"]), rng)
+                    return
                 if decision.get("play_hidden_targeted"):
                     info = decision["hidden"]
                     if args["target"] not in decision["targets"]:
@@ -9096,6 +9120,22 @@ class OriginsRules:
             self._pay(row, implementation.equip_energy, payment)
             gear["attached_to"] = target["id"]
             state["passes"] = 0
+        elif kind == "play_gear_targeted":
+            card = args.get("card")
+            code = state["cards"].get(card, {}).get("code")
+            implementation = self._card_implementation(code)
+            targets = list(args.get("target_candidates", []))
+            if (card not in row["hand"] or implementation is None
+                    or "quick_draw" not in implementation.static_keywords
+                    or not targets):
+                raise ValueError("Quick-Draw gear play is unavailable")
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": targets,
+                "item": {"effect": "play_gear_quick", "owner": player,
+                          "card": card, "payment": list(args.get("payment", []))},
+                "quick_draw_gear": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
         elif kind == "gear_activate":
             gear = next((g for g in row["gear"] if g["id"] == args["gear"]), None)
             implementation = self._card_implementation(gear["code"]) if gear else None
@@ -9159,6 +9199,11 @@ class OriginsRules:
             if not (code in GEAR_CODES or self._is_executable_kind(code, "gear")) or card not in row["hand"]:
                 raise ValueError("unsupported gear")
             data = self.cards[code]
+            implementation = self._card_implementation(code)
+            quick_target = self._unit(state, args.get("quick_draw_target"))
+            quick_draw = bool(implementation and "quick_draw" in implementation.static_keywords)
+            if quick_draw and (quick_target is None or quick_target["owner"] != player):
+                raise ValueError("Quick-Draw gear requires a friendly target")
             ignore_energy = bool(args.get("ignore_energy"))
             self._pay(row, 0 if ignore_energy else data["energy"], args.get("payment", []))
             row["hand"].remove(card)
@@ -9177,7 +9222,7 @@ class OriginsRules:
                                 "location": f"base:{player}",
                                 "exhausted": code == "OGN-017",
                                 "temporary": code == "SFD-104-221",
-                                "attached_to": None})
+                                "attached_to": quick_target["id"] if quick_draw else None})
             row["gear_played_turn"] = row.get("gear_played_turn", 0) + 1
             if (not self.cards.get(code, {}).get("token")
                     and not row.get("ornns_forge_used")

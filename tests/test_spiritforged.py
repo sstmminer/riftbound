@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 207)
+        self.assertEqual(len(registry.executable_codes()), 210)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -232,6 +232,9 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-165-221").deathknell_effect, "play_cheap_trash_unit")
         self.assertEqual(registry.get("SFD-009-221").equip_domain, "fury")
         self.assertEqual(registry.get("SFD-030-221").equip_energy, 1)
+        self.assertIn("quick_draw", registry.get("SFD-022-221").static_keywords)
+        self.assertEqual(registry.get("SFD-056-221").equip_domain, "calm")
+        self.assertEqual(registry.get("SFD-064-221").equip_domain, "mind")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -2527,6 +2530,27 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, equip, random.Random(313))
         self.assertEqual(gear["attached_to"], target["id"])
         self.assertEqual(state["players"][0]["power"], ["fury"] * 2)
+        rules.validate(state)
+
+    def test_batch_quick_draw_gear_uses_target_window_and_attaches_on_play(self):
+        deck = legal_deck("SFD-022-221", "OGN-247", "OGN-039")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(314))
+        state.update(phase="main", actor=0)
+        card = move_code_to_hand(state, 0, "SFD-022-221")
+        target = rules._new_unit(state, "OGN-001", 0, "base:0", exhausted=False)
+        state["players"][0]["energy"] = 5
+        state["players"][0]["power"] = ["fury"] * 4
+        action = next(action for action in rules.legal_actions(state)
+                      if action.kind == "play_gear_targeted"
+                      and __import__("json").loads(action.arguments)["card"] == card)
+        rules.apply(state, action, random.Random(315))
+        self.assertEqual(state["phase"], "decision")
+        self.assertEqual(state["decision"]["targets"], [target["id"]])
+        rules.apply(state, Action.make("choose_target", target=target["id"]), random.Random(316))
+        gear = next(item for item in state["players"][0]["gear"] if item["card"] == card)
+        self.assertEqual(gear["attached_to"], target["id"])
+        self.assertEqual(state["players"][0]["energy"], 3)
         rules.validate(state)
 
 

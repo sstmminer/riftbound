@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 220)
+        self.assertEqual(len(registry.executable_codes()), 222)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -243,6 +243,8 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-245-221").global_effect, "grandmaster_at_arms")
         self.assertIn("quick_draw", registry.get("SFD-186-221").static_keywords)
         self.assertEqual(registry.get("SFD-186-221").equip_domain, "any")
+        self.assertEqual(registry.get("SFD-190-221").equip_domain, "any")
+        self.assertEqual(registry.get("SFD-191-221").equip_domain, "any")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIn("weaponmaster", registry.get("SFD-002-221").static_keywords)
 

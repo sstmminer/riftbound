@@ -611,3 +611,5 @@ Power 支付与结算链一致。
 随后完成了第一批普通 Spiritforged Equipment，注册表规模增至 207。`CardImplementation` 新增 `equip_energy` 与 `equip_domain` 声明；出牌仍只把 Gear 放入己方基地，主阶段再生成 `gear_equip` 目标动作，由玩家点选己方单位并明确支付装备费用。Gear 状态使用统一 `attached_to` 字段并由 `validate` 校验控制权和对象存在，避免为每张装备单独写目标路径。
 
 同一附着原语继续接入 `SFD-022-221` Long Sword、`SFD-056-221` Sterak's Gage、`SFD-064-221` Cloth Armor，注册表规模增至 210。Quick-Draw 的出牌动作在主阶段和反应窗口都使用统一目标决策：先点选己方单位，确认后再将 Gear 放入基地并写入 `attached_to`，不再以默认第一个单位代替玩家选择；普通 Equip 仍走 `gear_equip`。
+
+本轮再将 `SFD-002-221`、`SFD-008-221`、`SFD-092-221`、`SFD-099-221`、`SFD-127-221` 的 Weaponmaster 接入注册表，规模增至 215。单位入场后的 Weaponmaster 先进入可选触发，再由玩家点选 Gear；该路径统一减免一枚 Rainbow 符能，保留剩余 Energy 支付并允许已附着 Gear 重附着，避免把“装备选择”压缩成隐式第一张牌。

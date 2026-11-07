@@ -211,6 +211,7 @@ class OriginsRules:
         registry.register("gear_draw", self._effect_gear_draw)
         registry.register("gear_armory_protect", self._effect_gear_armory_protect)
         registry.register("gear_baited_hook", self._effect_gear_baited_hook)
+        registry.register("weaponmaster", self._effect_weaponmaster)
         registry.register("spirit_refuge", self._effect_spirit_refuge)
         registry.register("mindsplitter", self._effect_mindsplitter)
         registry.register("vanguard_helm", self._effect_vanguard_helm)
@@ -2056,6 +2057,24 @@ class OriginsRules:
                 "item": {"effect": "fae_porter_move", "owner": player,
                           "source": source["id"], "destination": destination},
                 "optional_fae_target": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
+        if effect == "weaponmaster":
+            source = self._unit(state, item.get("source"))
+            candidates = [gear_id for gear_id in item.get("candidates", [])
+                          if any(gear["id"] == gear_id
+                                 and gear["owner"] == player
+                                 and self._card_implementation(gear["code"]) is not None
+                                 and self._card_implementation(gear["code"]).equip_domain is not None
+                                 for gear in state["players"][player].get("gear", []))]
+            if source is None or source["owner"] != player or not candidates:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": candidates,
+                "item": {"effect": "weaponmaster", "owner": player,
+                          "source": source["id"]},
+                "weaponmaster_gear": True,
             }
             state["phase"], state["actor"], state["passes"] = "decision", player, 0
             return False
@@ -5454,6 +5473,23 @@ class OriginsRules:
         target = self._unit(state, item.get("target"))
         if target is not None and target["owner"] == owner:
             self._apply_buff(state, target)
+        return True
+
+    def _effect_weaponmaster(self, state, item, rng):
+        """Offer the shared reduced-cost Equipment attachment window."""
+        owner = item["owner"]
+        source = self._unit(state, item.get("source"))
+        if source is None or source["owner"] != owner:
+            return True
+        candidates = [gear["id"] for gear in state["players"][owner].get("gear", [])
+                      if self._card_implementation(gear["code"]) is not None
+                      and self._card_implementation(gear["code"]).equip_domain is not None
+                      and state["players"][owner]["energy"] >=
+                          self._card_implementation(gear["code"]).equip_energy]
+        if not candidates:
+            return True
+        self._queue_optional(state, owner, "weaponmaster",
+                             source=source["id"], candidates=candidates)
         return True
 
     def _effect_mindsplitter(self, state, item, rng):
@@ -8907,6 +8943,39 @@ class OriginsRules:
                         state["phase"], state["actor"] = "main", player
                         state["passes"] = 0
                     return
+                if decision.get("weaponmaster_gear"):
+                    item = decision["item"]
+                    source = self._unit(state, item.get("source"))
+                    gear = next((gear for gear in state["players"][player].get("gear", [])
+                                 if gear["id"] == args["target"]), None)
+                    implementation = self._card_implementation(gear["code"]) if gear else None
+                    if (source is None or source["owner"] != player or gear is None
+                            or implementation is None or implementation.equip_domain is None
+                            or state["players"][player]["energy"] < implementation.equip_energy):
+                        raise ValueError("Weaponmaster equipment is unavailable")
+                    # Weaponmaster reduces the Equip cost by one Rainbow
+                    # power.  The current registered Equipment all require at
+                    # most one colored power, so the remaining cost is the
+                    # declared Energy component; attached Equipment is legal
+                    # here by the printed "even if already attached" clause.
+                    state["players"][player]["energy"] -= implementation.equip_energy
+                    gear["attached_to"] = source["id"]
+                    state["decision"] = None
+                    state["optional_ordered"] = False
+                    if state.get("optional"):
+                        state["phase"], state["actor"], state["passes"] = (
+                            "optional", state["optional"][0]["player"], 0)
+                    else:
+                        restored = state.pop("optional_return", None)
+                        if restored is None:
+                            state["phase"], state["actor"], state["passes"] = "main", player, 0
+                        elif restored["phase"] == "chain" and not state.get("chain"):
+                            self._finish_resolution(state)
+                        else:
+                            state["phase"], state["actor"], state["passes"] = (
+                                restored["phase"], restored["actor"], restored.get("passes", 0))
+                    self._cleanup(state, rng)
+                    return
                 if decision.get("quick_draw_gear"):
                     target = self._unit(state, args["target"])
                     item = decision["item"]
@@ -10050,6 +10119,14 @@ class OriginsRules:
                         )
                         for other in self._units(state, player)):
                     triggers.append({"effect": "vision", "source": unit["id"], "owner": player})
+                if (implementation is not None
+                        and "weaponmaster" in implementation.static_keywords
+                        and any(self._card_implementation(gear["code"]) is not None
+                                and self._card_implementation(gear["code"]).equip_domain is not None
+                                and row["energy"] >= self._card_implementation(gear["code"]).equip_energy
+                                for gear in row.get("gear", []))):
+                    triggers.append({"effect": "weaponmaster", "source": unit["id"],
+                                     "owner": player})
                 if self._is_accelerate_code(code) or args.get("grant_accelerate"):
                     # Keep the unit visible in its destination while the
                     # controller completes the Accelerate payment.  This is a

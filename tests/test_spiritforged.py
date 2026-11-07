@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 210)
+        self.assertEqual(len(registry.executable_codes()), 215)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -235,11 +235,13 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertIn("quick_draw", registry.get("SFD-022-221").static_keywords)
         self.assertEqual(registry.get("SFD-056-221").equip_domain, "calm")
         self.assertEqual(registry.get("SFD-064-221").equip_domain, "mind")
+        self.assertIn("weaponmaster", registry.get("SFD-002-221").static_keywords)
+        self.assertIn("weaponmaster", registry.get("SFD-127-221").static_keywords)
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
-        self.assertIsNone(registry.get("SFD-002-221"))
+        self.assertIn("weaponmaster", registry.get("SFD-002-221").static_keywords)
 
     def test_unregistered_sfd_card_is_rejected(self):
-        deck = legal_deck("SFD-002-221", "OGN-247", "OGN-039")
+        deck = legal_deck("SFD-011-221", "OGN-247", "OGN-039")
         with self.assertRaises(RulesUnavailable):
             SpiritforgedRules([deck, deck])
 
@@ -2551,6 +2553,34 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         gear = next(item for item in state["players"][0]["gear"] if item["card"] == card)
         self.assertEqual(gear["attached_to"], target["id"])
         self.assertEqual(state["players"][0]["energy"], 3)
+        rules.validate(state)
+
+    def test_batch_weaponmaster_reduces_power_and_allows_attached_equipment(self):
+        deck = legal_deck("SFD-099-221", "OGN-267", "OGN-193")
+        deck["main"][-1] = "SFD-102-221"
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(317))
+        state.update(phase="main", actor=0)
+        gear_card = move_code_to_hand(state, 0, "SFD-102-221")
+        state["players"][0]["energy"] = 5
+        state["players"][0]["power"] = ["body"] * 3
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_gear"
+                    and __import__("json").loads(action.arguments)["card"] == gear_card)
+        rules.apply(state, play, random.Random(318))
+        gear = next(item for item in state["players"][0]["gear"] if item["card"] == gear_card)
+        source = rules._new_unit(state, "SFD-099-221", 0, "base:0", exhausted=False)
+        # Weaponmaster may attach an Equipment even if it is already attached;
+        # simulate that printed case before opening the optional window.
+        gear["attached_to"] = source["id"]
+        state["players"][0]["energy"] = 2
+        rules._effect_weaponmaster(state, {"owner": 0, "source": source["id"]}, random.Random(319))
+        optional = next(item for item in state["optional"] if item["effect"] == "weaponmaster")
+        rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(320))
+        self.assertEqual(state["phase"], "decision")
+        rules.apply(state, Action.make("choose_target", target=gear["id"]), random.Random(321))
+        self.assertEqual(gear["attached_to"], source["id"])
+        self.assertEqual(state["players"][0]["energy"], 2)
         rules.validate(state)
 
 

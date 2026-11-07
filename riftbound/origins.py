@@ -683,6 +683,7 @@ class OriginsRules:
         registry_deathknell_draw_two = []
         registry_deathknell_gold = []
         registry_deathknell_mech = []
+        registry_deathknell_replay = []
         battle_mistress_ready = set()
         wraith_draw = []
         altar_triggers = []
@@ -851,6 +852,8 @@ class OriginsRules:
                     registry_deathknell_draw_two.append(unit["owner"])
                 if implementation and implementation.deathknell_effect == "play_two_mech":
                     registry_deathknell_mech.extend([unit["owner"], unit["owner"]])
+                if implementation and implementation.deathknell_effect == "play_cheap_trash_unit":
+                    registry_deathknell_replay.append(unit["owner"])
                 # Each Wraith source triggers once per turn when a friendly
                 # unit dies. Mark the surviving source itself so multiple
                 # Wraiths each trigger once, while recursive cleanup cannot
@@ -889,6 +892,9 @@ class OriginsRules:
         if registry_deathknell_mech:
             for player in registry_deathknell_mech:
                 self._new_unit(state, "SFD-T05", player, f"base:{player}")
+        for player in registry_deathknell_replay:
+            self._queue_optional(state, player, "replay_trash_unit",
+                                 max_energy=3, max_power=1, ignore_cost=True)
         for player in battle_mistress_ready:
             state["players"][player]["legend_exhausted"] = False
         if wraith_draw:
@@ -1920,7 +1926,12 @@ class OriginsRules:
             return
         elif effect == "replay_trash_unit":
             resume = reveal.get("resume") or {"phase": "main", "actor": reveal["owner"], "passes": 0}
+            item = reveal.get("item") or {}
             state["reveal"] = None
+            if resume.get("phase") == "optional" and not state.get("optional"):
+                restored = state.pop("optional_return", None)
+                if restored is not None:
+                    resume = restored
             state["phase"], state["actor"], state["passes"] = resume["phase"], resume["actor"], resume.get("passes", 0)
             if selected:
                 owner = reveal["owner"]
@@ -1930,17 +1941,27 @@ class OriginsRules:
                     row["trash"].remove(card)
                     row["hand"].append(card)
                     code = state["cards"][card]["code"]
-                    payments = self._payments(state, owner, 0, self.cards[code]["domains"],
-                                              self.cards[code]["power_cost"])
-                    if payments:
-                        self._pay(row, 0, payments[0])
-                        self.apply(state, Action.make("play_unit", card=card,
-                                                      location=f"base:{owner}", accelerate=False,
-                                                      payment=[], enter_target=None, ignore_cost=True),
-                                   rng)
+                    if item.get("ignore_cost"):
+                        # Glasc Mixologist and future Deathknell replay effects
+                        # waive the complete printed cost.  The card still goes
+                        # through the shared free-play path so entry targets,
+                        # Accelerate, and post-entry triggers remain identical
+                        # to other effect-generated plays.
+                        self._free_play_revealed_card(
+                            state, owner, card, None, rng,
+                            free_all=True, card_owner=owner)
                     else:
-                        row["hand"].remove(card)
-                        row["trash"].append(card)
+                        payments = self._payments(state, owner, 0, self.cards[code]["domains"],
+                                                  self.cards[code]["power_cost"])
+                        if payments:
+                            self._pay(row, 0, payments[0])
+                            self.apply(state, Action.make("play_unit", card=card,
+                                                          location=f"base:{owner}", accelerate=False,
+                                                          payment=[], enter_target=None, ignore_cost=True),
+                                       rng)
+                        else:
+                            row["hand"].remove(card)
+                            row["trash"].append(card)
             self._cleanup(state, rng)
             return
         elif effect == "guerrilla_return_hidden":
@@ -2452,8 +2473,12 @@ class OriginsRules:
             return False
         if effect == "replay_trash_unit":
             code = item.get("code")
+            max_energy = item.get("max_energy")
+            max_power = item.get("max_power")
             candidates = [uid for uid in state["players"][player]["trash"]
                           if self.cards[state["cards"][uid]["code"]]["type"] == "unit"
+                          and (max_energy is None or self.cards[state["cards"][uid]["code"]]["energy"] <= max_energy)
+                          and (max_power is None or self.cards[state["cards"][uid]["code"]]["power_cost"] <= max_power)
                           and (code != "OGN-226" or (
                               self.cards[state["cards"][uid]["code"]]["energy"] <= 3
                               and self.cards[state["cards"][uid]["code"]]["power_cost"] <= 1))]
@@ -2461,7 +2486,8 @@ class OriginsRules:
                 return True
             self._open_reveal(state, owner=player, cards=candidates, mode="select",
                               chooser=player, minimum=0, maximum=1,
-                              effect="replay_trash_unit", choices=candidates, rng=rng)
+                              effect="replay_trash_unit", item=item,
+                              choices=candidates, rng=rng)
             return False
         if effect == "play_flame_chompers":
             row = state["players"][player]

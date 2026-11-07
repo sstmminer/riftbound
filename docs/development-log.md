@@ -605,3 +605,5 @@ Power 支付与结算链一致。
 
 
 本轮加入 `SFD-125-221` Fae Porter，注册表规模增至 187。移动事件统一入口现在在该单位进入战场后生成可选 Chaos 窗口，接受后通过明确目标选择移动另一名友方单位；支付与移动均复用普通资源和 `_resolve_move`，因此会保留横置、战场进入和 Showdown 状态处理。
+
+本轮加入 `SFD-165-221` Glasc Mixologist，注册表规模增至 188。Deathknell 现在进入统一的 `replay_trash_unit` 可选窗口，明确展示并筛选弃牌区中 Energy 不高于 3、Rainbow 不高于 1 的单位；确认后通过共享 `_free_play_revealed_card(..., free_all=True)` 路径免费打出，保留普通单位入场目标、Accelerate 和后续触发，不再直接创建单位或隐式选择资源。没有合法牌时可选效果自动关闭且不会改变弃牌区。

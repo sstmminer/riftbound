@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 187)
+        self.assertEqual(len(registry.executable_codes()), 188)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -229,6 +229,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-195-221").global_effect, "blade_dancer")
         self.assertEqual(registry.get("SFD-199-221").activated_effect, "prodigal_draw")
         self.assertEqual(registry.get("SFD-125-221").move_effect, "fae_porter")
+        self.assertEqual(registry.get("SFD-165-221").deathknell_effect, "play_cheap_trash_unit")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -2470,6 +2471,37 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, Action.make("end_reveal"), random.Random(283))
         self.assertIn(card, state["players"][1]["hand"])
         self.assertNotIn(card, state["players"][1]["main"])
+
+    def test_batch_glasc_deathknell_replays_eligible_trash_unit_for_free(self):
+        deck = legal_deck("SFD-165-221", "OGN-261", "OGN-079")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(306))
+        state.update(phase="main", actor=0)
+        row = state["players"][0]
+        candidate = next(
+            uid for uid in row["main"]
+            if rules.cards[state["cards"][uid]["code"]]["type"] == "unit"
+            and rules.cards[state["cards"][uid]["code"]]["energy"] <= 3
+            and rules.cards[state["cards"][uid]["code"]]["power_cost"] <= 1)
+        row["main"].remove(candidate)
+        row["trash"].append(candidate)
+        glasc = rules._new_unit(state, "SFD-165-221", 0, "base:0", exhausted=False)
+        glasc["damage"] = rules.might(state, glasc)
+        rules._cleanup(state, random.Random(307))
+        optional = next(item for item in state["optional"]
+                        if item["effect"] == "replay_trash_unit")
+        self.assertEqual(optional["max_energy"], 3)
+        self.assertEqual(optional["max_power"], 1)
+        rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True),
+                    random.Random(308))
+        self.assertEqual(state["phase"], "reveal")
+        self.assertEqual(state["reveal"]["choices"], [candidate])
+        rules.apply(state, Action.make("choose_revealed", card=candidate), random.Random(309))
+        rules.apply(state, Action.make("confirm_revealed"), random.Random(310))
+        self.assertNotIn(candidate, row["trash"])
+        self.assertTrue(any(unit["card"] == candidate for unit in state["units"]))
+        self.assertIsNone(state.get("reveal"))
+        rules.validate(state)
 
 
 if __name__ == "__main__":

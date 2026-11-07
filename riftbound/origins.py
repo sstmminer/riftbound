@@ -331,7 +331,8 @@ class OriginsRules:
                                      "free_hide_turn": False,
                                      "discarded_this_turn": False, "spell_bonus_damage": 0,
                                      "cards_locked_turn": False, "spell_discount": 0,
-                                     "gear_played_turn": 0, "rainbow_spent_turn": 0})
+                                     "gear_played_turn": 0, "rainbow_spent_turn": 0,
+                                     "enemy_choices_turn": 0})
             state["fields"].append({"code": rng.choice(deck["battlefields"]), "controller": None})
         state["fields"].extend({"code": code, "controller": None} for code in self.extra_fields)
         state["dreaming_tree_used"] = [False] * len(state["fields"])
@@ -1993,6 +1994,29 @@ class OriginsRules:
             }
             state["phase"], state["actor"], state["passes"] = "decision", player, 0
             return False
+        if effect == "blade_dancer_ready_target":
+            row = state["players"][player]
+            implementation = self._card_implementation(row.get("legend"))
+            target = self._unit(state, item.get("target"))
+            power_index = next((index for index, power in enumerate(row["power"])
+                                if power == "any"), None)
+            if (implementation is None or implementation.global_effect != "blade_dancer"
+                    or row.get("legend_exhausted") or target is None
+                    or target["owner"] != player or power_index is None):
+                return True
+            row["power"].pop(power_index)
+            row["legend_exhausted"] = True
+            self._ready_unit(state, target)
+            return True
+        if effect == "blade_dancer_conquer_ready":
+            row = state["players"][player]
+            implementation = self._card_implementation(row.get("legend"))
+            if (implementation is None or implementation.global_effect != "blade_dancer"
+                    or row.get("legend_exhausted") or row["energy"] < 1):
+                return True
+            row["energy"] -= 1
+            row["legend_exhausted"] = False
+            return True
         if effect == "card_sharp_self":
             self._play_gold_gear_token(state, player, exhausted=True)
             return True
@@ -2701,6 +2725,11 @@ class OriginsRules:
                     self._queue_optional(
                         state, player, "sivir_excess_damage", source=unit["id"],
                         amount=state["last_combat_excess"][player], field=field)
+            legend_impl = self._card_implementation(state["players"][player].get("legend"))
+            if (legend_impl is not None and legend_impl.global_effect == "blade_dancer"
+                    and not state["players"][player].get("legend_exhausted")
+                    and state["players"][player].get("energy", 0) >= 1):
+                self._queue_optional(state, player, "blade_dancer_conquer_ready")
             if code == "OGN-282":
                 # Monastery's optional draw lets the player choose which
                 # friendly buff to spend.  Do not silently take the first
@@ -2783,6 +2812,7 @@ class OriginsRules:
             row["ornns_forge_used"] = False
             row["gear_played_turn"] = 0
             row["rainbow_spent_turn"] = 0
+            row["enemy_choices_turn"] = 0
         row = state["players"][player]
         row["legend_exhausted"] = False
         if row["turns"] == 0 and not state["beginning_awarded"][player]:
@@ -3577,6 +3607,13 @@ class OriginsRules:
                 and row["energy"] >= 1
                 and row.get("gear_played_turn", 0) > 0):
             result.append(Action.make("legend_sand_soldier"))
+        if (legend_implementation is not None
+                and legend_implementation.activated_effect == "prodigal_draw"
+                and legend_implementation.reaction
+                and state["phase"] in {"chain", "showdown"}
+                and not row["legend_exhausted"]
+                and row.get("enemy_choices_turn", 0) >= 2):
+            result.append(Action.make("legend_prodigal_draw"))
         # During an Accelerate payment window the unit is represented on the
         # Board but its play process has not completed.  The shared finalized
         # count therefore excludes it automatically.
@@ -3723,6 +3760,15 @@ class OriginsRules:
         item["spell_choice_triggers_done"] = True
         chosen = {uid for uid in target_ids}
         triggers = []
+        enemy_chosen = any(
+            (self._unit(state, uid) is not None
+             and self._unit(state, uid)["owner"] != chooser)
+            or any(gear["id"] == uid and gear["owner"] != chooser
+                   for row in state["players"] for gear in row.get("gear", []))
+            for uid in chosen)
+        if enemy_chosen:
+            state["players"][chooser]["enemy_choices_turn"] = (
+                state["players"][chooser].get("enemy_choices_turn", 0) + 1)
         for uid in chosen:
             target = self._unit(state, uid)
             if target is None:
@@ -3734,6 +3780,13 @@ class OriginsRules:
             if implementation and implementation.global_effect == "irelia_fervent":
                 triggers.append({"effect": "irelia_fervent", "source": target["id"],
                                  "owner": target["owner"]})
+            legend = self._card_implementation(state["players"][chooser].get("legend"))
+            if (target["owner"] == chooser and legend is not None
+                    and legend.global_effect == "blade_dancer"
+                    and not state["players"][chooser].get("legend_exhausted")
+                    and "any" in state["players"][chooser].get("power", [])):
+                self._queue_optional(state, chooser, "blade_dancer_ready_target",
+                                     target=target["id"])
             if target["owner"] == chooser:
                 for gear in state["players"][chooser].get("gear", []):
                     gear_impl = self._card_implementation(gear["code"])
@@ -8799,6 +8852,8 @@ class OriginsRules:
                         self._triggers(state, choice_triggers, preserve_context=True)
                         if state.get("phase") in {"trigger_order", "optional"}:
                             return
+                    if state.get("phase") == "optional":
+                        return
                 else:
                     self.effects.dispatch(item["effect"], state, item, rng)
             elif kind == "confirm_targets":
@@ -8883,6 +8938,8 @@ class OriginsRules:
                         self._triggers(state, choice_triggers, preserve_context=True)
                         if state.get("phase") in {"trigger_order", "optional"}:
                             return
+                    if state.get("phase") == "optional":
+                        return
                 else:
                     self.effects.dispatch(item["effect"], state, item, rng)
             if state["decision"] is None:
@@ -9247,6 +9304,16 @@ class OriginsRules:
                 raise ValueError("Hand of Noxus Legion ability is unavailable")
             row["legend_exhausted"] = True
             row["energy"] += 1
+            state["passes"] = 0
+        elif kind == "legend_prodigal_draw":
+            implementation = self._card_implementation(row.get("legend"))
+            if (implementation is None or implementation.activated_effect != "prodigal_draw"
+                    or not implementation.reaction or row["legend_exhausted"]
+                    or row.get("enemy_choices_turn", 0) < 2
+                    or state["phase"] not in {"chain", "showdown"}):
+                raise ValueError("Prodigal Explorer ability is unavailable")
+            row["legend_exhausted"] = True
+            self._draw(state, player, 1, rng)
             state["passes"] = 0
         elif kind == "legend_spell_power":
             row["legend_exhausted"] = True

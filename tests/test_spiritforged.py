@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 182)
+        self.assertEqual(len(registry.executable_codes()), 186)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -226,6 +226,8 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-143-221").global_effect, "sivir_mercenary")
         self.assertEqual(registry.get("SFD-177-221").global_effect, "azir_sovereign")
         self.assertEqual(registry.get("SFD-180-221").global_effect, "fiora_worthy")
+        self.assertEqual(registry.get("SFD-195-221").global_effect, "blade_dancer")
+        self.assertEqual(registry.get("SFD-199-221").activated_effect, "prodigal_draw")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -410,6 +412,32 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(state["decision"]["accelerate"]["unit"],
                          next(unit["id"] for unit in state["units"]
                               if unit["card"] == card))
+
+    def test_blade_dancer_and_prodigal_legends_use_shared_choice_windows(self):
+        deck = legal_deck("OGN-066", "OGN-261", "OGN-079")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(202))
+        state["players"][0]["legend"] = "SFD-195-221"
+        state["players"][0]["power"] = ["any"]
+        target = rules._new_unit(state, "OGN-219", 0, "base:0", exhausted=True)
+        triggers = rules._spell_choice_triggers(
+            state, 0, {"card": "synthetic", "owner": 0}, [target["id"]])
+        self.assertEqual(triggers, [])
+        self.assertEqual(state["optional"][0]["effect"], "blade_dancer_ready_target")
+        rules.apply(state, Action.make(
+            "optional_effect", optional=state["optional"][0]["id"], accept=True), random.Random(203))
+        self.assertFalse(target["exhausted"])
+        self.assertTrue(state["players"][0]["legend_exhausted"])
+
+        state["players"][0]["legend"] = "SFD-199-221"
+        state["players"][0]["legend_exhausted"] = False
+        state["players"][0]["enemy_choices_turn"] = 2
+        state["phase"], state["actor"] = "chain", 0
+        before = len(state["players"][0]["hand"])
+        self.assertTrue(any(action.kind == "legend_prodigal_draw"
+                            for action in rules.legal_actions(state)))
+        rules.apply(state, Action.make("legend_prodigal_draw"), random.Random(204))
+        self.assertEqual(len(state["players"][0]["hand"]), before + 1)
 
     def test_windsinger_optional_return_has_a_target_window(self):
         deck = legal_deck("SFD-138-221", "OGN-267", "OGN-193")

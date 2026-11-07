@@ -599,3 +599,6 @@ Power 支付与结算链一致。
 
 
 随后补齐 `SFD-029-221` 与 `SFD-029A-221` Rek'Sai, Breacher，注册表规模增至 182。两种印刷共用 Accelerate、Assault 1 与“非手牌来源单位获得 Accelerate”的共享光环；免费打出路径现在携带明确的非手牌来源标记，最终仍进入普通单位入场和 Accelerate 支付窗口。该来源标记不会影响从手牌免费打出的单位，避免把“from anywhere other than hand”误判为所有免费打出。
+
+
+本轮继续加入四张 Legend 变体，注册表规模增至 186：`SFD-195-221`/`SFD-246-221` Blade Dancer 复用法术选友方单位事件与征服结果的两个可选窗口，使用 Rainbow/ Energy 后通过统一待命函数处理；`SFD-199-221`/`SFD-248-221` Prodigal Explorer 复用本回合敌方单位或 Gear 被选择次数账本，在 Chain/Showdown 中只开放 Reaction 抽牌。修正目标确认后的统一暂停逻辑，使仅产生可选触发而没有额外 Chain 触发时也不会提前结算原法术。

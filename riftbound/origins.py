@@ -1183,6 +1183,13 @@ class OriginsRules:
         code = state["cards"][card]["code"]
         data = self.cards[code]
         implementation = self._card_implementation(code)
+        grant_accelerate = bool(
+            data["type"] == "unit"
+            and card not in physical_row.get("hand", [])
+            and any(self._card_implementation(unit["code"]) is not None
+                    and self._card_implementation(unit["code"]).global_effect
+                    == "friendly_units_accelerate"
+                    for unit in self._units(state, owner)))
         # Void Drone's printed reduction is a source-sensitive cost rule.  A
         # card reaches this shared replacement path only from a non-hand zone
         # (reveal, trash, or banishment), so apply the reduction here and let
@@ -1208,6 +1215,7 @@ class OriginsRules:
                         "card_owner": card_owner if card_owner is not None else owner,
                         "parent": parent, "ignore_energy": ignore_energy,
                         "free_all": free_all,
+                        "grant_accelerate": grant_accelerate,
                         # Entry target selection precedes the resource window.
                         # This mirrors ordinary targeted plays and prevents a
                         # nested free play from exposing payment choices before
@@ -1276,6 +1284,7 @@ class OriginsRules:
                                "parent": parent, "payment": payment,
                                "destination": None, "ignore_energy": ignore_energy,
                                "free_all": free_all,
+                            "grant_accelerate": grant_accelerate,
                                "deck_options": free_target.get("deck_options", []),
                                # Blind Fury/Promising Future already put
                                # their parent item on a live Chain; Kaisa's
@@ -1312,6 +1321,7 @@ class OriginsRules:
                             "parent": parent, "ignore_energy": ignore_energy,
                             "free_all": free_all, "payment": None,
                             "energy_reduction": energy_reduction,
+                            "grant_accelerate": grant_accelerate,
                         },
                     }
                     state["phase"], state["actor"], state["passes"] = "decision", owner, 0
@@ -1324,6 +1334,7 @@ class OriginsRules:
                                           card_owner=card_owner,
                                           ignore_energy=ignore_energy or free_all,
                                           energy_reduction=energy_reduction,
+                                          grant_accelerate=grant_accelerate,
                                           free_play_parent=True), rng)
             if (parent is not None and parent in state.get("chain", [])
                     and state.get("phase") == "main"):
@@ -5545,6 +5556,7 @@ class OriginsRules:
                          or bool(info.get("free_all"))),
             ignore_energy=bool(info.get("ignore_energy")) or bool(info.get("free_all")),
             energy_reduction=int(info.get("energy_reduction", 0)),
+            grant_accelerate=bool(info.get("grant_accelerate")),
             free_play_parent=True), rng)
         parent = info.get("parent")
         if (parent is not None and parent in state.get("chain", [])
@@ -9830,7 +9842,7 @@ class OriginsRules:
                         )
                         for other in self._units(state, player)):
                     triggers.append({"effect": "vision", "source": unit["id"], "owner": player})
-                if self._is_accelerate_code(code):
+                if self._is_accelerate_code(code) or args.get("grant_accelerate"):
                     # Keep the unit visible in its destination while the
                     # controller completes the Accelerate payment.  This is a
                     # play-time decision (RUP5 805.2), so no later trigger or

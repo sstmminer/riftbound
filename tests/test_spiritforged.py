@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 180)
+        self.assertEqual(len(registry.executable_codes()), 182)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -220,6 +220,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-058-221").hold_effect, "ornn_search")
         self.assertEqual(registry.get("SFD-058A-221").entry_trigger, "ornn_search")
         self.assertEqual(registry.get("SFD-082-221").combat_effect, "ezreal_attack")
+        self.assertEqual(registry.get("SFD-029-221").global_effect, "friendly_units_accelerate")
         self.assertEqual(registry.get("SFD-103-221").cost_reduction_effect, "mighty_units")
         self.assertEqual(registry.get("SFD-120-221").conquer_effect, "sivir_excess_damage")
         self.assertEqual(registry.get("SFD-143-221").global_effect, "sivir_mercenary")
@@ -391,6 +392,24 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         ezreal_rules.apply(ezreal_state, action, random.Random(199))
         self.assertEqual(ezreal["location"], "base:0")
         self.assertTrue(ezreal["exhausted"])
+
+    def test_reksai_grants_accelerate_to_non_hand_free_unit(self):
+        deck = legal_deck("SFD-029-221", "OGN-247", "OGN-039")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(200))
+        source = rules._new_unit(state, "SFD-029-221", 0, "base:0", exhausted=False)
+        card = next(uid for uid in state["players"][0]["main"]
+                    if rules.cards[state["cards"][uid]["code"]]["type"] == "unit")
+        state["players"][0]["energy"] = 10
+        state["players"][0]["power"] = ["mind"] * 10
+        rules._free_play_revealed_card(
+            state, 0, card, {"effect": "test_free", "owner": 0}, random.Random(201),
+            ignore_energy=True, card_owner=0)
+        self.assertIsNotNone(state.get("decision"))
+        self.assertTrue(state["decision"].get("accelerate"))
+        self.assertEqual(state["decision"]["accelerate"]["unit"],
+                         next(unit["id"] for unit in state["units"]
+                              if unit["card"] == card))
 
     def test_windsinger_optional_return_has_a_target_window(self):
         deck = legal_deck("SFD-138-221", "OGN-267", "OGN-193")

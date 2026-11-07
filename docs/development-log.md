@@ -596,3 +596,6 @@ Power 支付与结算链一致。
 
 
 本轮批量加入 11 张可执行单位（注册表规模增至 180）：`SFD-082-221`/`SFD-082A-221` Ezreal 使用统一战斗指定目标窗口，攻击或防守时向对手单位造成自身 Might，并通过 Mind 符能动作回到基地；`SFD-103-221` Jaull-Fish 复用 Accelerate 与统一 Mighty 计数减费；`SFD-120-221`/`SFD-120A-221` Sivir, Ambitious 使用 Deflect 2 与共享战斗分配 excess 账本，在征服后由玩家选择伤害目标；`SFD-143-221`/`SFD-143A-221` Sivir, Mercenary 读取本回合实际消耗的 Rainbow 符能，动态提供 +2 Might/Ganking；`SFD-177-221`/`SFD-177A-221` Azir, Sovereign 在攻击触发后先确认可选效果，再通过多选窗口移动任意己方衍生物；`SFD-180-221`/`SFD-180A-221` Fiora, Worthy 监听统一 Mighty 状态转换并提供 Order 支付待命窗口。新增 Deflect 2、无战斗伤害、可选多目标和资源回溯测试；全量回归与固定种子对局需在提交前复核。
+
+
+随后补齐 `SFD-029-221` 与 `SFD-029A-221` Rek'Sai, Breacher，注册表规模增至 182。两种印刷共用 Accelerate、Assault 1 与“非手牌来源单位获得 Accelerate”的共享光环；免费打出路径现在携带明确的非手牌来源标记，最终仍进入普通单位入场和 Accelerate 支付窗口。该来源标记不会影响从手牌免费打出的单位，避免把“from anywhere other than hand”误判为所有免费打出。

@@ -236,6 +236,7 @@ class OriginsRules:
         registry.register("buff_two", self._effect_buff_two)
         registry.register("kinkou_buff", self._effect_kinkou_buff)
         registry.register("fae_dragon_buff", self._effect_fae_dragon_buff)
+        registry.register("janna_heal_move", self._effect_janna_heal_move)
         registry.register("albus_optional", self._effect_albus_optional)
         registry.register("albus_channel", self._effect_albus_channel)
         registry.register("jinx_discard", self._effect_jinx_discard)
@@ -2200,6 +2201,21 @@ class OriginsRules:
             }
             state["phase"], state["actor"], state["passes"] = "decision", player, 0
             return False
+        if effect == "azir_swap_gear":
+            source = self._unit(state, item.get("source"))
+            target = self._unit(state, item.get("target"))
+            candidates = [gear["id"] for gear in state["players"][player].get("gear", [])
+                          if target is not None and gear.get("attached_to") == target["id"]]
+            if source is None or target is None or not candidates:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": candidates,
+                "item": {"effect": "azir_swap_gear", "owner": player,
+                          "source": source["id"], "target": target["id"]},
+                "azir_swap_gear": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
         if effect == "card_sharp_self":
             self._play_gold_gear_token(state, player, exhausted=True)
             return True
@@ -3783,6 +3799,25 @@ class OriginsRules:
                     result.append(Action.make("unit_registry_ability", unit=unit["id"],
                                               effect=implementation.activated_effect,
                                               payment=payment))
+            if (implementation and implementation.activated_effect == "azir_swap"
+                    and not unit["exhausted"] and self._is_field(state, unit["location"])
+                    and unit.get("azir_used_turn") != state["turn"]):
+                candidates = [target["id"] for target in self._units(state, player)
+                              if target["id"] != unit["id"]]
+                for payment in self._payments(state, player, 0, ["calm"], 1):
+                    if candidates:
+                        result.append(Action.make("unit_registry_ability", unit=unit["id"],
+                                                  effect=implementation.activated_effect,
+                                                  payment=payment,
+                                                  target_candidates=candidates))
+            if (implementation and implementation.activated_effect == "renata"
+                    and not unit["exhausted"] and self._is_field(state, unit["location"])):
+                for payment in self._payments(state, player, 1, ["mind"], 1):
+                    result.append(Action.make("unit_registry_ability", unit=unit["id"],
+                                              effect="renata_draw", payment=payment))
+                for payment in self._payments(state, player, 4, ["mind"], 4):
+                    result.append(Action.make("unit_registry_ability", unit=unit["id"],
+                                              effect="renata_score", payment=payment))
             if unit["code"] == "OGN-078" and not unit["exhausted"]:
                 result.append(Action.make("unit_buff", unit=unit["id"]))
             if unit["code"] == "OGN-036" and not unit["exhausted"] and row["trash"]:
@@ -5032,6 +5067,11 @@ class OriginsRules:
                     if u["id"] != source]
         if effect == "fae_dragon_buff":
             return [u["id"] for u in self._units(state, owner) if not u.get("buff")]
+        if effect == "janna_heal_move":
+            source_unit = self._unit(state, source)
+            field = source_unit["location"] if source_unit is not None else None
+            return [u["id"] for u in self._units(state, 1 - owner, field)] \
+                if self._is_field(state, field) else []
         if effect == "move_field_unit":
             return [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
         if effect == "tideturner_target":
@@ -6645,6 +6685,20 @@ class OriginsRules:
             target = self._unit(state, uid)
             if target is not None and target["owner"] == item["owner"] and not target.get("buff"):
                 self._apply_buff(state, target)
+        return True
+
+    def _effect_janna_heal_move(self, state, item, rng):
+        """Heal Janna's battlefield, then move the selected enemy to Base."""
+        source = self._unit(state, item.get("source"))
+        if source is None or source["owner"] != item["owner"]:
+            return True
+        field = source["location"]
+        for unit in self._units(state, item["owner"], field):
+            unit["damage"] = 0
+        target = self._unit(state, (item.get("targets") or [None])[0])
+        if target is not None and target["owner"] != item["owner"] and target["location"] == field:
+            self._resolve_move(state, [target], f"base:{target['owner']}", item["owner"], rng,
+                               from_effect=True)
         return True
 
     def _effect_albus_optional(self, state, item, rng):
@@ -8775,6 +8829,46 @@ class OriginsRules:
                     state["optional_ordered"] = False
                     self._cleanup(state, rng)
                     return
+                if decision.get("azir_swap"):
+                    source = self._unit(state, decision.get("item", {}).get("source"))
+                    target = self._unit(state, args["target"])
+                    if (source is None or target is None or source["owner"] != player
+                            or target["owner"] != player):
+                        raise ValueError("Azir swap target is no longer legal")
+                    source_location = source["location"]
+                    target_location = target["location"]
+                    source["location"], target["location"] = target_location, source_location
+                    source["exhausted"] = True
+                    target["exhausted"] = True
+                    source["move_count"] = source.get("move_count", 0) + 1
+                    target["move_count"] = target.get("move_count", 0) + 1
+                    source["azir_used_turn"] = state["turn"]
+                    gears = [gear["id"] for gear in state["players"][player].get("gear", [])
+                             if gear.get("attached_to") == target["id"]]
+                    state["decision"] = None
+                    if gears:
+                        state["phase"], state["actor"], state["passes"] = "main", player, 0
+                        self._queue_optional(state, player, "azir_swap_gear",
+                                             source=source["id"], target=target["id"])
+                    else:
+                        state["phase"], state["actor"], state["passes"] = "main", player, 0
+                        self._cleanup(state, rng)
+                    return
+                if decision.get("azir_swap_gear"):
+                    item = decision.get("item", {})
+                    source = self._unit(state, item.get("source"))
+                    target = self._unit(state, item.get("target"))
+                    gear = next((gear for gear in state["players"][player].get("gear", [])
+                                 if gear["id"] == args["target"]), None)
+                    if (source is None or target is None or gear is None
+                            or gear.get("attached_to") != target["id"]):
+                        raise ValueError("Azir Equipment transfer is unavailable")
+                    gear["attached_to"] = source["id"]
+                    self._equipment_attached(state, player, gear, source, rng)
+                    state["decision"] = None
+                    state["optional_ordered"] = False
+                    self._cleanup(state, rng)
+                    return
                 if decision.get("emperor_dais_target"):
                     target = self._unit(state, args["target"])
                     field = decision.get("item", {}).get("field")
@@ -9956,6 +10050,49 @@ class OriginsRules:
         elif kind == "unit_registry_ability":
             source = self._unit(state, args["unit"])
             implementation = self._card_implementation(source["code"]) if source else None
+            if (source is not None and source["owner"] == player
+                    and implementation is not None and implementation.activated_effect == "renata"
+                    and not source["exhausted"] and self._is_field(state, source["location"])):
+                effect = args.get("effect")
+                if effect == "renata_draw":
+                    payment = list(args.get("payment", []))
+                    if payment not in self._payments(state, player, 1, ["mind"], 1):
+                        raise ValueError("Renata draw requires Energy 1 and Mind power")
+                    self._pay(row, 1, payment)
+                    self._draw(state, player, 1, rng)
+                    state["passes"] = 0
+                    return
+                if effect == "renata_score":
+                    payment = list(args.get("payment", []))
+                    if payment not in self._payments(state, player, 4, ["mind"], 4):
+                        raise ValueError("Renata score requires Energy 4 and four Mind power")
+                    self._pay(row, 4, payment)
+                    source["exhausted"] = True
+                    state["points"][player] += 1
+                    self._cleanup(state, rng)
+                    state["passes"] = 0
+                    return
+            if (source is not None and source["owner"] == player and not source["exhausted"]
+                    and implementation is not None
+                    and implementation.activated_effect == "azir_swap"
+                    and self._is_field(state, source["location"])
+                    and source.get("azir_used_turn") != state["turn"]):
+                payment = list(args.get("payment", []))
+                if payment not in self._payments(state, player, 0, ["calm"], 1):
+                    raise ValueError("Azir, Ascendant requires one Calm power")
+                candidates = [unit["id"] for unit in self._units(state, player)
+                              if unit["id"] != source["id"]]
+                if not candidates:
+                    raise ValueError("Azir has no unit to swap with")
+                self._pay(row, 0, payment)
+                state["decision"] = {
+                    "kind": "target", "player": player, "targets": candidates,
+                    "item": {"effect": "azir_swap", "owner": player,
+                              "source": source["id"], "payment": payment},
+                    "azir_swap": True,
+                }
+                state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                return
             if (source is not None and source["owner"] == player and not source["exhausted"]
                     and implementation is not None
                     and implementation.activated_effect == "ezreal_return_base"
@@ -10441,6 +10578,12 @@ class OriginsRules:
                             "target_multi": True,
                             "target_min": 0,
                             "target_max": 4,
+                        })
+                    if implementation.entry_trigger == "janna_heal_move":
+                        trigger.update({
+                            "target_multi": True,
+                            "target_min": 0,
+                            "target_max": 1,
                         })
                     triggers.append(trigger)
                 if code == "OGN-067":

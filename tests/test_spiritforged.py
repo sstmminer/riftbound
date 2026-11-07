@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 235)
+        self.assertEqual(len(registry.executable_codes()), 240)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -259,6 +259,11 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-101-221").entry_trigger, "fae_dragon_buff")
         self.assertEqual(registry.get("SFD-208-221").global_effect, "forge_of_the_fluft")
         self.assertEqual(registry.get("SFD-221-221").global_effect, "veiled_temple")
+        self.assertEqual(registry.get("SFD-050-221").activated_effect, "azir_swap")
+        self.assertEqual(registry.get("SFD-050A-221").activated_effect, "azir_swap")
+        self.assertEqual(registry.get("SFD-053-221").entry_trigger, "janna_heal_move")
+        self.assertEqual(registry.get("SFD-088-221").activated_effect, "renata")
+        self.assertEqual(registry.get("SFD-088A-221").activated_effect, "renata")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIn("weaponmaster", registry.get("SFD-002-221").static_keywords)
 
@@ -2775,6 +2780,86 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, Action.make("choose_option", option="detach"), random.Random(355))
         self.assertIsNone(gear["attached_to"])
         self.assertFalse(gear["exhausted"])
+        rules.validate(state)
+
+    def test_batch_renata_battlefield_abilities_use_explicit_resource_actions(self):
+        deck = legal_deck("SFD-088-221", "OGN-255", "OGN-066")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(356))
+        state.update(phase="main", actor=0)
+        state["fields"][0]["controller"] = 0
+        renata = rules._new_unit(state, "SFD-088-221", 0, 0, exhausted=False)
+        state["players"][0]["energy"] = 1
+        state["players"][0]["power"] = ["mind"]
+        draw = next(action for action in rules.legal_actions(state)
+                    if action.kind == "unit_registry_ability"
+                    and __import__("json").loads(action.arguments)["effect"] == "renata_draw")
+        before = len(state["players"][0]["hand"])
+        rules.apply(state, draw, random.Random(357))
+        self.assertEqual(len(state["players"][0]["hand"]), before + 1)
+        state["players"][0]["energy"] = 4
+        state["players"][0]["power"] = ["mind"] * 4
+        score = next(action for action in rules.legal_actions(state)
+                     if action.kind == "unit_registry_ability"
+                     and __import__("json").loads(action.arguments)["effect"] == "renata_score")
+        rules.apply(state, score, random.Random(358))
+        self.assertEqual(state["points"][0], 1)
+        self.assertTrue(renata["exhausted"])
+        rules.validate(state)
+
+    def test_batch_janna_entry_heals_and_moves_one_enemy_through_trigger_window(self):
+        deck = legal_deck("SFD-053-221", "OGN-255", "OGN-066")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(359))
+        state.update(phase="main", actor=0)
+        state["fields"][0]["controller"] = 0
+        card = move_code_to_hand(state, 0, "SFD-053-221")
+        friendly = rules._new_unit(state, "OGN-066", 0, 0, exhausted=False)
+        friendly["damage"] = 2
+        enemy = rules._new_unit(state, "OGN-001", 1, 0, exhausted=False)
+        state["players"][0]["energy"] = 3
+        state["players"][0]["power"] = ["calm"] * 3
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_unit"
+                    and __import__("json").loads(action.arguments)["card"] == card
+                    and __import__("json").loads(action.arguments)["location"] == 0)
+        rules.apply(state, play, random.Random(360))
+        self.assertEqual(state["decision"]["item"]["effect"], "janna_heal_move")
+        rules.apply(state, Action.make("choose_target", target=enemy["id"]), random.Random(361))
+        rules.apply(state, Action.make("confirm_targets"), random.Random(362))
+        rules.apply(state, Action.make("pass"), random.Random(363))
+        rules.apply(state, Action.make("pass"), random.Random(364))
+        self.assertEqual(friendly["damage"], 0)
+        self.assertEqual(enemy["location"], "base:1")
+        rules.validate(state)
+
+    def test_batch_azir_swap_reuses_resource_and_optional_equipment_windows(self):
+        deck = legal_deck("SFD-056-221", "OGN-255", "OGN-066")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(365))
+        state.update(phase="main", actor=0)
+        state["fields"][0]["controller"] = 0
+        source = rules._new_unit(state, "SFD-050-221", 0, 0, exhausted=False)
+        target = rules._new_unit(state, "OGN-066", 0, "base:0", exhausted=False)
+        gear_card = move_code_to_hand(state, 0, "SFD-056-221")
+        state["players"][0]["hand"].remove(gear_card)
+        gear = {"id": gear_card, "card": gear_card, "code": "SFD-056-221", "owner": 0,
+                "card_owner": 0, "location": "base:0", "exhausted": False,
+                "temporary": False, "attached_to": target["id"]}
+        state["players"][0]["gear"].append(gear)
+        state["players"][0]["power"] = ["calm"]
+        action = next(action for action in rules.legal_actions(state)
+                      if action.kind == "unit_registry_ability"
+                      and __import__("json").loads(action.arguments)["effect"] == "azir_swap")
+        rules.apply(state, action, random.Random(366))
+        rules.apply(state, Action.make("choose_target", target=target["id"]), random.Random(367))
+        optional = next(item for item in state["optional"] if item["effect"] == "azir_swap_gear")
+        rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(368))
+        rules.apply(state, Action.make("choose_target", target=gear_card), random.Random(369))
+        self.assertEqual(source["location"], "base:0")
+        self.assertEqual(target["location"], 0)
+        self.assertEqual(gear["attached_to"], source["id"])
+        self.assertTrue(source["exhausted"])
         rules.validate(state)
 
     def test_batch_grandmaster_moves_equipment_with_two_target_windows(self):

@@ -563,7 +563,7 @@ Gear 消耗监听和资源状态验证。
 展示交互约定。
 
 本批再加入 7 张 Legend 牌，注册表规模增至 160：`SFD-197-221` Emperor of the Sands 与替代印刷
-`SFD-247-221` 使用统一 Legend 资源动作，支付 1 Energy 并横置后在基地生成 2 Might Sand Soldier；
+`SFD-247-221` 使用统一 Legend 资源动作，本回合先打出过 Equipment 后才可支付 1 Energy 并横置，在基地生成 2 Might Sand Soldier；
 `SFD-203-221`/`SFD-250-221` Battle Mistress 监听统一符文回收事件，先由玩家确认是否横置并生成横置
 Gold，并在敌方单位完成死亡清理后按统一死亡事件就绪；`SFD-205-221`/`SFD-251-221` Grand Duelist
 监听公共 Mighty 状态转换账本，跨普通增益、法术、资源与嵌套结算统一生成可选“横置并横置引导一枚符文”

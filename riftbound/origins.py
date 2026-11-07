@@ -258,6 +258,7 @@ class OriginsRules:
         registry.register("chemtech_cask", self._effect_chemtech_cask)
         registry.register("chemtech_gold", self._effect_chemtech_gold)
         registry.register("card_sharp", self._effect_card_sharp)
+        registry.register("gold_on_hidden_play", self._effect_gold_on_hidden_play)
         registry.register("ravenbloom_conservatory", self._effect_ravenbloom_conservatory)
         registry.register("kill_gear_trigger", self._effect_kill_gear_trigger)
         registry.register("spirit_wheel", self._effect_spirit_wheel)
@@ -296,6 +297,11 @@ class OriginsRules:
                  "optional_ordered": False, "pending_showdown": False,
                  "legend_options": [], "rune_undo": [], "winner": None, "next_object": 0}
         state["flame_chompers_offered"] = []
+        # Physical unit IDs that were Mighty at the last cleanup.  This is the
+        # shared transition ledger used by registry abilities such as Grand
+        # Duelist; it deliberately tracks state transitions rather than
+        # polling a card code at one particular play path.
+        state["mighty_seen"] = []
         state["prevent_spell_ability_damage"] = False
         for player, deck in enumerate(self.decks):
             physical = []
@@ -611,6 +617,27 @@ class OriginsRules:
                 or unit.get("temporary_tank", False))
 
     def _cleanup(self, state, rng=None):
+        # A unit becomes Mighty when its computed Might crosses from below 5
+        # to 5 or more.  Keep the transition detector in the common cleanup
+        # pass so buffs, equipment/resource effects, and nested resolutions all
+        # use the same event source.  Saved states from before this field was
+        # introduced remain compatible through the default empty ledger.
+        previous_mighty = set(state.get("mighty_seen", []))
+        current_mighty = {unit["id"] for unit in state["units"]
+                          if self.might(state, unit) >= 5}
+        state["mighty_seen"] = sorted(current_mighty)
+        for unit in state["units"]:
+            if unit["id"] not in current_mighty or unit["id"] in previous_mighty:
+                continue
+            owner = unit["owner"]
+            legend = state["players"][owner].get("legend")
+            implementation = self._card_implementation(legend)
+            if (implementation is not None
+                    and implementation.global_effect == "grand_duelist"
+                    and not state["players"][owner].get("legend_exhausted")
+                    and state["players"][owner].get("rune_deck")):
+                self._queue_optional(state, owner, "grand_duelist_channel",
+                                     source=unit["id"])
         for player in (0, 1):
             if state["points"][player] >= state["victory"] and state["points"][player] > state["points"][1-player]:
                 state["winner"] = player
@@ -624,6 +651,7 @@ class OriginsRules:
         registry_deathknell_draw_two = []
         registry_deathknell_gold = []
         registry_deathknell_mech = []
+        battle_mistress_ready = set()
         wraith_draw = []
         altar_triggers = []
         vanguard_triggers = []
@@ -712,6 +740,12 @@ class OriginsRules:
             dead_ids = {u["id"] for u in dead}
             for unit in dead:
                 was_mighty = self.might(state, unit) >= 5
+                for player in (0, 1):
+                    legend = state["players"][player].get("legend")
+                    implementation = self._card_implementation(legend)
+                    if (player != unit["owner"] and implementation is not None
+                            and implementation.global_effect == "battle_mistress"):
+                        battle_mistress_ready.add(player)
                 if unit.get("buff", 0):
                     for gear in state["players"][unit["owner"]]["gear"]:
                         if gear["code"] == "OGN-228":
@@ -823,6 +857,8 @@ class OriginsRules:
         if registry_deathknell_mech:
             for player in registry_deathknell_mech:
                 self._new_unit(state, "SFD-T05", player, f"base:{player}")
+        for player in battle_mistress_ready:
+            state["players"][player]["legend_exhausted"] = False
         if wraith_draw:
             draw_rng = rng if rng is not None else random.Random(0)
             for player in wraith_draw:
@@ -1108,6 +1144,15 @@ class OriginsRules:
         physical_row = state["players"][card_owner] if card_owner is not None else row
         code = state["cards"][card]["code"]
         data = self.cards[code]
+        implementation = self._card_implementation(code)
+        # Void Drone's printed reduction is a source-sensitive cost rule.  A
+        # card reaches this shared replacement path only from a non-hand zone
+        # (reveal, trash, or banishment), so apply the reduction here and let
+        # the ordinary unit payment/entry flow handle the remaining cost.
+        if (implementation is not None
+                and implementation.cost_reduction_effect == "void_drone_from_anywhere"
+                and not ignore_energy):
+            energy_reduction = max(energy_reduction, 2)
 
         # Units whose play process itself needs a target use the same click
         # window as ordinary hand plays.  Triggered entry abilities such as
@@ -1908,10 +1953,34 @@ class OriginsRules:
             return True
         if effect == "chem_baroness_gold":
             row = state["players"][player]
-            if row.get("legend") != "SFD-201-221" or row.get("legend_exhausted"):
+            implementation = self._card_implementation(row.get("legend"))
+            if (implementation is None
+                    or implementation.global_effect != "chem_baroness"
+                    or row.get("legend_exhausted")):
                 return True
             row["legend_exhausted"] = True
             self._play_gold_gear_token(state, player, exhausted=True)
+            return True
+        if effect == "battle_mistress_gold":
+            row = state["players"][player]
+            implementation = self._card_implementation(row.get("legend"))
+            if (implementation is None
+                    or implementation.global_effect != "battle_mistress"
+                    or row.get("legend_exhausted")):
+                return True
+            row["legend_exhausted"] = True
+            self._play_gold_gear_token(state, player, exhausted=True)
+            return True
+        if effect == "grand_duelist_channel":
+            row = state["players"][player]
+            implementation = self._card_implementation(row.get("legend"))
+            if (implementation is None
+                    or implementation.global_effect != "grand_duelist"
+                    or row.get("legend_exhausted")
+                    or not row.get("rune_deck")):
+                return True
+            row["legend_exhausted"] = True
+            self._channel_rune(state, player, exhausted=True)
             return True
         if effect == "guards_ready":
             source = self._unit(state, item.get("source"))
@@ -2365,7 +2434,9 @@ class OriginsRules:
             if field_impl is not None and field_impl.global_effect == "papertree":
                 for channel_player in (0, 1):
                     self._channel_rune(state, channel_player, exhausted=True)
-            if (state["players"][player].get("legend") == "SFD-201-221"
+            legend_impl = self._card_implementation(state["players"][player].get("legend"))
+            if (legend_impl is not None
+                    and legend_impl.global_effect == "chem_baroness"
                     and not state["players"][player].get("legend_exhausted")):
                 self._queue_battlefield_optional(state, player, "chem_baroness_gold")
             for unit in self._units(state, player, field):
@@ -3316,6 +3387,12 @@ class OriginsRules:
                      or ((state.get("decision") or {}).get("accelerate")
                          and state["phase"] == "decision"))):
             result.append(Action.make("legend_rainbow"))
+        if (legend_implementation is not None
+                and legend_implementation.activated_effect == "emperor_sands_soldier"
+                and state["phase"] == "main"
+                and not row["legend_exhausted"]
+                and row["energy"] >= 1):
+            result.append(Action.make("legend_sand_soldier"))
         # During an Accelerate payment window the unit is represented on the
         # Board but its play process has not completed.  The shared finalized
         # count therefore excludes it automatically.
@@ -5693,6 +5770,15 @@ class OriginsRules:
         self._queue_optional(state, owner, "card_sharp_self", source=item.get("source"))
         self._queue_optional(state, opponent, "card_sharp_opponent",
                              source=item.get("source"), beneficiary=owner)
+        return True
+
+    def _effect_gold_on_hidden_play(self, state, item, rng):
+        """Create Gold for Black Market Broker's shared Hidden-play event."""
+        source = self._unit(state, item.get("source"))
+        if (source is not None and source["owner"] == item["owner"]
+                and self._card_implementation(source["code"]) is not None
+                and self._card_implementation(source["code"]).global_effect == "gold_on_hidden_play"):
+            self._play_gold_gear_token(state, item["owner"], exhausted=True)
         return True
 
     def _effect_ravenbloom_conservatory(self, state, item, rng):
@@ -8562,6 +8648,16 @@ class OriginsRules:
                 row["runes"].remove(rune)
                 row["power"].extend(self.cards[rune["code"]]["domains"])
                 row["rune_deck"].append({**rune, "exhausted": False})
+                # Battle Mistress listens to the same normalized recycle
+                # event as Karma.  Offer its optional Gold ability only after
+                # the rune has actually moved to the Rune Deck, so declining
+                # it never changes the resource transaction itself.
+                legend = row.get("legend")
+                implementation = self._card_implementation(legend)
+                if (implementation is not None
+                        and implementation.global_effect == "battle_mistress"
+                        and not row.get("legend_exhausted")):
+                    self._queue_optional(state, player, "battle_mistress_gold")
             state["passes"] = 0
         elif kind == "undo_rune":
             history = state.get("rune_undo", [])
@@ -8640,6 +8736,14 @@ class OriginsRules:
             self._pay(row, 0 if ignore_energy else data["energy"], args.get("payment", []))
             row["hand"].remove(card)
             triggers = []
+            if args.get("hidden_field") is not None:
+                triggers.extend(
+                    {"effect": "gold_on_hidden_play", "source": source["id"],
+                     "owner": player}
+                    for source in self._units(state, player)
+                    if (self._card_implementation(source["code"]) is not None
+                        and self._card_implementation(source["code"]).global_effect
+                        == "gold_on_hidden_play"))
             row["gear"].append({"id": card, "card": card, "code": code,
                                 "owner": player,
                                 "card_owner": self._card_owner(state, card, player),
@@ -8981,6 +9085,16 @@ class OriginsRules:
             row["legend_exhausted"] = True
             self._new_unit(state, TOKEN, player, f"base:{player}")
             state["passes"] = 0
+        elif kind == "legend_sand_soldier":
+            implementation = self._card_implementation(row.get("legend"))
+            if (implementation is None
+                    or implementation.activated_effect != "emperor_sands_soldier"
+                    or row["legend_exhausted"] or row["energy"] < 1):
+                raise ValueError("Emperor of the Sands ability is unavailable")
+            row["energy"] -= 1
+            row["legend_exhausted"] = True
+            self._new_unit(state, "SFD-T04", player, f"base:{player}")
+            state["passes"] = 0
         elif kind == "legend_channel":
             if (row["legend"] != "OGN-249" or row["legend_exhausted"]
                     or not row["rune_deck"]
@@ -9282,6 +9396,14 @@ class OriginsRules:
                     state.setdefault("legend_options", []).append({"owner": player,
                                                                       "source": unit["id"]})
                 triggers = self._second_card_triggers(state, player)
+                if args.get("hidden_field") is not None:
+                    triggers.extend(
+                        {"effect": "gold_on_hidden_play", "source": source["id"],
+                         "owner": player}
+                        for source in self._units(state, player)
+                        if (self._card_implementation(source["code"]) is not None
+                            and self._card_implementation(source["code"]).global_effect
+                            == "gold_on_hidden_play"))
                 implementation = self._card_implementation(code)
                 if (additional_cost and implementation is not None
                         and implementation.additional_cost_effect == "blast_corps"):
@@ -9510,6 +9632,14 @@ class OriginsRules:
                     # created; Ravenbloom/Darius remain post-resolution
                     # triggers and are therefore kept on the item.
                     triggers = []
+                if args.get("hidden_field") is not None:
+                    triggers.extend(
+                        {"effect": "gold_on_hidden_play", "source": source["id"],
+                         "owner": player}
+                        for source in self._units(state, player)
+                        if (self._card_implementation(source["code"]) is not None
+                            and self._card_implementation(source["code"]).global_effect
+                            == "gold_on_hidden_play"))
                 self._enter_chain(state, [spell_item])
                 # The spell's play process is complete when its Chain item is
                 # created.  Its effect may still be pending, but a later card

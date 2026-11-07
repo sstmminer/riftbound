@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 153)
+        self.assertEqual(len(registry.executable_codes()), 162)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -203,6 +203,15 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-214-221").global_effect, "power_nexus")
         self.assertEqual(registry.get("SFD-201-221").global_effect, "chem_baroness")
         self.assertEqual(registry.get("SFD-215-221").global_effect, "ravenbloom_conservatory")
+        self.assertEqual(registry.get("SFD-197-221").activated_effect, "emperor_sands_soldier")
+        self.assertEqual(registry.get("SFD-247-221").activated_effect, "emperor_sands_soldier")
+        self.assertEqual(registry.get("SFD-203-221").global_effect, "battle_mistress")
+        self.assertEqual(registry.get("SFD-250-221").global_effect, "battle_mistress")
+        self.assertEqual(registry.get("SFD-205-221").global_effect, "grand_duelist")
+        self.assertEqual(registry.get("SFD-251-221").global_effect, "grand_duelist")
+        self.assertEqual(registry.get("SFD-249-221").global_effect, "chem_baroness")
+        self.assertEqual(registry.get("SFD-010-221").cost_reduction_effect, "void_drone_from_anywhere")
+        self.assertEqual(registry.get("SFD-121-221").global_effect, "gold_on_hidden_play")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -2138,6 +2147,95 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, action, random.Random(280))
         self.assertEqual(state["players"][0]["energy"], 2)
         self.assertTrue(gold["exhausted"])
+
+    def test_batch_emperor_of_the_sands_uses_shared_legend_resource_action(self):
+        deck = legal_deck("OGN-066", "OGN-261", "OGN-079")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(282))
+        state["players"][0]["legend"] = "SFD-197-221"
+        state.update(phase="main", actor=0)
+        state["players"][0]["energy"] = 1
+        action = next(action for action in rules.legal_actions(state)
+                      if action.kind == "legend_sand_soldier")
+        rules.apply(state, action, random.Random(283))
+        self.assertEqual(state["players"][0]["energy"], 0)
+        self.assertTrue(state["players"][0]["legend_exhausted"])
+        self.assertEqual([(u["code"], u["location"]) for u in state["units"]],
+                         [("SFD-T04", "base:0")])
+
+    def test_batch_battle_mistress_recycle_and_enemy_death_triggers(self):
+        deck = legal_deck("OGN-148", "OGN-267", "OGN-162")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(284))
+        state["players"][0]["legend"] = "SFD-203-221"
+        state.update(phase="main", actor=0)
+        state["players"][0]["runes"] = [{"id": "r0", "code": "OGN-007", "exhausted": False}]
+        state["players"][0]["rune_deck"] = [{"id": "r1", "code": "OGN-007", "exhausted": False}]
+        rules.apply(state, Action.make("recycle_rune", rune="r0"), random.Random(285))
+        optional = state["optional"][0]
+        self.assertEqual(optional["effect"], "battle_mistress_gold")
+        rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(286))
+        self.assertTrue(state["players"][0]["legend_exhausted"])
+        self.assertEqual(sum(g["code"] == "SFD-T03" for g in state["players"][0]["gear"]), 1)
+        state["players"][0]["legend_exhausted"] = True
+        victim = rules._new_unit(state, "OGN-001", 1, 0, exhausted=False)
+        victim["damage"] = rules.might(state, victim)
+        rules._cleanup(state, random.Random(287))
+        self.assertFalse(state["players"][0]["legend_exhausted"])
+
+    def test_batch_grand_duelist_uses_mighty_transition_optional(self):
+        deck = legal_deck("OGN-151", "OGN-269", "OGN-164")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(288))
+        state["players"][0]["legend"] = "SFD-205-221"
+        state.update(phase="main", actor=0)
+        state["players"][0]["rune_deck"] = [{"id": "r0", "code": "OGN-007", "exhausted": False}]
+        unit = rules._new_unit(state, "OGN-001", 0, 0, exhausted=False)
+        unit["buff"] = 3
+        rules._cleanup(state, random.Random(289))
+        optional = state["optional"][0]
+        self.assertEqual(optional["effect"], "grand_duelist_channel")
+        rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(290))
+        self.assertTrue(state["players"][0]["legend_exhausted"])
+        self.assertEqual(len(state["players"][0]["runes"]), 1)
+        self.assertTrue(state["players"][0]["runes"][0]["exhausted"])
+
+    def test_batch_void_drone_reduces_only_non_hand_free_play(self):
+        deck = legal_deck("SFD-010-221", "OGN-253", "OGN-027")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(291))
+        state.update(phase="main", actor=0)
+        card = move_code_to_hand(state, 0, "SFD-010-221")
+        state["players"][0]["hand"].remove(card)
+        state["players"][0]["trash"].append(card)
+        state["players"][0]["energy"] = 1
+        state["players"][0]["power"] = ["fury"] * 3
+        rules._free_play_revealed_card(state, 0, card, None, random.Random(292))
+        self.assertEqual(state["players"][0]["energy"], 0)
+        self.assertEqual([(u["code"], u["location"]) for u in state["units"]],
+                         [("SFD-010-221", "base:0")])
+
+    def test_batch_black_market_broker_triggers_for_hidden_spell_play(self):
+        deck = legal_deck("SFD-121-221", "OGN-267", "OGN-162")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(293))
+        state.update(phase="main", actor=0)
+        broker = rules._new_unit(state, "SFD-121-221", 0, "base:0", exhausted=False)
+        card = "p0:hidden-fight"
+        state["cards"][card] = {"code": "OGN-168", "owner": 0}
+        state["players"][0]["hand"].append(card)
+        target = rules._new_unit(state, "OGN-001", 0, 0, exhausted=False)
+        state["players"][0]["energy"] = 2
+        state["players"][0]["power"] = ["chaos"]
+        rules.apply(state, Action.make(
+            "play_spell", card=card, targets=[target["id"]], destination=None,
+            spend_buff=None, payment=[0], ignore_cost=False, ignore_energy=False,
+            hidden_field=0), random.Random(294))
+        self.assertTrue(any(item["effect"] == "gold_on_hidden_play"
+                            for item in state["chain"]))
+        rules.apply(state, Action.make("pass"), random.Random(295))
+        rules.apply(state, Action.make("pass"), random.Random(296))
+        self.assertEqual(sum(g["code"] == "SFD-T03" for g in state["players"][0]["gear"]), 1)
 
     def test_batch_ravenbloom_conservatory_uses_public_defense_reveal(self):
         deck = legal_deck("SFD-081-221", "OGN-265", "OGN-117")

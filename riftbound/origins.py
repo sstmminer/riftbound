@@ -260,6 +260,7 @@ class OriginsRules:
         registry.register("card_sharp", self._effect_card_sharp)
         registry.register("gold_on_hidden_play", self._effect_gold_on_hidden_play)
         registry.register("irelia_fervent", self._effect_irelia_fervent)
+        registry.register("ornn_search", self._effect_ornn_search)
         registry.register("ravenbloom_conservatory", self._effect_ravenbloom_conservatory)
         registry.register("kill_gear_trigger", self._effect_kill_gear_trigger)
         registry.register("spirit_wheel", self._effect_spirit_wheel)
@@ -1522,6 +1523,55 @@ class OriginsRules:
                 state["chain"].append(item)
                 state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
                 self._finish_resolution(state)
+            else:
+                resume = reveal.get("resume") or {
+                    "phase": "main", "actor": state["turn_player"], "passes": 0}
+                if resume.get("phase") == "optional" and not state.get("optional"):
+                    restored = state.pop("optional_return", None)
+                    if restored is not None:
+                        resume = restored
+                if resume.get("phase") == "chain" or state.get("chain"):
+                    state["phase"], state["actor"], state["passes"] = (
+                        "chain", resume.get("actor", state["actor"]), 0)
+                    self._finish_resolution(state)
+                else:
+                    state["phase"], state["actor"], state["passes"] = (
+                        resume["phase"], resume["actor"], resume.get("passes", 0))
+                self._cleanup(state, rng)
+            return
+        if effect == "ornn_search":
+            owner = reveal["owner"]
+            row = state["players"][owner]
+            original = [uid for uid in reveal.get("cards", []) if uid in row["main"]]
+            chosen = selected[0] if selected else None
+            if chosen is not None and chosen in row["main"]:
+                row["main"].remove(chosen)
+                row["hand"].append(chosen)
+            remaining = [uid for uid in original if uid != chosen and uid in row["main"]]
+            if remaining:
+                self._recycle_cards_to_main(state, owner, remaining, source="main", rng=rng)
+            item = reveal.get("item")
+            state["reveal"] = None
+            if item is not None:
+                item["reveal_done"] = True
+                state["chain"].append(item)
+                state["phase"], state["actor"], state["passes"] = "chain", item["owner"], 0
+                self._finish_resolution(state)
+            else:
+                resume = reveal.get("resume") or {
+                    "phase": "main", "actor": state["turn_player"], "passes": 0}
+                if resume.get("phase") == "optional" and not state.get("optional"):
+                    restored = state.pop("optional_return", None)
+                    if restored is not None:
+                        resume = restored
+                if resume.get("phase") == "chain" or state.get("chain"):
+                    state["phase"], state["actor"], state["passes"] = (
+                        "chain", resume.get("actor", state["actor"]), 0)
+                    self._finish_resolution(state)
+                else:
+                    state["phase"], state["actor"], state["passes"] = (
+                        resume["phase"], resume["actor"], resume.get("passes", 0))
+                self._cleanup(state, rng)
             return
         if effect == "apprentice_smith":
             owner = reveal["owner"]
@@ -1998,6 +2048,21 @@ class OriginsRules:
             row["legend_exhausted"] = True
             self._channel_rune(state, player, exhausted=True)
             return True
+        if effect == "ornn_search":
+            # Hold is an optional trigger, so the optional item has already
+            # been removed from the queue. Use the same public top-four
+            # window as the entry trigger, but resume the saved context
+            # instead of adding a duplicate chain item.
+            top = list(state["players"][player]["main"][:4])
+            if not top:
+                return True
+            choices = [uid for uid in top
+                       if self.cards[state["cards"][uid]["code"]]["type"] == "gear"]
+            self._open_reveal(state, owner=player, cards=top, mode="select",
+                              chooser=player, minimum=0, maximum=1,
+                              effect="ornn_search", item=None, choices=choices,
+                              rng=rng)
+            return False
         if effect == "guards_ready":
             source = self._unit(state, item.get("source"))
             row = state["players"][player]
@@ -2470,6 +2535,9 @@ class OriginsRules:
                                 in {"unit", "gear"}
                                 for uid in state["players"][player]["trash"])):
                     self._queue_optional(state, player, "return_card_from_trash",
+                                         source=unit["id"])
+                if implementation and implementation.hold_effect == "ornn_search":
+                    self._queue_optional(state, player, "ornn_search",
                                          source=unit["id"])
         # These battlefield triggers are intentionally resolved at the score
         # event, after the point/draw result is known.  The closed engine has
@@ -5811,6 +5879,20 @@ class OriginsRules:
                 and implementation.global_effect == "irelia_fervent"):
             source["temporary"] += 1
         return True
+
+    def _effect_ornn_search(self, state, item, rng):
+        """Open Ornn's shared four-card Gear search/recycle window."""
+        owner = item["owner"]
+        top = list(state["players"][owner]["main"][:4])
+        if not top:
+            return True
+        choices = [uid for uid in top
+                   if self.cards[state["cards"][uid]["code"]]["type"] == "gear"]
+        self._open_reveal(state, owner=owner, cards=top, mode="select",
+                          chooser=owner, minimum=0, maximum=1,
+                          effect="ornn_search", item=item, choices=choices,
+                          rng=rng)
+        return False
 
     def _effect_ravenbloom_conservatory(self, state, item, rng):
         """Reveal the top card before the defending combat damage step."""

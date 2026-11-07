@@ -590,3 +590,6 @@ Power 支付与结算链一致。
 公共选择事件，“被待命”复用 `_ready_unit` 的公共状态事件，两者都进入同一个 `irelia_fervent` Chain
 处理器后给予本回合 +1 Might。Beginning Phase 的直接重置仍不调用待命事件，避免把回合开始的状态重置
 误当成卡牌能力触发。
+
+
+本轮继续加入 `SFD-058-221` 与 `SFD-058A-221` Ornn, Blacksmith，注册表规模增至 169。入场能力和 Hold 可选能力共享 `ornn_search` 注册与 `_open_reveal`/`_finish_reveal`：公开牌库顶四张，只把其中的 Gear 提供为选择项，确认后将选中的 Gear 加入手牌并把其余牌通过统一 recycle 事件回到牌库。Hold 路径先显示是否发动的可选窗口；展示完成后正确恢复原阶段，不把临时展示项重复压入 Chain。新增入场选择、跳过选择、Hold 触发和牌库回收回归测试。

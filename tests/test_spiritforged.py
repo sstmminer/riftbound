@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 167)
+        self.assertEqual(len(registry.executable_codes()), 169)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -216,6 +216,9 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-057-221").global_effect, "irelia_fervent")
         self.assertEqual(registry.get("SFD-057A-221").global_effect, "irelia_fervent")
         self.assertEqual(registry.get("SFD-225-STAR-221").global_effect, "irelia_fervent")
+        self.assertEqual(registry.get("SFD-058-221").entry_trigger, "ornn_search")
+        self.assertEqual(registry.get("SFD-058-221").hold_effect, "ornn_search")
+        self.assertEqual(registry.get("SFD-058A-221").entry_trigger, "ornn_search")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -286,6 +289,48 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, Action.make("confirm_revealed"), random.Random(22))
         self.assertIn(top[0], state["players"][0]["hand"])
         self.assertEqual(state["players"][0]["main"][-1], top[1])
+
+    def test_ornn_entry_and_hold_share_top_four_gear_window(self):
+        deck = legal_deck("SFD-058-221", "OGN-261", "OGN-079")
+        # Force one legal Calm Gear into the deterministic deck so the
+        # selection branch is covered without making the test depend on a
+        # shuffled card order.
+        deck["main"][-1] = "OGN-060"
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(181))
+        card = move_code_to_hand(state, 0, "SFD-058-221")
+        row = state["players"][0]
+        gear = next(uid for uid in row["main"]
+                    if rules.cards[state["cards"][uid]["code"]]["type"] == "gear")
+        top = [gear] + [uid for uid in row["main"] if uid != gear][:3]
+        row["main"] = top + [uid for uid in row["main"] if uid not in top]
+        state["phase"], state["actor"] = "main", 0
+        row["energy"], row["power"] = 10, ["calm"] * 10
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_unit"
+                    and __import__("json").loads(action.arguments)["card"] == card)
+        rules.apply(state, play, random.Random(182))
+        rules.apply(state, Action.make("pass"), random.Random(183))
+        rules.apply(state, Action.make("pass"), random.Random(184))
+        self.assertEqual(state["phase"], "reveal")
+        self.assertIn(gear, state["reveal"]["choices"])
+        rules.apply(state, Action.make("choose_revealed", card=gear), random.Random(185))
+        rules.apply(state, Action.make("confirm_revealed"), random.Random(186))
+        self.assertIn(gear, row["hand"])
+        self.assertIsNone(state.get("reveal"))
+
+        hold_state = rules.initial_state(random.Random(187))
+        holder = rules._new_unit(hold_state, "SFD-058-221", 0, 0, exhausted=False)
+        hold_state["fields"][0]["controller"] = 0
+        rules._score(hold_state, 0, 0, "hold", random.Random(188))
+        self.assertEqual(hold_state["optional"][0]["effect"], "ornn_search")
+        rules.apply(hold_state, Action.make(
+            "optional_effect", optional=hold_state["optional"][0]["id"], accept=True),
+            random.Random(189))
+        self.assertEqual(hold_state["phase"], "reveal")
+        rules.apply(hold_state, Action.make("confirm_revealed"), random.Random(190))
+        self.assertIsNone(hold_state.get("reveal"))
+        self.assertFalse(hold_state.get("optional"))
 
     def test_windsinger_optional_return_has_a_target_window(self):
         deck = legal_deck("SFD-138-221", "OGN-267", "OGN-193")

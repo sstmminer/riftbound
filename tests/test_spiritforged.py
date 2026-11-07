@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 240)
+        self.assertEqual(len(registry.executable_codes()), 243)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -264,6 +264,9 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-053-221").entry_trigger, "janna_heal_move")
         self.assertEqual(registry.get("SFD-088-221").activated_effect, "renata")
         self.assertEqual(registry.get("SFD-088A-221").activated_effect, "renata")
+        self.assertEqual(registry.get("SFD-112-221").move_effect, "kato_keywords")
+        self.assertEqual(registry.get("SFD-148-221").combat_effect, "draven_audacious")
+        self.assertEqual(registry.get("SFD-148A-221").combat_effect, "draven_audacious")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIn("weaponmaster", registry.get("SFD-002-221").static_keywords)
 
@@ -2860,6 +2863,48 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(target["location"], 0)
         self.assertEqual(gear["attached_to"], source["id"])
         self.assertTrue(source["exhausted"])
+        rules.validate(state)
+
+    def test_batch_kato_move_opens_target_window_and_copies_keywords(self):
+        deck = legal_deck("SFD-112-221", "OGN-257", "OGN-151")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(370))
+        state.update(phase="main", actor=0)
+        state["fields"][0]["controller"] = 0
+        kato = rules._new_unit(state, "SFD-112-221", 0, "base:0", exhausted=False)
+        target = rules._new_unit(state, "OGN-066", 0, 0, exhausted=False)
+        rules._resolve_move(state, [kato], 0, 0, random.Random(371))
+        self.assertIsNotNone(state["decision"])
+        self.assertEqual(state["decision"]["item"]["effect"], "kato_keywords")
+        rules.apply(state, Action.make("choose_target", target=target["id"]), random.Random(372))
+        rules.apply(state, Action.make("pass"), random.Random(373))
+        rules.apply(state, Action.make("pass"), random.Random(374))
+        self.assertEqual(target["temporary"], rules.might(state, kato))
+        self.assertIn("deflect", target.get("temporary_keywords", []))
+        rules.validate(state)
+
+    def test_batch_draven_audacious_scores_on_win_and_combat_death(self):
+        deck = legal_deck("SFD-148-221", "OGN-259", "OGN-205")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(375))
+        state["turn"] = 2
+        state["fields"][0]["controller"] = 0
+        draven = rules._new_unit(state, "SFD-148-221", 0, 0, exhausted=False)
+        state["battle"] = {"field": 0, "attacker": 0, "combat": True}
+        rules._settle_battle(state, random.Random(376))
+        self.assertEqual(state["points"], [1, 0])
+        self.assertEqual(draven.get("draven_score_turn"), 2)
+
+        state = rules.initial_state(random.Random(377))
+        state["fields"][0]["controller"] = 1
+        draven = rules._new_unit(state, "SFD-148-221", 0, 0, exhausted=False)
+        enemy = rules._new_unit(state, "OGN-066", 1, 0, exhausted=False)
+        draven["damage"] = 99
+        state["battle"] = {"field": 0, "attacker": 0, "combat": True,
+                            "initial_unit_ids": [draven["id"], enemy["id"]],
+                            "draven_initial": {draven["id"]: 0}}
+        rules._settle_battle(state, random.Random(378))
+        self.assertEqual(state["points"], [0, 1])
         rules.validate(state)
 
     def test_batch_grandmaster_moves_equipment_with_two_target_windows(self):

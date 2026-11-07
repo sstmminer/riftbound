@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 240 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 243 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -187,6 +187,8 @@ python -m riftbound catalog --set SFD
 - `SFD-050-221` / `SFD-050A-221` Azir, Ascendant：主阶段以 Calm power 发动一次性交换动作，先点选己方单位，再对被交换单位的 Equipment 打开可选转移窗口。
 - `SFD-053-221` Janna, Savior：Reaction 入场触发通过统一多目标确认窗口治疗所在位置的友方单位，并可点选至多一名敌方单位回到其基地。
 - `SFD-088-221` / `SFD-088A-221` Renata Glasc, Mastermind：战场中的单位通过统一资源动作选择 Energy 1/Mind 1 抽牌，或 Energy 4/Mind 4 横置并得分。
+- `SFD-112-221` Kato the Arm：统一移动函数在进入战场后建立目标窗口，点选另一名友军复制其关键词并获得等同 Kato 当前 Might 的本回合 Might。
+- `SFD-148-221` / `SFD-148A-221` Draven, Audacious：战斗结算读取同一场战斗快照，首次获胜每回合得分；战斗中死亡则由对手得分，避免把触发伪装成普通死亡事件。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。装备附着、Repeat、复杂衍生物和多步骤替代效果继续保持 catalog-only。
 

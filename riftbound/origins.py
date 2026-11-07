@@ -237,6 +237,7 @@ class OriginsRules:
         registry.register("kinkou_buff", self._effect_kinkou_buff)
         registry.register("fae_dragon_buff", self._effect_fae_dragon_buff)
         registry.register("janna_heal_move", self._effect_janna_heal_move)
+        registry.register("kato_keywords", self._effect_kato_keywords)
         registry.register("albus_optional", self._effect_albus_optional)
         registry.register("albus_channel", self._effect_albus_channel)
         registry.register("jinx_discard", self._effect_jinx_discard)
@@ -4662,6 +4663,10 @@ class OriginsRules:
                 move_triggers.append({"effect": "buff_another_on_move",
                                        "source": unit["id"], "owner": unit["owner"],
                                        "location": destination})
+            if (implementation and implementation.move_effect == "kato_keywords"
+                    and self._is_field(state, destination)):
+                move_triggers.append({"effect": "kato_keywords", "source": unit["id"],
+                                       "owner": unit["owner"], "location": destination})
             if (implementation and implementation.move_effect == "discard_one"
                     and self._is_field(state, destination)):
                 move_triggers.append({"effect": "discard_one",
@@ -5072,6 +5077,11 @@ class OriginsRules:
             field = source_unit["location"] if source_unit is not None else None
             return [u["id"] for u in self._units(state, 1 - owner, field)] \
                 if self._is_field(state, field) else []
+        if effect == "kato_keywords":
+            source_unit = self._unit(state, source)
+            field = source_unit["location"] if source_unit is not None else None
+            return [u["id"] for u in self._units(state, owner, field)
+                    if u["id"] != source] if self._is_field(state, field) else []
         if effect == "move_field_unit":
             return [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
         if effect == "tideturner_target":
@@ -6699,6 +6709,25 @@ class OriginsRules:
         if target is not None and target["owner"] != item["owner"] and target["location"] == field:
             self._resolve_move(state, [target], f"base:{target['owner']}", item["owner"], rng,
                                from_effect=True)
+        return True
+
+    def _effect_kato_keywords(self, state, item, rng):
+        """Give one other friendly battlefield unit Kato's keywords and Might."""
+        source = self._unit(state, item.get("source"))
+        selected = list(item.get("targets") or [])
+        target = self._unit(state, selected[0] if selected else item.get("target"))
+        if (source is None or target is None or source["owner"] != item["owner"]
+                or target["owner"] != item["owner"]
+                or not self._is_field(state, source["location"])
+                or target["location"] != source["location"]
+                or target["id"] == source["id"]):
+            return True
+        target["temporary"] += self.might(state, source)
+        source_impl = self._card_implementation(source["code"])
+        keywords = set(source.get("static_keywords", []))
+        if source_impl is not None:
+            keywords.update(source_impl.static_keywords)
+        target["temporary_keywords"] = sorted(set(target.get("temporary_keywords", [])) | keywords)
         return True
 
     def _effect_albus_optional(self, state, item, rng):
@@ -11028,6 +11057,13 @@ class OriginsRules:
     def _close_showdown(self, state, rng):
         battle = state["battle"]
         field = battle["field"]
+        if battle.get("combat") and "initial_unit_ids" not in battle:
+            battle["initial_unit_ids"] = [unit["id"] for unit in self._units(state, location=field)]
+            battle["draven_initial"] = {
+                unit["id"]: unit["owner"] for unit in self._units(state, location=field)
+                if (self._card_implementation(unit["code"]) is not None
+                    and self._card_implementation(unit["code"]).combat_effect == "draven_audacious")
+            }
         # Nine-Tailed Fox modifies an enemy attack as it is declared against
         # a battlefield controlled by its legend's player.  The temporary
         # reduction naturally expires in the existing end-turn cleanup.
@@ -11241,13 +11277,34 @@ class OriginsRules:
     def _settle_battle(self, state, rng):
         battle = state["battle"]
         field, attacker = battle["field"], battle["attacker"]
+        if battle.get("combat") and "initial_unit_ids" not in battle:
+            battle["initial_unit_ids"] = [unit["id"] for unit in self._units(state, location=field)]
+            battle["draven_initial"] = {
+                unit["id"]: unit["owner"] for unit in self._units(state, location=field)
+                if (self._card_implementation(unit["code"]) is not None
+                    and self._card_implementation(unit["code"]).combat_effect == "draven_audacious")
+            }
         self._cleanup(state, rng)  # Kill lethal before healing, with combat modifiers active.
         combat_draws = []
         if battle["combat"]:
             attackers_alive = bool(self._units(state, attacker, field))
             defenders_alive = bool(self._units(state, 1 - attacker, field))
+            draven_initial = dict(battle.get("draven_initial", {}))
+            draven_dead = [(uid, owner) for uid, owner in draven_initial.items()
+                           if self._unit(state, uid) is None]
+            for uid, owner in draven_dead:
+                if uid not in battle.setdefault("draven_death_scored", []):
+                    state["points"][1 - owner] += 1
+                    battle["draven_death_scored"].append(uid)
             if attackers_alive != defenders_alive:
                 winning_owner = attacker if attackers_alive else 1 - attacker
+                for unit in self._units(state, winning_owner, field):
+                    implementation = self._card_implementation(unit["code"])
+                    if (implementation is not None
+                            and implementation.combat_effect == "draven_audacious"
+                            and unit.get("draven_score_turn") != state["turn"]):
+                        unit["draven_score_turn"] = state["turn"]
+                        state["points"][winning_owner] += 1
                 combat_draws.extend(
                     unit["owner"] for unit in self._units(state, winning_owner, field)
                     if (self._card_implementation(unit["code"]) is not None

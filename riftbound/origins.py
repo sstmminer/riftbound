@@ -322,7 +322,8 @@ class OriginsRules:
                                      "finalized_cards": [], "ready_play": False,
                                      "free_hide_turn": False,
                                      "discarded_this_turn": False, "spell_bonus_damage": 0,
-                                     "cards_locked_turn": False, "spell_discount": 0})
+                                     "cards_locked_turn": False, "spell_discount": 0,
+                                     "gear_played_turn": 0})
             state["fields"].append({"code": rng.choice(deck["battlefields"]), "controller": None})
         state["fields"].extend({"code": code, "controller": None} for code in self.extra_fields)
         state["dreaming_tree_used"] = [False] * len(state["fields"])
@@ -2606,6 +2607,7 @@ class OriginsRules:
             row["spell_discount"] = 0
             row["free_hide_turn"] = False
             row["ornns_forge_used"] = False
+            row["gear_played_turn"] = 0
         row = state["players"][player]
         row["legend_exhausted"] = False
         if row["turns"] == 0 and not state["beginning_awarded"][player]:
@@ -3391,7 +3393,8 @@ class OriginsRules:
                 and legend_implementation.activated_effect == "emperor_sands_soldier"
                 and state["phase"] == "main"
                 and not row["legend_exhausted"]
-                and row["energy"] >= 1):
+                and row["energy"] >= 1
+                and row.get("gear_played_turn", 0) > 0):
             result.append(Action.make("legend_sand_soldier"))
         # During an Accelerate payment window the unit is represented on the
         # Board but its play process has not completed.  The shared finalized
@@ -6460,6 +6463,12 @@ class OriginsRules:
                                    4 if self._role(state, target) == "attacker" else 2)
                 self._cleanup(state, rng)
             return True
+        if implementation and implementation.spell_effect == "kill_field_unit":
+            target = self._unit(state, (item.get("targets") or [None])[0])
+            if target is not None and self._is_field(state, target["location"]):
+                target["damage"] = self.might(state, target)
+                self._cleanup(state, rng)
+            return True
         if implementation and implementation.spell_effect == "stun_attacking":
             target = self._unit(state, (item.get("targets") or [None])[0])
             if target is not None and self._role(state, target) == "attacker":
@@ -8750,6 +8759,7 @@ class OriginsRules:
                                 "location": f"base:{player}",
                                 "exhausted": code == "OGN-017",
                                 "temporary": code == "SFD-104-221"})
+            row["gear_played_turn"] = row.get("gear_played_turn", 0) + 1
             if (not self.cards.get(code, {}).get("token")
                     and not row.get("ornns_forge_used")
                     and any(field.get("controller") == player
@@ -9089,7 +9099,8 @@ class OriginsRules:
             implementation = self._card_implementation(row.get("legend"))
             if (implementation is None
                     or implementation.activated_effect != "emperor_sands_soldier"
-                    or row["legend_exhausted"] or row["energy"] < 1):
+                    or row["legend_exhausted"] or row["energy"] < 1
+                    or row.get("gear_played_turn", 0) < 1):
                 raise ValueError("Emperor of the Sands ability is unavailable")
             row["energy"] -= 1
             row["legend_exhausted"] = True

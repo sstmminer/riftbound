@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 162)
+        self.assertEqual(len(registry.executable_codes()), 163)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -212,6 +212,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-249-221").global_effect, "chem_baroness")
         self.assertEqual(registry.get("SFD-010-221").cost_reduction_effect, "void_drone_from_anywhere")
         self.assertEqual(registry.get("SFD-121-221").global_effect, "gold_on_hidden_play")
+        self.assertEqual(registry.get("SFD-164-221").spell_effect, "kill_field_unit")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -2155,6 +2156,9 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         state["players"][0]["legend"] = "SFD-197-221"
         state.update(phase="main", actor=0)
         state["players"][0]["energy"] = 1
+        self.assertFalse(any(action.kind == "legend_sand_soldier"
+                             for action in rules.legal_actions(state)))
+        state["players"][0]["gear_played_turn"] = 1
         action = next(action for action in rules.legal_actions(state)
                       if action.kind == "legend_sand_soldier")
         rules.apply(state, action, random.Random(283))
@@ -2236,6 +2240,24 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, Action.make("pass"), random.Random(295))
         rules.apply(state, Action.make("pass"), random.Random(296))
         self.assertEqual(sum(g["code"] == "SFD-T03" for g in state["players"][0]["gear"]), 1)
+
+    def test_batch_drag_under_uses_registered_field_kill_target_window(self):
+        deck = legal_deck("SFD-164-221", "OGN-261", "OGN-079")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(297))
+        state.update(phase="main", actor=0)
+        card = move_code_to_hand(state, 0, "SFD-164-221")
+        target = rules._new_unit(state, "OGN-001", 1, 0, exhausted=False)
+        state["players"][0]["energy"] = 5
+        action = next(action for action in rules.legal_actions(state)
+                      if action.kind == "play_spell_targeted"
+                      and __import__("json").loads(action.arguments)["card"] == card)
+        rules.apply(state, action, random.Random(298))
+        self.assertEqual(state["decision"]["targets"], [target["id"]])
+        rules.apply(state, Action.make("choose_target", target=target["id"]), random.Random(299))
+        rules.apply(state, Action.make("pass"), random.Random(300))
+        rules.apply(state, Action.make("pass"), random.Random(301))
+        self.assertNotIn(target, state["units"])
 
     def test_batch_ravenbloom_conservatory_uses_public_defense_reveal(self):
         deck = legal_deck("SFD-081-221", "OGN-265", "OGN-117")

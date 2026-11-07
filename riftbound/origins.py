@@ -3689,6 +3689,22 @@ class OriginsRules:
                 result.extend(self._heimer_registry_actions(state, player, unit))
         legend_implementation = self._card_implementation(row["legend"])
         if (legend_implementation is not None
+                and legend_implementation.global_effect == "grandmaster_at_arms"
+                and state["phase"] == "main" and not row["legend_exhausted"]):
+            detached = [gear["id"] for gear in row.get("gear", [])
+                         if gear.get("attached_to") is None]
+            attached = [gear["id"] for gear in row.get("gear", [])
+                        if gear.get("attached_to") is not None]
+            units = [unit["id"] for unit in self._units(state, player)]
+            if detached and units and row["energy"] >= 1:
+                result.append(Action.make(
+                    "legend_gear_targeted", ability="attach_detached",
+                    gear_candidates=detached, target_candidates=units))
+            if attached and units:
+                result.append(Action.make(
+                    "legend_gear_targeted", ability="attach_attached",
+                    gear_candidates=attached, target_candidates=units))
+        if (legend_implementation is not None
                 and legend_implementation.activated_effect == "legend_rainbow"
                 and not row["legend_exhausted"]
                 and (state["phase"] in {"chain", "showdown"}
@@ -8981,6 +8997,44 @@ class OriginsRules:
                                 restored["phase"], restored["actor"], restored.get("passes", 0))
                     self._cleanup(state, rng)
                     return
+                if decision.get("legend_gear"):
+                    item = decision["item"]
+                    gear = next((gear for gear in row.get("gear", [])
+                                 if gear["id"] == args["target"]), None)
+                    attached = gear is not None and gear.get("attached_to") is not None
+                    if (gear is None
+                            or (item["ability"] == "attach_detached" and attached)
+                            or (item["ability"] == "attach_attached" and not attached)):
+                        raise ValueError("Grandmaster gear selection is unavailable")
+                    state["decision"] = {
+                        "kind": "target", "player": player,
+                        "targets": list(item.get("target_candidates", [])),
+                        "item": {"owner": player, "ability": item["ability"],
+                                  "gear": gear["id"]},
+                        "legend_gear_unit": True,
+                    }
+                    return
+                if decision.get("legend_gear_unit"):
+                    item = decision["item"]
+                    target = self._unit(state, args["target"])
+                    gear = next((gear for gear in row.get("gear", [])
+                                 if gear["id"] == item.get("gear")), None)
+                    if (target is None or target["owner"] != player or gear is None
+                            or (item["ability"] == "attach_detached"
+                                and gear.get("attached_to") is not None)
+                            or (item["ability"] == "attach_attached"
+                                and gear.get("attached_to") is None)):
+                        raise ValueError("Grandmaster target is unavailable")
+                    if item["ability"] == "attach_detached":
+                        if row["energy"] < 1:
+                            raise ValueError("Grandmaster detached attachment requires Energy")
+                        row["energy"] -= 1
+                    gear["attached_to"] = target["id"]
+                    row["legend_exhausted"] = True
+                    state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "main", player, 0
+                    self._cleanup(state, rng)
+                    return
                 if decision.get("quick_draw_gear"):
                     target = self._unit(state, args["target"])
                     item = decision["item"]
@@ -9676,6 +9730,24 @@ class OriginsRules:
             state["legend_options"] = [option for option in state.get("legend_options", [])
                                         if option["owner"] != player]
             state["passes"] = 0
+        elif kind == "legend_gear_targeted":
+            implementation = self._card_implementation(row.get("legend"))
+            ability = args.get("ability")
+            gear_candidates = list(args.get("gear_candidates", []))
+            targets = list(args.get("target_candidates", []))
+            if (implementation is None
+                    or implementation.global_effect != "grandmaster_at_arms"
+                    or row["legend_exhausted"] or ability not in {"attach_detached", "attach_attached"}
+                    or not gear_candidates or not targets
+                    or (ability == "attach_detached" and row["energy"] < 1)):
+                raise ValueError("Grandmaster at Arms ability is unavailable")
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": gear_candidates,
+                "item": {"owner": player, "ability": ability,
+                          "target_candidates": targets},
+                "legend_gear": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
         elif kind == "legend_targeted":
             ability = args.get("ability")
             allowed = {"buff": "OGN-257", "ganking": "OGN-267", "teemo": "OGN-263"}

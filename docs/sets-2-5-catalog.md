@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 217 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 219 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -173,6 +173,7 @@ python -m riftbound catalog --set SFD
 - `SFD-022-221` Long Sword、`SFD-056-221` Sterak's Gage、`SFD-064-221` Cloth Armor：Quick-Draw 牌在普通主阶段或反应窗口中先打开己方单位目标窗口，确认后支付出牌费用并直接附着；其普通 Equip 仍复用同一 `gear_equip` 动作。
 - `SFD-002-221` Armed Assailant、`SFD-008-221` Sentinel Adept、`SFD-092-221` Combat Chef、`SFD-099-221` Veteran Poro、`SFD-127-221` Master Bingwen：Weaponmaster 触发进入统一可选窗口，玩家点选己方 Gear 后按“Rainbow 减免一枚符能”的规则支付剩余 Energy，并允许已附着 Gear 重新附着。
 - `SFD-183-221` / `SFD-241-221` Purifier：Legend 全局谓词按 `attached_to` 统计每名攻击单位的 Equipment，并为每件附着 Equipment 提供 Assault。
+- `SFD-193-221` / `SFD-245-221` Grandmaster at Arms：Legend 主阶段先点选 Gear，再点选己方单位；第一项支付 1 Energy 后附着未附着 Gear，第二项允许已附着 Gear 重新附着，两个动作都使用同一附着状态。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。装备附着、Repeat、复杂衍生物和多步骤替代效果继续保持 catalog-only。
 

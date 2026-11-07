@@ -613,3 +613,5 @@ Power 支付与结算链一致。
 同一附着原语继续接入 `SFD-022-221` Long Sword、`SFD-056-221` Sterak's Gage、`SFD-064-221` Cloth Armor，注册表规模增至 210。Quick-Draw 的出牌动作在主阶段和反应窗口都使用统一目标决策：先点选己方单位，确认后再将 Gear 放入基地并写入 `attached_to`，不再以默认第一个单位代替玩家选择；普通 Equip 仍走 `gear_equip`。
 
 本轮再将 `SFD-002-221`、`SFD-008-221`、`SFD-092-221`、`SFD-099-221`、`SFD-127-221` 的 Weaponmaster 接入注册表，规模增至 215。单位入场后的 Weaponmaster 先进入可选触发，再由玩家点选 Gear；该路径统一减免一枚 Rainbow 符能，保留剩余 Energy 支付并允许已附着 Gear 重附着，避免把“装备选择”压缩成隐式第一张牌。
+
+Purifier（`SFD-183-221`、`SFD-241-221`）随后接入同一附着状态的动态 Might 计算，注册表规模增至 217。攻击计算只统计该单位实际 `attached_to` 的 Equipment，每件提供一个 Assault；Legend 的全局能力不再依赖某张装备卡的编号。

@@ -445,6 +445,11 @@ class OriginsRules:
             value += 1
         if role == "attacker":
             value += int(unit["code"] in {"OGN-210", "OGN-215"}) + unit["assault"]
+            legend_impl = self._card_implementation(
+                state["players"][unit["owner"]].get("legend"))
+            if legend_impl is not None and legend_impl.global_effect == "purifier":
+                value += sum(gear.get("attached_to") == unit["id"]
+                             for gear in state["players"][unit["owner"]].get("gear", []))
             if implementation and implementation.might_effect == "assault_by_enemy":
                 value += len(self._units(state, 1 - unit["owner"], location))
             value += 2 if unit["code"] == "OGN-037" else 0

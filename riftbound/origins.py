@@ -617,6 +617,30 @@ class OriginsRules:
                 unit["temporary"] += bonus
         return True
 
+    def _equipment_attached(self, state, player, gear, target, rng=None):
+        """Emit Aphelios attachment choices through the normal optional queue."""
+        if gear is None or target is None:
+            return
+        for source in self._units(state, player):
+            implementation = self._card_implementation(source["code"])
+            if (implementation is None or implementation.global_effect != "aphelios"
+                    or source["id"] != target.get("id")):
+                continue
+            used = set(source.get("aphelios_choices", []))
+            choices = []
+            if ("ready_runes" not in used
+                    and sum(1 for rune in state["players"][player]["runes"]
+                            if rune.get("exhausted")) >= 2):
+                choices.append("ready_runes")
+            if "channel_rune" not in used and state["players"][player]["rune_deck"]:
+                choices.append("channel_rune")
+            if "buff_unit" not in used and self._units(state, player):
+                choices.append("buff_unit")
+            if choices:
+                self._queue_optional(state, player, "aphelios_choice",
+                                     source=source["id"], choices=choices,
+                                     attached_gear=gear["id"], attached_target=target["id"])
+
     def _ganking(self, state, unit):
         location = unit["location"]
         mech_aura = (
@@ -2083,6 +2107,19 @@ class OriginsRules:
             }
             state["phase"], state["actor"], state["passes"] = "decision", player, 0
             return False
+        if effect == "aphelios_choice":
+            source = self._unit(state, item.get("source"))
+            choices = list(item.get("choices", []))
+            if source is None or source["owner"] != player or not choices:
+                return True
+            state["decision"] = {
+                "kind": "choice", "player": player, "options": choices,
+                "item": {"effect": "aphelios_choice", "owner": player,
+                          "source": source["id"], "choices": choices},
+                "aphelios_choice": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
         if effect == "card_sharp_self":
             self._play_gold_gear_token(state, player, exhausted=True)
             return True
@@ -2912,6 +2949,7 @@ class OriginsRules:
             unit["stunned"] = False
             unit["temporary_ganking"] = False
             unit["udyr_choices"] = []
+            unit["aphelios_choices"] = []
             unit["move_count"] = 0
         # Loose Cannon has a forced draw; this closed card pool has no
         # Fury/Chaos Reactions, so the forced beginning trigger can settle here.
@@ -7976,6 +8014,50 @@ class OriginsRules:
                     self._complete_free_play_target(
                         state, {"free_play": info}, list(info.get("selected", [])), rng)
                     return
+                if decision.get("aphelios_choice"):
+                    source = self._unit(state, decision["item"].get("source"))
+                    if source is None or option not in decision.get("options", []):
+                        raise ValueError("Aphelios choice is unavailable")
+                    source.setdefault("aphelios_choices", []).append(option)
+                    if option == "channel_rune":
+                        self._channel_rune(state, player, exhausted=True)
+                        state["decision"] = None
+                        state["optional_ordered"] = False
+                        self._cleanup(state, rng)
+                        return
+                    if option == "ready_runes":
+                        targets = [rune["id"] for rune in state["players"][player]["runes"]
+                                   if rune.get("exhausted")]
+                        if len(targets) < 2:
+                            source["aphelios_choices"].remove(option)
+                            state["decision"] = None
+                            self._cleanup(state, rng)
+                            return
+                        state["decision"] = {
+                            "kind": "target", "player": player,
+                            "targets": targets, "selected": [], "multi": True,
+                            "min": 2, "max": 2, "allow_repeat": False,
+                            "item": {"effect": "aphelios_ready_runes", "owner": player,
+                                      "source": source["id"]},
+                            "aphelios_runes": True,
+                        }
+                        state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                        return
+                    if option == "buff_unit":
+                        targets = [unit["id"] for unit in self._units(state, player)]
+                        if not targets:
+                            source["aphelios_choices"].remove(option)
+                            state["decision"] = None
+                            self._cleanup(state, rng)
+                            return
+                        state["decision"] = {
+                            "kind": "target", "player": player, "targets": targets,
+                            "item": {"effect": "aphelios_buff_unit", "owner": player,
+                                      "source": source["id"]},
+                            "aphelios_buff": True,
+                        }
+                        state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                        return
                 if decision.get("altar_destination"):
                     item = dict(decision.get("item") or {})
                     if option not in {"top", "bottom"}:
@@ -8510,6 +8592,29 @@ class OriginsRules:
                                 restored["phase"], restored["actor"], restored.get("passes", 0))
                     self._cleanup(state, rng)
                     return
+                if decision.get("aphelios_buff"):
+                    target = self._unit(state, args["target"])
+                    source = self._unit(state, decision.get("item", {}).get("source"))
+                    if (target is None or target["owner"] != player
+                            or source is None or source["owner"] != player):
+                        raise ValueError("Aphelios buff target is no longer legal")
+                    self._apply_buff(state, target)
+                    state["decision"] = None
+                    state["optional_ordered"] = False
+                    if state.get("optional"):
+                        state["phase"], state["actor"], state["passes"] = (
+                            "optional", state["optional"][0]["player"], 0)
+                    else:
+                        restored = state.pop("optional_return", None)
+                        if restored is None:
+                            state["phase"], state["actor"], state["passes"] = "main", player, 0
+                        elif restored["phase"] == "chain" and not state.get("chain"):
+                            self._finish_resolution(state)
+                        else:
+                            state["phase"], state["actor"], state["passes"] = (
+                                restored["phase"], restored["actor"], restored.get("passes", 0))
+                    self._cleanup(state, rng)
+                    return
                 if decision.get("emperor_dais_target"):
                     target = self._unit(state, args["target"])
                     field = decision.get("item", {}).get("field")
@@ -8982,6 +9087,7 @@ class OriginsRules:
                     # here by the printed "even if already attached" clause.
                     state["players"][player]["energy"] -= implementation.equip_energy
                     gear["attached_to"] = source["id"]
+                    self._equipment_attached(state, player, gear, source, rng)
                     state["decision"] = None
                     state["optional_ordered"] = False
                     if state.get("optional"):
@@ -9031,6 +9137,7 @@ class OriginsRules:
                             raise ValueError("Grandmaster detached attachment requires Energy")
                         row["energy"] -= 1
                     gear["attached_to"] = target["id"]
+                    self._equipment_attached(state, player, gear, target, rng)
                     row["legend_exhausted"] = True
                     state["decision"] = None
                     state["phase"], state["actor"], state["passes"] = "main", player, 0
@@ -9094,6 +9201,30 @@ class OriginsRules:
                 selected = list(decision.get("selected", []))
                 if len(selected) < decision.get("min", 1):
                     raise ValueError("not enough targets selected")
+                if decision.get("aphelios_runes"):
+                    runes = state["players"][player]["runes"]
+                    chosen = [rune for rune in runes if rune["id"] in selected]
+                    if (len(selected) != 2 or len(chosen) != 2
+                            or any(not rune.get("exhausted") for rune in chosen)):
+                        raise ValueError("Aphelios must ready two exhausted runes")
+                    for rune in chosen:
+                        rune["exhausted"] = False
+                    state["decision"] = None
+                    state["optional_ordered"] = False
+                    if state.get("optional"):
+                        state["phase"], state["actor"], state["passes"] = (
+                            "optional", state["optional"][0]["player"], 0)
+                    else:
+                        restored = state.pop("optional_return", None)
+                        if restored is None:
+                            state["phase"], state["actor"], state["passes"] = "main", player, 0
+                        elif restored["phase"] == "chain" and not state.get("chain"):
+                            self._finish_resolution(state)
+                        else:
+                            state["phase"], state["actor"], state["passes"] = (
+                                restored["phase"], restored["actor"], restored.get("passes", 0))
+                    self._cleanup(state, rng)
+                    return
                 if (decision.get("target_pairs")
                         and not self._target_pair_matches(decision, selected)):
                     raise ValueError("Facebreaker requires one friendly and one enemy at its battlefield")
@@ -9249,6 +9380,7 @@ class OriginsRules:
                 raise ValueError("invalid equipment payment")
             self._pay(row, implementation.equip_energy, payment)
             gear["attached_to"] = target["id"]
+            self._equipment_attached(state, player, gear, target, rng)
             state["passes"] = 0
         elif kind == "play_gear_targeted":
             card = args.get("card")
@@ -9346,15 +9478,18 @@ class OriginsRules:
                     if (self._card_implementation(source["code"]) is not None
                         and self._card_implementation(source["code"]).global_effect
                         == "gold_on_hidden_play"))
-            row["gear"].append({"id": card, "card": card, "code": code,
-                                "owner": player,
-                                "card_owner": self._card_owner(state, card, player),
-                                "location": f"base:{player}",
-                                "exhausted": code == "OGN-017",
-                                "temporary": (code == "SFD-104-221"
-                                               or bool(implementation and
-                                                       "temporary" in implementation.static_keywords)),
-                                "attached_to": quick_target["id"] if quick_draw else None})
+            new_gear = {"id": card, "card": card, "code": code,
+                        "owner": player,
+                        "card_owner": self._card_owner(state, card, player),
+                        "location": f"base:{player}",
+                        "exhausted": code == "OGN-017",
+                        "temporary": (code == "SFD-104-221"
+                                       or bool(implementation and
+                                               "temporary" in implementation.static_keywords)),
+                        "attached_to": quick_target["id"] if quick_draw else None}
+            row["gear"].append(new_gear)
+            if quick_draw:
+                self._equipment_attached(state, player, new_gear, quick_target, rng)
             row["gear_played_turn"] = row.get("gear_played_turn", 0) + 1
             if (not self.cards.get(code, {}).get("token")
                     and not row.get("ornns_forge_used")

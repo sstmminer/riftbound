@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 222)
+        self.assertEqual(len(registry.executable_codes()), 225)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -245,6 +245,9 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-186-221").equip_domain, "any")
         self.assertEqual(registry.get("SFD-190-221").equip_domain, "any")
         self.assertEqual(registry.get("SFD-191-221").equip_domain, "any")
+        self.assertEqual(registry.get("SFD-049-221").global_effect, "aphelios")
+        self.assertEqual(registry.get("SFD-224-221").global_effect, "aphelios")
+        self.assertEqual(registry.get("SFD-224-STAR-221").global_effect, "aphelios")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIn("weaponmaster", registry.get("SFD-002-221").static_keywords)
 
@@ -2610,6 +2613,51 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         state["battle"] = {"field": 0, "attacker": 0, "combat": True}
         base_might = rules.cards[target["code"]]["might"]
         self.assertEqual(rules.might(state, target), base_might + 1)
+        rules.validate(state)
+
+    def test_batch_aphelios_attachment_opens_explicit_mode_and_target_windows(self):
+        deck = legal_deck("SFD-056-221", "OGN-255", "OGN-066")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(324))
+        state.update(phase="main", actor=0)
+        aphelios = rules._new_unit(state, "SFD-049-221", 0, "base:0", exhausted=False)
+        gear_card = move_code_to_hand(state, 0, "SFD-056-221")
+        state["players"][0]["energy"] = 3
+        state["players"][0]["power"] = ["calm"] * 3
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_gear_targeted"
+                    and __import__("json").loads(action.arguments)["card"] == gear_card)
+        rules.apply(state, play, random.Random(325))
+        rules.apply(state, Action.make("choose_target", target=aphelios["id"]), random.Random(326))
+        optional = next(item for item in state["optional"] if item["effect"] == "aphelios_choice")
+        rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(327))
+        self.assertEqual(state["decision"]["options"], ["channel_rune", "buff_unit"])
+        rules.apply(state, Action.make("choose_option", option="buff_unit"), random.Random(328))
+        self.assertEqual(state["decision"]["targets"], [aphelios["id"]])
+        rules.apply(state, Action.make("choose_target", target=aphelios["id"]), random.Random(329))
+        self.assertEqual(aphelios["buff"], 1)
+        self.assertEqual(aphelios.get("aphelios_choices"), ["buff_unit"])
+        self.assertTrue(any(gear.get("attached_to") == aphelios["id"]
+                            for gear in state["players"][0]["gear"]))
+        # The second mode uses the explicit multi-rune target window rather
+        # than selecting the first two runes implicitly.
+        aphelios["aphelios_choices"] = []
+        state["players"][0]["runes"] = state["players"][0]["rune_deck"][:2]
+        state["players"][0]["rune_deck"] = state["players"][0]["rune_deck"][2:]
+        for rune in state["players"][0]["runes"]:
+            rune["exhausted"] = True
+        rules._equipment_attached(
+            state, 0, {"id": "synthetic-gear", "code": "SFD-056-221"},
+            aphelios, random.Random(330))
+        optional = next(item for item in state["optional"] if item["effect"] == "aphelios_choice")
+        rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(331))
+        rules.apply(state, Action.make("choose_option", option="ready_runes"), random.Random(332))
+        rune_ids = [rune["id"] for rune in state["players"][0]["runes"][:2]]
+        rules.apply(state, Action.make("choose_target", target=rune_ids[0]), random.Random(333))
+        rules.apply(state, Action.make("choose_target", target=rune_ids[1]), random.Random(334))
+        rules.apply(state, Action.make("confirm_targets"), random.Random(335))
+        self.assertTrue(all(not rune["exhausted"]
+                            for rune in state["players"][0]["runes"][:2]))
         rules.validate(state)
 
     def test_batch_grandmaster_moves_equipment_with_two_target_windows(self):

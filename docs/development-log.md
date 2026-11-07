@@ -621,3 +621,5 @@ Purifier（`SFD-183-221`、`SFD-241-221`）随后接入同一附着状态的动�
 补充接入 `SFD-186-221` Spinning Axe，注册表规模增至 220。注册表支持 `equip_domain="any"` 表示 Rainbow Equip，Quick-Draw 仍先打开单位目标窗口；`temporary` 标记复用 Beginning Phase 的临时 Gear 清理，不新增该卡独立的生命周期路径。
 
 同一 Rainbow Equip 原语接入 `SFD-190-221` Forgefire Cape 与 `SFD-191-221` Rabadon's Deathcrown，注册表规模增至 222。两张 Unique 装备不新增结算分支，Unique 数量限制继续由套牌校验负责。
+
+本轮加入 `SFD-049-221`、`SFD-224-221`、`SFD-224-STAR-221` Aphelios, Exalted，注册表规模增至 225。触发条件严格限定为 Equipment 附着到 Aphelios 本人；每个回合由单位状态账本记录已经选择的模式，并通过统一 optional → choice/target/confirm_targets 窗口执行：Ready 2 runes 必须手动选择两枚已横置符文，Channel 1 rune exhausted 调用公共 `_channel_rune`，Buff a friendly unit 调用公共 `_apply_buff`。资源不足时不伪造不可执行选项，三种印刷只共享注册能力，不建立独立牌路径。新增回归覆盖装备附着、模式选择、单位目标和双符文目标确认。

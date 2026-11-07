@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 163)
+        self.assertEqual(len(registry.executable_codes()), 167)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -213,6 +213,9 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-010-221").cost_reduction_effect, "void_drone_from_anywhere")
         self.assertEqual(registry.get("SFD-121-221").global_effect, "gold_on_hidden_play")
         self.assertEqual(registry.get("SFD-164-221").spell_effect, "kill_field_unit")
+        self.assertEqual(registry.get("SFD-057-221").global_effect, "irelia_fervent")
+        self.assertEqual(registry.get("SFD-057A-221").global_effect, "irelia_fervent")
+        self.assertEqual(registry.get("SFD-225-STAR-221").global_effect, "irelia_fervent")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -2258,6 +2261,29 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, Action.make("pass"), random.Random(300))
         rules.apply(state, Action.make("pass"), random.Random(301))
         self.assertNotIn(target, state["units"])
+
+    def test_batch_irelia_fervent_reuses_choice_and_ready_trigger_paths(self):
+        deck = legal_deck("OGN-066", "OGN-261", "OGN-079")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(302))
+        state.update(phase="main", actor=0)
+        source = rules._new_unit(state, "SFD-057-221", 0, 0, exhausted=False)
+        self.assertEqual(rules._deflect(state, source), 1)
+        triggers = rules._spell_choice_triggers(
+            state, 0, {"targets": []}, [source["id"]])
+        self.assertEqual(triggers[0]["effect"], "irelia_fervent")
+        rules._triggers(state, triggers)
+        rules.apply(state, Action.make("pass"), random.Random(303))
+        rules.apply(state, Action.make("pass"), random.Random(304))
+        self.assertEqual(source["temporary"], 1)
+        source["temporary"] = 0
+        source["exhausted"] = True
+        rules._ready_unit(state, source)
+        rules._cleanup(state, random.Random(305))
+        self.assertEqual(state["phase"], "chain")
+        rules.apply(state, Action.make("pass"), random.Random(306))
+        rules.apply(state, Action.make("pass"), random.Random(307))
+        self.assertEqual(source["temporary"], 1)
 
     def test_batch_ravenbloom_conservatory_uses_public_defense_reveal(self):
         deck = legal_deck("SFD-081-221", "OGN-265", "OGN-117")

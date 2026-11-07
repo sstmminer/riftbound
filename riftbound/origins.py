@@ -259,6 +259,7 @@ class OriginsRules:
         registry.register("chemtech_gold", self._effect_chemtech_gold)
         registry.register("card_sharp", self._effect_card_sharp)
         registry.register("gold_on_hidden_play", self._effect_gold_on_hidden_play)
+        registry.register("irelia_fervent", self._effect_irelia_fervent)
         registry.register("ravenbloom_conservatory", self._effect_ravenbloom_conservatory)
         registry.register("kill_gear_trigger", self._effect_kill_gear_trigger)
         registry.register("spirit_wheel", self._effect_spirit_wheel)
@@ -297,6 +298,7 @@ class OriginsRules:
                  "optional_ordered": False, "pending_showdown": False,
                  "legend_options": [], "rune_undo": [], "winner": None, "next_object": 0}
         state["flame_chompers_offered"] = []
+        state["ready_triggers"] = []
         # Physical unit IDs that were Mighty at the last cleanup.  This is the
         # shared transition ledger used by registry abilities such as Grand
         # Duelist; it deliberately tracks state transitions rather than
@@ -584,6 +586,11 @@ class OriginsRules:
         if not was_exhausted:
             return False
         owner = unit.get("owner")
+        implementation = self._card_implementation(unit.get("code"))
+        if (implementation is not None
+                and implementation.global_effect == "irelia_fervent"):
+            state.setdefault("ready_triggers", []).append({
+                "effect": "irelia_fervent", "source": unit["id"], "owner": owner})
         if owner in (0, 1):
             bonus = sum(1 for gear in state["players"][owner]["gear"]
                         if gear["code"] == "OGN-143")
@@ -899,6 +906,14 @@ class OriginsRules:
                 for unit in list(self._units(state, location=field)):
                     self._deal_damage(state, unit, 4)
             self._cleanup(state, rng)
+        ready_triggers = state.pop("ready_triggers", [])
+        if ready_triggers:
+            if state.get("decision") is not None or state.get("reveal") is not None \
+                    or state.get("optional"):
+                state.setdefault("deferred_triggers", []).extend(ready_triggers)
+            else:
+                self._triggers(state, ready_triggers,
+                               preserve_context=bool(state.get("chain")))
         if state["phase"] == "main":
             for field, row in enumerate(state["fields"]):
                 if row["controller"] is not None and not self._units(state, row["controller"], field):
@@ -3550,6 +3565,9 @@ class OriginsRules:
             if implementation and implementation.global_effect == "draw_when_chosen_spell":
                 triggers.append({"effect": "draw_one", "source": target["id"],
                                  "owner": target["owner"]})
+            if implementation and implementation.global_effect == "irelia_fervent":
+                triggers.append({"effect": "irelia_fervent", "source": target["id"],
+                                 "owner": target["owner"]})
             if target["owner"] == chooser:
                 for gear in state["players"][chooser].get("gear", []):
                     gear_impl = self._card_implementation(gear["code"])
@@ -5782,6 +5800,16 @@ class OriginsRules:
                 and self._card_implementation(source["code"]) is not None
                 and self._card_implementation(source["code"]).global_effect == "gold_on_hidden_play"):
             self._play_gold_gear_token(state, item["owner"], exhausted=True)
+        return True
+
+    def _effect_irelia_fervent(self, state, item, rng):
+        """Resolve Irelia, Fervent's shared choose/ready trigger."""
+        source = self._unit(state, item.get("source"))
+        implementation = self._card_implementation(source["code"]) if source else None
+        if (source is not None and source["owner"] == item["owner"]
+                and implementation is not None
+                and implementation.global_effect == "irelia_fervent"):
+            source["temporary"] += 1
         return True
 
     def _effect_ravenbloom_conservatory(self, state, item, rng):

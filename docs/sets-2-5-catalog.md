@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 225 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 235 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -177,6 +177,13 @@ python -m riftbound catalog --set SFD
 - `SFD-186-221` Spinning Axe：Quick-Draw 的 Rainbow Equip 使用任意一枚符能支付；附着状态带有 Temporary 标记，并在控制者下一次 Beginning Phase 的统一临时物清理中移除。
 - `SFD-190-221` Forgefire Cape、`SFD-191-221` Rabadon's Deathcrown：Unique Rainbow Equip 复用同一装备支付与附着窗口，Unique 约束继续由构筑校验处理。
 - `SFD-049-221`、`SFD-224-221`、`SFD-224-STAR-221` Aphelios, Exalted：装备附着到 Aphelios 时通过统一可选事件窗口选择本回合尚未选择的模式；Ready 2 runes 与 Buff a friendly unit 都打开明确目标窗口，Channel 1 rune exhausted 复用统一符文通道函数；三种印刷共享每回合模式账本。
+- `SFD-054-221` / `SFD-054A-221` Jax, Unmatched：Deflect 与 Equipment Quick-Draw 光环接入同一装备出牌/附着路径；光环不会绕过目标窗口，所有 Gear 仍须点选己方单位。
+- `SFD-085-221` / `SFD-085A-221` Ornn, Forge God：Deflect 2、Weaponmaster 以及按己方 Gear 数量增加 Might 均通过注册关键词和统一附着状态计算。
+- `SFD-119-221` / `SFD-119A-221` Jax, Unrelenting：Weaponmaster 复用装备选择，附着后单独打开是否支付 1 Energy 抽牌的可选窗口。
+- `SFD-068-221` Gearhead：附着 Equipment 的声明式 `might_bonus` 由统一 Might 计算翻倍；当前 SFD 数据中的 Equipment 没有额外基础 Might，因此不会伪造隐藏数值。
+- `SFD-101-221` Fae Dragon：入场触发打开最多四名友方单位的手动多选/确认窗口；所有统一 Buff 消耗点都会调用公共 spend-buff 事件，并为控制者生成横置 Gold Gear。
+- `SFD-208-221` Forge of the Fluft：受控战场为己方 Legend 暴露两步 Gear→单位附着动作，使用现有 `legend_gear_targeted` 和 `attached_to` 状态并横置 Legend。
+- `SFD-221-221` Veiled Temple：征服后先确认是否发动，再点选友方 Gear；Gear 就绪后，对附着 Equipment 另开是否分离窗口。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。装备附着、Repeat、复杂衍生物和多步骤替代效果继续保持 catalog-only。
 

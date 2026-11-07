@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 225)
+        self.assertEqual(len(registry.executable_codes()), 235)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -248,6 +248,17 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-049-221").global_effect, "aphelios")
         self.assertEqual(registry.get("SFD-224-221").global_effect, "aphelios")
         self.assertEqual(registry.get("SFD-224-STAR-221").global_effect, "aphelios")
+        self.assertEqual(registry.get("SFD-054-221").global_effect, "jax_quick_draw")
+        self.assertEqual(registry.get("SFD-054A-221").global_effect, "jax_quick_draw")
+        self.assertIn("weaponmaster", registry.get("SFD-085-221").static_keywords)
+        self.assertEqual(registry.get("SFD-085A-221").global_effect, "ornn_forge_god")
+        self.assertEqual(registry.get("SFD-119-221").global_effect, "jax_unrelenting")
+        self.assertEqual(registry.get("SFD-119A-221").global_effect, "jax_unrelenting")
+        self.assertEqual(registry.get("SFD-068-221").global_effect, "gearhead_double")
+        self.assertIn("accelerate", registry.get("SFD-068-221").static_keywords)
+        self.assertEqual(registry.get("SFD-101-221").entry_trigger, "fae_dragon_buff")
+        self.assertEqual(registry.get("SFD-208-221").global_effect, "forge_of_the_fluft")
+        self.assertEqual(registry.get("SFD-221-221").global_effect, "veiled_temple")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIn("weaponmaster", registry.get("SFD-002-221").static_keywords)
 
@@ -2658,6 +2669,112 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(state, Action.make("confirm_targets"), random.Random(335))
         self.assertTrue(all(not rune["exhausted"]
                             for rune in state["players"][0]["runes"][:2]))
+        rules.validate(state)
+
+    def test_batch_jax_auras_and_ornn_gear_might_use_shared_equipment_state(self):
+        deck = legal_deck("SFD-118-221", "OGN-257", "OGN-151")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(336))
+        state.update(phase="main", actor=0)
+        jax = rules._new_unit(state, "SFD-054-221", 0, "base:0", exhausted=False)
+        gear_card = move_code_to_hand(state, 0, "SFD-118-221")
+        state["players"][0]["energy"] = 3
+        state["players"][0]["power"] = ["body"] * 2
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_gear_targeted"
+                    and __import__("json").loads(action.arguments)["card"] == gear_card)
+        rules.apply(state, play, random.Random(337))
+        rules.apply(state, Action.make("choose_target", target=jax["id"]), random.Random(338))
+        gear = next(item for item in state["players"][0]["gear"] if item["card"] == gear_card)
+        self.assertEqual(gear["attached_to"], jax["id"])
+        # Ornn's dynamic Might is based on all friendly Gear, not a card code.
+        ornn = rules._new_unit(state, "SFD-085-221", 0, "base:0", exhausted=False)
+        self.assertEqual(rules.might(state, ornn), rules.cards["SFD-085-221"]["might"] + 1)
+        rules.validate(state)
+
+    def test_batch_jax_unrelenting_attachment_draw_is_optional_and_pays_energy(self):
+        deck = legal_deck("SFD-056-221", "OGN-255", "OGN-066")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(339))
+        state.update(phase="main", actor=0)
+        source = rules._new_unit(state, "SFD-119-221", 0, "base:0", exhausted=False)
+        gear_card = move_code_to_hand(state, 0, "SFD-056-221")
+        state["players"][0]["hand"].remove(gear_card)
+        gear = {"id": gear_card, "card": gear_card, "code": "SFD-056-221", "owner": 0,
+                "card_owner": 0, "location": "base:0", "exhausted": False,
+                "temporary": False, "attached_to": source["id"]}
+        state["players"][0]["gear"].append(gear)
+        state["players"][0]["energy"] = 1
+        before = len(state["players"][0]["hand"])
+        rules._equipment_attached(state, 0, gear, source, random.Random(340))
+        optional = next(item for item in state["optional"] if item["effect"] == "jax_unrelenting_draw")
+        rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(341))
+        self.assertEqual(state["decision"]["options"], ["pay", "skip"])
+        rules.apply(state, Action.make("choose_option", option="pay"), random.Random(342))
+        self.assertEqual(state["players"][0]["energy"], 0)
+        self.assertEqual(len(state["players"][0]["hand"]), before + 1)
+        rules.validate(state)
+
+    def test_batch_fae_dragon_requires_explicit_up_to_four_targets_and_rewards_buff_spend(self):
+        deck = legal_deck("SFD-101-221", "OGN-257", "OGN-151")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(343))
+        state.update(phase="main", actor=0)
+        card = move_code_to_hand(state, 0, "SFD-101-221")
+        first = rules._new_unit(state, "OGN-151", 0, "base:0", exhausted=False)
+        second = rules._new_unit(state, "OGN-151", 0, "base:0", exhausted=False)
+        state["players"][0]["energy"] = 7
+        state["players"][0]["power"] = ["body"] * 7
+        play = next(action for action in rules.legal_actions(state)
+                    if action.kind == "play_unit"
+                    and __import__("json").loads(action.arguments)["card"] == card)
+        rules.apply(state, play, random.Random(344))
+        self.assertEqual(state["decision"]["item"]["effect"], "fae_dragon_buff")
+        rules.apply(state, Action.make("choose_target", target=first["id"]), random.Random(345))
+        rules.apply(state, Action.make("choose_target", target=second["id"]), random.Random(346))
+        rules.apply(state, Action.make("confirm_targets"), random.Random(347))
+        rules.apply(state, Action.make("pass"), random.Random(348))
+        rules.apply(state, Action.make("pass"), random.Random(349))
+        self.assertEqual(first["buff"], 1)
+        self.assertEqual(second["buff"], 1)
+        before = len(state["players"][0]["gear"])
+        self.assertTrue(rules._spend_buff(state, first))
+        self.assertEqual(len(state["players"][0]["gear"]), before + 1)
+        rules.validate(state)
+
+    def test_batch_forge_and_veiled_temple_use_two_stage_gear_windows(self):
+        deck = legal_deck("SFD-056-221", "OGN-255", "OGN-066")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(348))
+        state.update(phase="main", actor=0)
+        state["fields"][0] = {"code": "SFD-208-221", "controller": 0}
+        target = rules._new_unit(state, "OGN-066", 0, 0, exhausted=False)
+        gear_card = move_code_to_hand(state, 0, "SFD-056-221")
+        state["players"][0]["hand"].remove(gear_card)
+        gear = {"id": gear_card, "card": gear_card, "code": "SFD-056-221", "owner": 0,
+                "card_owner": 0, "location": "base:0", "exhausted": False,
+                "temporary": False, "attached_to": None}
+        state["players"][0]["gear"].append(gear)
+        action = next(action for action in rules.legal_actions(state)
+                      if action.kind == "legend_gear_targeted")
+        rules.apply(state, action, random.Random(349))
+        rules.apply(state, Action.make("choose_target", target=gear_card), random.Random(350))
+        rules.apply(state, Action.make("choose_target", target=target["id"]), random.Random(351))
+        self.assertEqual(gear["attached_to"], target["id"])
+        self.assertTrue(state["players"][0]["legend_exhausted"])
+        # A Veiled Temple conquer uses a separate optional target window and
+        # then asks whether an Equipment should be detached.
+        state["players"][0]["legend_exhausted"] = False
+        state["fields"][0] = {"code": "SFD-221-221", "controller": 0}
+        gear["exhausted"] = True
+        rules._score(state, 0, 0, "conquer", random.Random(352))
+        optional = next(item for item in state["optional"] if item["effect"] == "veiled_temple_gear")
+        rules.apply(state, Action.make("optional_effect", optional=optional["id"], accept=True), random.Random(353))
+        rules.apply(state, Action.make("choose_target", target=gear_card), random.Random(354))
+        self.assertEqual(state["decision"]["options"], ["detach", "keep_attached"])
+        rules.apply(state, Action.make("choose_option", option="detach"), random.Random(355))
+        self.assertIsNone(gear["attached_to"])
+        self.assertFalse(gear["exhausted"])
         rules.validate(state)
 
     def test_batch_grandmaster_moves_equipment_with_two_target_windows(self):

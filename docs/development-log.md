@@ -593,3 +593,6 @@ Power 支付与结算链一致。
 
 
 本轮继续加入 `SFD-058-221` 与 `SFD-058A-221` Ornn, Blacksmith，注册表规模增至 169。入场能力和 Hold 可选能力共享 `ornn_search` 注册与 `_open_reveal`/`_finish_reveal`：公开牌库顶四张，只把其中的 Gear 提供为选择项，确认后将选中的 Gear 加入手牌并把其余牌通过统一 recycle 事件回到牌库。Hold 路径先显示是否发动的可选窗口；展示完成后正确恢复原阶段，不把临时展示项重复压入 Chain。新增入场选择、跳过选择、Hold 触发和牌库回收回归测试。
+
+
+本轮批量加入 11 张可执行单位（注册表规模增至 180）：`SFD-082-221`/`SFD-082A-221` Ezreal 使用统一战斗指定目标窗口，攻击或防守时向对手单位造成自身 Might，并通过 Mind 符能动作回到基地；`SFD-103-221` Jaull-Fish 复用 Accelerate 与统一 Mighty 计数减费；`SFD-120-221`/`SFD-120A-221` Sivir, Ambitious 使用 Deflect 2 与共享战斗分配 excess 账本，在征服后由玩家选择伤害目标；`SFD-143-221`/`SFD-143A-221` Sivir, Mercenary 读取本回合实际消耗的 Rainbow 符能，动态提供 +2 Might/Ganking；`SFD-177-221`/`SFD-177A-221` Azir, Sovereign 在攻击触发后先确认可选效果，再通过多选窗口移动任意己方衍生物；`SFD-180-221`/`SFD-180A-221` Fiora, Worthy 监听统一 Mighty 状态转换并提供 Order 支付待命窗口。新增 Deflect 2、无战斗伤害、可选多目标和资源回溯测试；全量回归与固定种子对局需在提交前复核。

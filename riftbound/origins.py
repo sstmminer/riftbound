@@ -261,6 +261,10 @@ class OriginsRules:
         registry.register("gold_on_hidden_play", self._effect_gold_on_hidden_play)
         registry.register("irelia_fervent", self._effect_irelia_fervent)
         registry.register("ornn_search", self._effect_ornn_search)
+        registry.register("ezreal_attack", self._effect_ezreal_attack)
+        registry.register("sivir_excess_damage", self._effect_sivir_excess_damage)
+        registry.register("azir_sovereign", self._effect_azir_sovereign)
+        registry.register("azir_move_tokens", self._effect_azir_move_tokens)
         registry.register("ravenbloom_conservatory", self._effect_ravenbloom_conservatory)
         registry.register("kill_gear_trigger", self._effect_kill_gear_trigger)
         registry.register("spirit_wheel", self._effect_spirit_wheel)
@@ -305,6 +309,7 @@ class OriginsRules:
         # Duelist; it deliberately tracks state transitions rather than
         # polling a card code at one particular play path.
         state["mighty_seen"] = []
+        state["last_combat_excess"] = [0, 0]
         state["prevent_spell_ability_damage"] = False
         for player, deck in enumerate(self.decks):
             physical = []
@@ -326,7 +331,7 @@ class OriginsRules:
                                      "free_hide_turn": False,
                                      "discarded_this_turn": False, "spell_bonus_damage": 0,
                                      "cards_locked_turn": False, "spell_discount": 0,
-                                     "gear_played_turn": 0})
+                                     "gear_played_turn": 0, "rainbow_spent_turn": 0})
             state["fields"].append({"code": rng.choice(deck["battlefields"]), "controller": None})
         state["fields"].extend({"code": code, "controller": None} for code in self.extra_fields)
         state["dreaming_tree_used"] = [False] * len(state["fields"])
@@ -380,6 +385,10 @@ class OriginsRules:
                         and other["location"] == unit["location"]
                         for other in state["units"])):
             value += 1
+        if (implementation is not None
+                and implementation.global_effect == "sivir_mercenary"
+                and state["players"][unit["owner"]].get("rainbow_spent_turn", 0) >= 2):
+            value += 2
         if (implementation is None or implementation.global_effect != "plus_one_friendly_here"):
             if (self._is_field(state, location)
                     and any(
@@ -565,12 +574,13 @@ class OriginsRules:
             gear["code"] == "SFD-104-221"
             for gear in state["players"][unit["owner"]].get("gear", [])
         )
-        return int(unit["code"] in {"OGN-013", "OGN-041", "OGN-155", "OGN-161", "OGN-231"}
-                   or self._has_static_keyword(unit["code"], "deflect")
-                   or mech_aura
-                   or (unit["code"] == "OGN-232" and self.might(state, unit) >= 5)
-                   or refuge
-                   or monument)
+        return (2 if self._has_static_keyword(unit["code"], "deflect_2") else 0) + int(
+            unit["code"] in {"OGN-013", "OGN-041", "OGN-155", "OGN-161", "OGN-231"}
+            or self._has_static_keyword(unit["code"], "deflect")
+            or mech_aura
+            or (unit["code"] == "OGN-232" and self.might(state, unit) >= 5)
+            or refuge
+            or monument)
 
     def _ready_unit(self, state, unit):
         """Make a unit ready and apply ready-triggered Gear effects.
@@ -617,6 +627,9 @@ class OriginsRules:
                 or (unit["code"] == "OGN-232" and self.might(state, unit) >= 5)
                 or unit.get("temporary_ganking", False)
                 or (unit["code"] == "OGN-019" and state["players"][unit["owner"]].get("discarded_this_turn"))
+                or (self._card_implementation(unit["code"]) is not None
+                    and self._card_implementation(unit["code"]).global_effect == "sivir_mercenary"
+                    and state["players"][unit["owner"]].get("rainbow_spent_turn", 0) >= 2)
                 or (unit["code"] in {"OGN-150", "OGN-231"})
                 or (self._is_field(state, location) and state["fields"][location]["code"] == "OGN-297"))
 
@@ -647,6 +660,14 @@ class OriginsRules:
                     and state["players"][owner].get("rune_deck")):
                 self._queue_optional(state, owner, "grand_duelist_channel",
                                      source=unit["id"])
+            for fiora in self._units(state, owner):
+                fiora_impl = self._card_implementation(fiora["code"])
+                if (fiora_impl is not None
+                        and fiora_impl.global_effect == "fiora_worthy"
+                        and any(power in {"order", "any"}
+                                for power in state["players"][owner]["power"])):
+                    self._queue_optional(state, owner, "fiora_ready",
+                                         source=fiora["id"], target=unit["id"])
         for player in (0, 1):
             if state["points"][player] >= state["victory"] and state["points"][player] > state["points"][1-player]:
                 state["winner"] = player
@@ -2048,6 +2069,58 @@ class OriginsRules:
             row["legend_exhausted"] = True
             self._channel_rune(state, player, exhausted=True)
             return True
+        if effect == "fiora_ready":
+            source = self._unit(state, item.get("source"))
+            target = self._unit(state, item.get("target"))
+            row = state["players"][player]
+            if (source is None or target is None or source["owner"] != player
+                    or not any(unit["id"] == source["id"] for unit in self._units(state, player))):
+                return True
+            power_index = next((index for index, power in enumerate(row["power"])
+                                if power in {"order", "any"}), None)
+            if power_index is None:
+                return True
+            row["power"].pop(power_index)
+            self._ready_unit(state, target)
+            return True
+        if effect == "sivir_excess_damage":
+            amount = int(item.get("amount", 0))
+            source = self._unit(state, item.get("source"))
+            if source is None or source["owner"] != player or amount < 5:
+                return True
+            targets = [unit["id"] for unit in self._units(state, 1 - player,
+                                                            item.get("field"))]
+            if not targets:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": targets,
+                "item": {"effect": "sivir_excess_damage", "owner": player,
+                          "source": source["id"], "amount": amount,
+                          "field": item.get("field")},
+                "optional_sivir_target": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
+        if effect == "azir_move_tokens":
+            source = self._unit(state, item.get("source"))
+            field = item.get("field")
+            if source is None or source["owner"] != player or not self._is_field(state, field):
+                return True
+            targets = [unit for unit in self._units(state, player)
+                       if unit["id"] != source["id"]
+                       and self.cards.get(unit["code"], {}).get("token")
+                       and unit["location"] != field]
+            if not targets:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player,
+                "targets": [unit["id"] for unit in targets],
+                "item": {"effect": "azir_move_tokens", "owner": player,
+                          "source": source["id"], "field": field},
+                "multi": True, "min": 0, "max": len(targets), "selected": [],
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
         if effect == "ornn_search":
             # Hold is an optional trigger, so the optional item has already
             # been removed from the queue. Use the same public top-four
@@ -2611,6 +2684,12 @@ class OriginsRules:
                 if (implementation and implementation.conquer_effect == "return_self"
                         and state["players"][player]["energy"] >= 1):
                     self._queue_optional(state, player, "return_self", source=unit["id"])
+                if (implementation
+                        and implementation.conquer_effect == "sivir_excess_damage"
+                        and state.get("last_combat_excess", [0, 0])[player] >= 5):
+                    self._queue_optional(
+                        state, player, "sivir_excess_damage", source=unit["id"],
+                        amount=state["last_combat_excess"][player], field=field)
             if code == "OGN-282":
                 # Monastery's optional draw lets the player choose which
                 # friendly buff to spend.  Do not silently take the first
@@ -2676,6 +2755,7 @@ class OriginsRules:
         # carry an unchosen opportunity into a later turn.
         state["legend_options"] = []
         state["scored"] = [[], []]
+        state["last_combat_excess"] = [0, 0]
         state["hold_points"] = [0, 0]
         state["dreaming_tree_used"] = [False] * len(state["fields"])
         state["rally_effects"] = []
@@ -2691,6 +2771,7 @@ class OriginsRules:
             row["free_hide_turn"] = False
             row["ornns_forge_used"] = False
             row["gear_played_turn"] = 0
+            row["rainbow_spent_turn"] = 0
         row = state["players"][player]
         row["legend_exhausted"] = False
         if row["turns"] == 0 and not state["beginning_awarded"][player]:
@@ -3435,6 +3516,12 @@ class OriginsRules:
                     and not unit["exhausted"] and unit.get("buff", 0) > 0):
                 result.append(Action.make("unit_registry_ability", unit=unit["id"],
                                           effect=implementation.activated_effect))
+            if (implementation and implementation.activated_effect == "ezreal_return_base"
+                    and not unit["exhausted"] and self._is_field(state, unit["location"])):
+                for payment in self._payments(state, player, 0, ["mind"], 0, 1):
+                    result.append(Action.make("unit_registry_ability", unit=unit["id"],
+                                              effect=implementation.activated_effect,
+                                              payment=payment))
             if unit["code"] == "OGN-078" and not unit["exhausted"]:
                 result.append(Action.make("unit_buff", unit=unit["id"]))
             if unit["code"] == "OGN-036" and not unit["exhausted"] and row["trash"]:
@@ -4072,6 +4159,9 @@ class OriginsRules:
                 energy = max(1, energy - self._played_for_legion(state, player))
             if implementation and implementation.cost_reduction_effect == "hold_points":
                 energy = max(0, energy - 2 * state.get("hold_points", [0, 0])[player])
+            if implementation and implementation.cost_reduction_effect == "mighty_units":
+                energy = max(0, energy - 2 * sum(
+                    self.might(state, unit) >= 5 for unit in self._units(state, player)))
             if "Dragon" in data["tags"] and any(u["code"] == "OGN-140" and u["owner"] == player
                                                   and self._is_field(u["location"]) for u in state["units"]):
                 energy = max(1, energy - 2)
@@ -4708,6 +4798,9 @@ class OriginsRules:
                 for u in self._units(state, player) if u["code"] == "OGN-027"]
 
     def _pay(self, row, energy, slots):
+        row["rainbow_spent_turn"] = row.get("rainbow_spent_turn", 0) + sum(
+            row["power"][index] == "any" for index in slots
+            if 0 <= index < len(row["power"]))
         row["energy"] -= energy
         row["power"] = [power for index, power in enumerate(row["power"]) if index not in slots]
 
@@ -5723,7 +5816,7 @@ class OriginsRules:
     def _effect_lucian_attack(self, state, item, rng):
         source = self._unit(state, item.get("source"))
         target = self._unit(state, item.get("target"))
-        field = item.get("field") or state.get("battle", {}).get("field")
+        field = item.get("field") or (state.get("battle") or {}).get("field")
         if (source is not None and target is not None
                 and target["owner"] != item["owner"]
                 and source["location"] == field and target["location"] == field):
@@ -5893,6 +5986,57 @@ class OriginsRules:
                           effect="ornn_search", item=item, choices=choices,
                           rng=rng)
         return False
+
+    def _effect_ezreal_attack(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        field = item.get("field")
+        if field is None:
+            field = (state.get("battle") or {}).get("field")
+        target = self._unit(state, item.get("target"))
+        if source is None or not self._is_field(state, field) or source["location"] != field:
+            return True
+        if target is None:
+            targets = [unit["id"] for unit in self._units(state, 1 - item["owner"], field)]
+            if not targets:
+                return True
+            return self._open_target_choice(state, item,
+                                            [self._unit(state, uid) for uid in targets])
+        if target["owner"] != item["owner"] and target["location"] == field:
+            self._deal_damage(state, target, self.might(state, source))
+            self._cleanup(state, rng)
+        return True
+
+    def _effect_sivir_excess_damage(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        if (target is not None and target["owner"] != item["owner"]
+                and target["location"] == item.get("field")):
+            self._deal_damage(state, target, int(item.get("amount", 0)))
+            self._cleanup(state, rng)
+        return True
+
+    def _effect_azir_sovereign(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        field = item.get("field")
+        if field is None:
+            field = (state.get("battle") or {}).get("field")
+        if source is None or source["location"] != field:
+            return True
+        self._queue_optional(state, item["owner"], "azir_move_tokens",
+                             source=source["id"], field=field)
+        return True
+
+    def _effect_azir_move_tokens(self, state, item, rng):
+        field = item.get("field")
+        for uid in item.get("targets", []):
+            unit = self._unit(state, uid)
+            if (unit is not None and unit["owner"] == item["owner"]
+                    and self.cards.get(unit["code"], {}).get("token")
+                    and self._is_field(state, field)):
+                unit["location"] = field
+                unit["exhausted"] = True
+                unit["move_count"] = unit.get("move_count", 0) + 1
+        self._cleanup(state, rng)
+        return True
 
     def _effect_ravenbloom_conservatory(self, state, item, rng):
         """Reveal the top card before the defending combat damage step."""
@@ -9109,6 +9253,17 @@ class OriginsRules:
         elif kind == "unit_registry_ability":
             source = self._unit(state, args["unit"])
             implementation = self._card_implementation(source["code"]) if source else None
+            if (source is not None and source["owner"] == player and not source["exhausted"]
+                    and implementation is not None
+                    and implementation.activated_effect == "ezreal_return_base"
+                    and self._is_field(state, source["location"])
+                    and args.get("payment") in self._payments(state, player, 0, ["mind"], 0, 1)):
+                self._pay(row, 0, args["payment"])
+                source["exhausted"] = True
+                self._resolve_move(state, [source], f"base:{player}", player, rng,
+                                    from_effect=True)
+                state["passes"] = 0
+                return
             if (source is None or source["owner"] != player or source["exhausted"]
                     or source.get("buff", 0) <= 0 or implementation is None
                     or implementation.activated_effect != args.get("effect")):
@@ -10079,6 +10234,21 @@ class OriginsRules:
                  "owner": unit["owner"], "field": field}
                 for unit in attackers if unit["code"] == "SFD-028-221"
             ]
+            ahri_triggers += [
+                {"effect": "ezreal_attack", "source": unit["id"],
+                 "owner": unit["owner"], "field": field}
+                for unit in attackers + defenders
+                if (self._card_implementation(unit["code"]) is not None
+                    and self._card_implementation(unit["code"]).combat_effect == "ezreal_attack")
+            ]
+            ahri_triggers += [
+                {"effect": "azir_sovereign", "source": unit["id"],
+                 "owner": unit["owner"], "field": field,
+                 "target_required": False}
+                for unit in attackers
+                if (self._card_implementation(unit["code"]) is not None
+                    and self._card_implementation(unit["code"]).global_effect == "azir_sovereign")
+            ]
             for unit in attackers + defenders:
                 implementation = self._card_implementation(unit["code"])
                 if (implementation is not None
@@ -10121,7 +10291,8 @@ class OriginsRules:
         if not self._units(state, 0, field) or not self._units(state, 1, field):
             self._settle_battle(state, rng)
             return
-        battle["damage"] = {"remaining": [sum(0 if u["stunned"] else max(0, self.might(state, u))
+        battle["damage"] = {"remaining": [sum(0 if (u["stunned"] or self._has_static_keyword(u["code"], "no_combat_damage"))
+                                               else max(0, self.might(state, u))
                                                for u in self._units(state, p, field))
                                            for p in (0, 1)], "assignments": [{}, {}],
                          "excess": [0, 0]}
@@ -10228,6 +10399,7 @@ class OriginsRules:
                 and any(unit["code"] == "OGN-034" and unit["owner"] == attacker
                         and unit["location"] == field for unit in state["units"])):
             state["points"][attacker] += 1
+        state["last_combat_excess"] = list(battle.get("excess", [0, 0])) if battle["combat"] else [0, 0]
         state["battle"], state["phase"], state["actor"] = None, "main", state["turn_player"]
         if controller is not None and controller != previous:
             self._score(state, controller, field, "conquer", rng,

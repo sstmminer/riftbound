@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 169)
+        self.assertEqual(len(registry.executable_codes()), 180)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -219,6 +219,12 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-058-221").entry_trigger, "ornn_search")
         self.assertEqual(registry.get("SFD-058-221").hold_effect, "ornn_search")
         self.assertEqual(registry.get("SFD-058A-221").entry_trigger, "ornn_search")
+        self.assertEqual(registry.get("SFD-082-221").combat_effect, "ezreal_attack")
+        self.assertEqual(registry.get("SFD-103-221").cost_reduction_effect, "mighty_units")
+        self.assertEqual(registry.get("SFD-120-221").conquer_effect, "sivir_excess_damage")
+        self.assertEqual(registry.get("SFD-143-221").global_effect, "sivir_mercenary")
+        self.assertEqual(registry.get("SFD-177-221").global_effect, "azir_sovereign")
+        self.assertEqual(registry.get("SFD-180-221").global_effect, "fiora_worthy")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -331,6 +337,60 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         rules.apply(hold_state, Action.make("confirm_revealed"), random.Random(190))
         self.assertIsNone(hold_state.get("reveal"))
         self.assertFalse(hold_state.get("optional"))
+
+    def test_batch_sivir_fiora_azir_ezreal_registry_modifiers(self):
+        sivir_deck = legal_deck("SFD-120-221", "OGN-267", "OGN-193")
+        rules = SpiritforgedRules([sivir_deck, sivir_deck])
+        state = rules.initial_state(random.Random(191))
+        sivir = rules._new_unit(state, "SFD-120-221", 0, 0, exhausted=False)
+        self.assertEqual(rules._deflect(state, sivir), 2)
+        state["players"][0]["rainbow_spent_turn"] = 2
+        mercenary = rules._new_unit(state, "SFD-143-221", 0, 0, exhausted=False)
+        self.assertTrue(rules._ganking(state, mercenary))
+        self.assertEqual(rules.might(state, mercenary),
+                         rules.cards["SFD-143-221"]["might"] + 2)
+
+        fiora_state = rules.initial_state(random.Random(192))
+        fiora = rules._new_unit(fiora_state, "SFD-180-221", 0, "base:0", exhausted=False)
+        target = rules._new_unit(fiora_state, "OGN-219", 0, "base:0", exhausted=True)
+        target["temporary"] = 1
+        fiora_state["players"][0]["power"] = ["order"]
+        rules._cleanup(fiora_state, random.Random(193))
+        fiora_effect = next(item for item in fiora_state["optional"]
+                            if item["effect"] == "fiora_ready"
+                            and item["target"] == target["id"])
+        rules.apply(fiora_state, Action.make("optional_effect",
+                                             optional=fiora_effect["id"], accept=True), random.Random(194))
+        self.assertFalse(target["exhausted"])
+        self.assertEqual(fiora_state["players"][0]["power"], [])
+
+        azir = rules._new_unit(state, "SFD-177-221", 0, 0, exhausted=False)
+        token = rules._new_unit(state, "SFD-T04", 0, "base:0", exhausted=False)
+        state["phase"], state["actor"] = "main", 0
+        rules._effect_azir_sovereign(state, {"source": azir["id"], "owner": 0, "field": 0}, random.Random(194))
+        azir_effect = next(item for item in state["optional"]
+                           if item["effect"] == "azir_move_tokens")
+        state["chain_return"] = "main"
+        rules.apply(state, Action.make("optional_effect",
+                                       optional=azir_effect["id"], accept=True), random.Random(195))
+        rules.apply(state, Action.make("choose_target", target=token["id"]), random.Random(196))
+        rules.apply(state, Action.make("confirm_targets"), random.Random(197))
+        self.assertEqual(token["location"], 0)
+        self.assertTrue(token["exhausted"])
+
+        ezreal_deck = legal_deck("SFD-082-221", "OGN-247", "OGN-039")
+        ezreal_rules = SpiritforgedRules([ezreal_deck, ezreal_deck])
+        ezreal_state = ezreal_rules.initial_state(random.Random(198))
+        ezreal = ezreal_rules._new_unit(ezreal_state, "SFD-082-221", 0, 0, exhausted=False)
+        ezreal_state["fields"][0]["controller"] = 0
+        ezreal_state["phase"], ezreal_state["actor"] = "main", 0
+        ezreal_state["players"][0]["power"] = ["mind"]
+        action = next(action for action in ezreal_rules.legal_actions(ezreal_state)
+                      if action.kind == "unit_registry_ability"
+                      and __import__("json").loads(action.arguments)["unit"] == ezreal["id"])
+        ezreal_rules.apply(ezreal_state, action, random.Random(199))
+        self.assertEqual(ezreal["location"], "base:0")
+        self.assertTrue(ezreal["exhausted"])
 
     def test_windsinger_optional_return_has_a_target_window(self):
         deck = legal_deck("SFD-138-221", "OGN-267", "OGN-193")

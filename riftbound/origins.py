@@ -265,6 +265,7 @@ class OriginsRules:
         registry.register("sivir_excess_damage", self._effect_sivir_excess_damage)
         registry.register("azir_sovereign", self._effect_azir_sovereign)
         registry.register("azir_move_tokens", self._effect_azir_move_tokens)
+        registry.register("fae_porter_move", self._effect_fae_porter_move)
         registry.register("ravenbloom_conservatory", self._effect_ravenbloom_conservatory)
         registry.register("kill_gear_trigger", self._effect_kill_gear_trigger)
         registry.register("spirit_wheel", self._effect_spirit_wheel)
@@ -2017,6 +2018,26 @@ class OriginsRules:
             row["energy"] -= 1
             row["legend_exhausted"] = False
             return True
+        if effect == "fae_porter_move":
+            source = self._unit(state, item.get("source"))
+            destination = item.get("destination")
+            row = state["players"][player]
+            if (source is None or source["owner"] != player
+                    or not self._is_field(state, destination)
+                    or "chaos" not in row.get("power", [])):
+                return True
+            candidates = [unit["id"] for unit in self._units(state, player)
+                          if unit["id"] != source["id"] and unit["location"] != destination]
+            if not candidates:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": candidates,
+                "item": {"effect": "fae_porter_move", "owner": player,
+                          "source": source["id"], "destination": destination},
+                "optional_fae_target": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
         if effect == "card_sharp_self":
             self._play_gold_gear_token(state, player, exhausted=True)
             return True
@@ -4391,6 +4412,11 @@ class OriginsRules:
                     and self._is_field(state, destination)):
                 for _ in range(3):
                     self._new_unit(state, TOKEN, unit["owner"], destination)
+            if (implementation and implementation.move_effect == "fae_porter"
+                    and self._is_field(state, destination)
+                    and "chaos" in state["players"][unit["owner"]].get("power", [])):
+                self._queue_optional(state, unit["owner"], "fae_porter_move",
+                                     source=unit["id"], destination=destination)
         # Stealthy Pursuer follows a friendly move from its location only
         # through an explicit optional window.  The printed ability says
         # "may"; accepting the window exhausts the Pursuer and moves it to
@@ -6101,6 +6127,20 @@ class OriginsRules:
                 unit["exhausted"] = True
                 unit["move_count"] = unit.get("move_count", 0) + 1
         self._cleanup(state, rng)
+        return True
+
+    def _effect_fae_porter_move(self, state, item, rng):
+        target = self._unit(state, item.get("target"))
+        row = state["players"][item["owner"]]
+        if target is None or target["owner"] != item["owner"]:
+            return True
+        power_index = next((index for index, power in enumerate(row["power"])
+                            if power in {"chaos", "any"}), None)
+        if power_index is None:
+            return True
+        row["power"].pop(power_index)
+        self._resolve_move(state, [target], item["destination"], item["owner"], rng,
+                           from_effect=True)
         return True
 
     def _effect_ravenbloom_conservatory(self, state, item, rng):

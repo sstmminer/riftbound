@@ -50,7 +50,7 @@ def move_code_to_hand(state, player, code):
 class SpiritforgedExecutableTests(unittest.TestCase):
     def test_registry_is_namespaced_and_explicit(self):
         registry = spiritforged_registry()
-        self.assertEqual(len(registry.executable_codes()), 186)
+        self.assertEqual(len(registry.executable_codes()), 187)
         self.assertEqual(registry.get("SFD-006-221").entry_effect, "enter_ready")
         self.assertEqual(registry.get("SFD-087-221").spell_effect, "draw_three")
         self.assertEqual(registry.get("SFD-106-221").spell_effect, "draw_mighty")
@@ -228,6 +228,7 @@ class SpiritforgedExecutableTests(unittest.TestCase):
         self.assertEqual(registry.get("SFD-180-221").global_effect, "fiora_worthy")
         self.assertEqual(registry.get("SFD-195-221").global_effect, "blade_dancer")
         self.assertEqual(registry.get("SFD-199-221").activated_effect, "prodigal_draw")
+        self.assertEqual(registry.get("SFD-125-221").move_effect, "fae_porter")
         self.assertEqual(registry.behavior_id("SFD-222-221"), "OGN-040")
         self.assertIsNone(registry.get("SFD-002-221"))
 
@@ -438,6 +439,23 @@ class SpiritforgedExecutableTests(unittest.TestCase):
                             for action in rules.legal_actions(state)))
         rules.apply(state, Action.make("legend_prodigal_draw"), random.Random(204))
         self.assertEqual(len(state["players"][0]["hand"]), before + 1)
+
+    def test_fae_porter_uses_optional_chaos_target_after_move(self):
+        deck = legal_deck("SFD-125-221", "OGN-267", "OGN-193")
+        rules = SpiritforgedRules([deck, deck])
+        state = rules.initial_state(random.Random(205))
+        source = rules._new_unit(state, "SFD-125-221", 0, "base:0", exhausted=False)
+        target = rules._new_unit(state, "OGN-219", 0, "base:0", exhausted=False)
+        state["fields"][0]["controller"] = 0
+        state["players"][0]["power"] = ["chaos"]
+        state["chain_return"] = "main"
+        rules._resolve_move(state, [source], 0, 0, random.Random(206))
+        self.assertEqual(state["optional"][0]["effect"], "fae_porter_move")
+        rules.apply(state, Action.make(
+            "optional_effect", optional=state["optional"][0]["id"], accept=True), random.Random(207))
+        rules.apply(state, Action.make("choose_target", target=target["id"]), random.Random(208))
+        self.assertEqual(target["location"], 0)
+        self.assertEqual(state["players"][0]["power"], [])
 
     def test_windsinger_optional_return_has_a_target_window(self):
         deck = legal_deck("SFD-138-221", "OGN-267", "OGN-193")

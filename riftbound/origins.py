@@ -3521,7 +3521,8 @@ class OriginsRules:
                 if candidates:
                     payments = self._payments(
                         state, player, implementation.equip_energy,
-                        [implementation.equip_domain], 1)
+                        (DOMAINS if implementation.equip_domain == "any"
+                         else [implementation.equip_domain]), 1)
                     result.extend(
                         Action.make("gear_equip", gear=gear["id"], target=target,
                                     payment=payment)
@@ -9242,7 +9243,8 @@ class OriginsRules:
                 raise ValueError("equipment attachment is unavailable")
             payment = list(args.get("payment", []))
             expected = self._payments(state, player, implementation.equip_energy,
-                                      [implementation.equip_domain], 1)
+                                      (DOMAINS if implementation.equip_domain == "any"
+                                       else [implementation.equip_domain]), 1)
             if payment not in expected:
                 raise ValueError("invalid equipment payment")
             self._pay(row, implementation.equip_energy, payment)
@@ -9349,7 +9351,9 @@ class OriginsRules:
                                 "card_owner": self._card_owner(state, card, player),
                                 "location": f"base:{player}",
                                 "exhausted": code == "OGN-017",
-                                "temporary": code == "SFD-104-221",
+                                "temporary": (code == "SFD-104-221"
+                                               or bool(implementation and
+                                                       "temporary" in implementation.static_keywords)),
                                 "attached_to": quick_target["id"] if quick_draw else None})
             row["gear_played_turn"] = row.get("gear_played_turn", 0) + 1
             if (not self.cards.get(code, {}).get("token")

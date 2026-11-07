@@ -617,3 +617,5 @@ Power 支付与结算链一致。
 Purifier（`SFD-183-221`、`SFD-241-221`）随后接入同一附着状态的动态 Might 计算，注册表规模增至 217。攻击计算只统计该单位实际 `attached_to` 的 Equipment，每件提供一个 Assault；Legend 的全局能力不再依赖某张装备卡的编号。
 
 本轮完成 `SFD-193-221`、`SFD-245-221` Grandmaster at Arms，注册表规模增至 219。Legend 主阶段能力拆成两个连续目标窗口：先点选 Gear，再点选己方单位；未附着路径支付 1 Energy，已附着路径允许重新附着且不重复支付。Legend 横置和控制权、对象存在均在第二个目标确认时校验。
+
+补充接入 `SFD-186-221` Spinning Axe，注册表规模增至 220。注册表支持 `equip_domain="any"` 表示 Rainbow Equip，Quick-Draw 仍先打开单位目标窗口；`temporary` 标记复用 Beginning Phase 的临时 Gear 清理，不新增该卡独立的生命周期路径。

@@ -65,7 +65,7 @@ class CardImplementation:
         if self.equip_energy < 0:
             raise ValueError("equip Energy cost must be nonnegative")
         if self.equip_domain is not None and self.equip_domain not in {
-                "fury", "calm", "mind", "body", "chaos", "order"}:
+                "fury", "calm", "mind", "body", "chaos", "order", "any"}:
             raise ValueError("unknown equip Power domain")
 
 
@@ -581,6 +581,10 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-064-221", sfd, "gear", "executable",
                            reaction=True, static_keywords=frozenset({"quick_draw"}),
                            equip_domain="mind", notes="Cloth Armor; Quick-Draw plus Mind Equip."),
+        CardImplementation("SFD-186-221", sfd, "gear", "executable",
+                           reaction=True,
+                           static_keywords=frozenset({"quick_draw", "temporary"}),
+                           equip_domain="any", notes="Spinning Axe; Quick-Draw Rainbow Equip with Temporary expiry."),
         CardImplementation("SFD-002-221", sfd, "unit", "executable",
                            static_keywords=frozenset({"accelerate", "weaponmaster"}),
                            notes="Armed Assailant; shared Accelerate and Weaponmaster windows."),

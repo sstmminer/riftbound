@@ -42,6 +42,8 @@ class CardImplementation:
     additional_cost_effect: str | None = None
     cost_reduction_effect: str | None = None
     placement_rule: str | None = None
+    equip_energy: int = 0
+    equip_domain: str | None = None
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -58,8 +60,13 @@ class CardImplementation:
                 self.counter_scope,
                 self.buff_effect, self.might_effect, self.global_effect,
                 self.additional_cost_effect, self.cost_reduction_effect,
-                self.placement_rule)):
+                self.placement_rule, self.equip_energy, self.equip_domain)):
             raise ValueError("executable implementation needs an explicit hook")
+        if self.equip_energy < 0:
+            raise ValueError("equip Energy cost must be nonnegative")
+        if self.equip_domain is not None and self.equip_domain not in {
+                "fury", "calm", "mind", "body", "chaos", "order"}:
+            raise ValueError("unknown equip Power domain")
 
 
 class CardSetRegistry:
@@ -521,6 +528,50 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-165-221", sfd, "unit", "executable",
                            deathknell_effect="play_cheap_trash_unit",
                            notes="Deathknell optional free play of a low-cost unit from trash."),
+        # Plain Equipment uses the shared base placement plus the generic
+        # interactive Equip action.  Keeping the payment in the registry
+        # avoids card-code branches and lets later Weaponmaster/Quick-Draw
+        # abilities reuse the same attachment primitive.
+        CardImplementation("SFD-009-221", sfd, "gear", "executable",
+                           equip_domain="fury", notes="Serrated Dirk; generic Fury Equip."),
+        CardImplementation("SFD-016-221", sfd, "gear", "executable",
+                           equip_domain="fury", notes="Recurve Bow; generic Fury Equip."),
+        CardImplementation("SFD-030-221", sfd, "gear", "executable",
+                           equip_energy=1, equip_domain="fury",
+                           notes="Skyfall of Areion; generic Energy 1/Fury Equip."),
+        CardImplementation("SFD-033-221", sfd, "gear", "executable",
+                           equip_domain="calm", notes="Doran's Shield; generic Calm Equip."),
+        CardImplementation("SFD-042-221", sfd, "gear", "executable",
+                           equip_domain="calm", notes="Brutalizer; generic Calm Equip."),
+        CardImplementation("SFD-051-221", sfd, "gear", "executable",
+                           equip_domain="calm", notes="Guardian Angel; generic Calm Equip."),
+        CardImplementation("SFD-073-221", sfd, "gear", "executable",
+                           equip_domain="mind", notes="Experimental Hexplate; generic Mind Equip."),
+        CardImplementation("SFD-086-221", sfd, "gear", "executable",
+                           equip_domain="mind", notes="World Atlas; generic Mind Equip."),
+        CardImplementation("SFD-095-221", sfd, "gear", "executable",
+                           equip_domain="body", notes="Doran's Blade; generic Body Equip."),
+        CardImplementation("SFD-102-221", sfd, "gear", "executable",
+                           equip_domain="body", notes="Hexdrinker; generic Body Equip."),
+        CardImplementation("SFD-108-221", sfd, "gear", "executable",
+                           equip_domain="body", notes="Warmog's Armor; generic Body Equip."),
+        CardImplementation("SFD-115-221", sfd, "gear", "executable",
+                           equip_domain="body", notes="Trinity Force; generic Body Equip."),
+        CardImplementation("SFD-118-221", sfd, "gear", "executable",
+                           equip_energy=1, equip_domain="body",
+                           notes="Boneshiver; generic Energy 1/Body Equip."),
+        CardImplementation("SFD-124-221", sfd, "gear", "executable",
+                           equip_domain="chaos", notes="Doran's Ring; generic Chaos Equip."),
+        CardImplementation("SFD-133-221", sfd, "gear", "executable",
+                           equip_domain="chaos", notes="Boots of Swiftness; generic Chaos Equip."),
+        CardImplementation("SFD-134-221", sfd, "gear", "executable",
+                           equip_domain="chaos", notes="Cull; generic Chaos Equip."),
+        CardImplementation("SFD-153-221", sfd, "gear", "executable",
+                           equip_domain="order", notes="Eye of the Herald; generic Order Equip."),
+        CardImplementation("SFD-161-221", sfd, "gear", "executable",
+                           equip_domain="order", notes="B.F. Sword; generic Order Equip."),
+        CardImplementation("SFD-172-221", sfd, "gear", "executable",
+                           equip_domain="order", notes="Sacred Shears; generic Order Equip."),
         CardImplementation("SFD-028A-221", sfd, "unit", "executable",
                            static_keywords=frozenset({"assault_1"}),
                            notes="Alternate Lucian printing; Assault 1 and attack trigger."),

@@ -26,7 +26,7 @@ python tools/import_expansion_catalog.py \
 python -m riftbound catalog --set SFD
 ```
 
-这些记录大部分仍是 **catalog-only**。当前第二弹已有 188 张牌通过 `SpiritforgedRules` 执行：
+这些记录大部分仍是 **catalog-only**。当前第二弹已有 207 张牌通过 `SpiritforgedRules` 执行：
 
 - `SFD-006-221` Eager Drakehound：入场时就绪；
 - `SFD-037-221` Navori Scout：Deflect；
@@ -169,6 +169,7 @@ python -m riftbound catalog --set SFD
 - `SFD-214-221` Power Nexus：Hold 后可用四枚 Rainbow 符能换取 1 分。
 - `SFD-201-221` Chem-Baroness：Hold 后可确认横置 Legend 生成横置 Gold；Gold 的 Add 资源动作在接近胜利分数时按卡面产生额外 Energy。
 - `SFD-215-221` Ravenbloom Conservatory：防守指定阶段通过公开窗口翻开牌库顶牌，法术进入手牌，其他牌走统一回收事件。
+- `SFD-009-221`、`SFD-016-221`、`SFD-030-221`、`SFD-033-221`、`SFD-042-221`、`SFD-051-221`、`SFD-073-221`、`SFD-086-221`、`SFD-095-221`、`SFD-102-221`、`SFD-108-221`、`SFD-115-221`、`SFD-118-221`、`SFD-124-221`、`SFD-133-221`、`SFD-134-221`、`SFD-153-221`、`SFD-161-221`、`SFD-172-221`：普通 Equipment 通过注册表声明 Equip 费用，在基地出牌后由玩家点选己方单位并支付对应 Energy/领域符能，写入统一 `attached_to` 附着状态。
 
 它们通过命名空间化的 `CardSetRegistry` 注册，使用现有普通打出、目标支付、结算链和关键词计算路径。目标型扩展法术使用注册表声明的目标规格，和 Origins 的鼠标点选/确认窗口共用一条路径。其余 SFD 卡牌仍会被明确拒绝为 `RulesUnavailable`，不会从规则文本自动猜测效果。装备附着、Repeat、复杂衍生物和多步骤替代效果继续保持 catalog-only。
 

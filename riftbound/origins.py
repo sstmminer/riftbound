@@ -3478,6 +3478,18 @@ class OriginsRules:
             behavior = self._behavior_code(gear["code"])
             implementation = self._card_implementation(gear["code"])
             activated = implementation.activated_effect if implementation else None
+            if (state["phase"] == "main" and implementation is not None
+                    and implementation.equip_domain is not None
+                    and gear.get("attached_to") is None):
+                candidates = [unit["id"] for unit in self._units(state, player)]
+                if candidates:
+                    payments = self._payments(
+                        state, player, implementation.equip_energy,
+                        [implementation.equip_domain], 1)
+                    result.extend(
+                        Action.make("gear_equip", gear=gear["id"], target=target,
+                                    payment=payment)
+                        for target in candidates for payment in payments)
             gear_resource_codes = {"OGN-040", "OGN-081", "OGN-120", "OGN-163",
                                    "OGN-204", "OGN-245", "OGN-098"}
             if (state["phase"] not in {"main", "decision"}
@@ -5163,7 +5175,7 @@ class OriginsRules:
             "id": token, "card": token, "code": "SFD-T03",
             "owner": player, "card_owner": player,
             "location": f"base:{player}", "exhausted": exhausted,
-            "temporary": False,
+            "temporary": False, "attached_to": None,
         })
         return token
 
@@ -9067,6 +9079,23 @@ class OriginsRules:
             row["power"] = list(snapshot["power"])
             row["energy"] = snapshot["energy"]
             state["passes"] = 0
+        elif kind == "gear_equip":
+            gear = next((g for g in row["gear"] if g["id"] == args["gear"]), None)
+            target = self._unit(state, args.get("target"))
+            implementation = self._card_implementation(gear["code"]) if gear else None
+            if (gear is None or implementation is None
+                    or implementation.equip_domain is None
+                    or gear.get("attached_to") is not None
+                    or target is None or target["owner"] != player):
+                raise ValueError("equipment attachment is unavailable")
+            payment = list(args.get("payment", []))
+            expected = self._payments(state, player, implementation.equip_energy,
+                                      [implementation.equip_domain], 1)
+            if payment not in expected:
+                raise ValueError("invalid equipment payment")
+            self._pay(row, implementation.equip_energy, payment)
+            gear["attached_to"] = target["id"]
+            state["passes"] = 0
         elif kind == "gear_activate":
             gear = next((g for g in row["gear"] if g["id"] == args["gear"]), None)
             implementation = self._card_implementation(gear["code"]) if gear else None
@@ -9147,7 +9176,8 @@ class OriginsRules:
                                 "card_owner": self._card_owner(state, card, player),
                                 "location": f"base:{player}",
                                 "exhausted": code == "OGN-017",
-                                "temporary": code == "SFD-104-221"})
+                                "temporary": code == "SFD-104-221",
+                                "attached_to": None})
             row["gear_played_turn"] = row.get("gear_played_turn", 0) + 1
             if (not self.cards.get(code, {}).get("token")
                     and not row.get("ornns_forge_used")
@@ -10627,6 +10657,11 @@ class OriginsRules:
                         or gear.get("exhausted") not in (True, False)
                         or gear.get("temporary", False) not in (True, False)):
                     raise ValueError("invalid gear state")
+                attached = gear.get("attached_to")
+                if attached is not None:
+                    target = self._unit(state, attached)
+                    if target is None or target.get("owner") != player:
+                        raise ValueError("invalid equipment attachment")
                 located.append(gear["card"])
             for hidden in row.get("hidden", []):
                 if (hidden.get("owner", player) != player or hidden.get("field") not in range(len(state["fields"]))

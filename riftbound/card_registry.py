@@ -575,6 +575,10 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-022-221", sfd, "gear", "executable",
                            reaction=True, static_keywords=frozenset({"quick_draw"}),
                            equip_domain="fury", notes="Long Sword; Quick-Draw plus Fury Equip."),
+        CardImplementation("SFD-024-221", sfd, "unit", "executable",
+                           static_keywords=frozenset({"tank"}),
+                           combat_effect="rell_attack",
+                           notes="Rell, Magnetic; attack trigger may free-play a low-Energy Equipment and attach it."),
         CardImplementation("SFD-056-221", sfd, "gear", "executable",
                            reaction=True, static_keywords=frozenset({"quick_draw"}),
                            equip_domain="calm", notes="Sterak's Gage; Quick-Draw plus Calm Equip."),
@@ -644,6 +648,9 @@ def spiritforged_registry() -> CardSetRegistry:
         CardImplementation("SFD-053-221", sfd, "unit", "executable",
                            reaction=True, entry_trigger="janna_heal_move",
                            notes="Janna, Savior; Reaction entry heal and optional enemy return-to-base."),
+        CardImplementation("SFD-084-221", sfd, "unit", "executable",
+                           entry_trigger="jayce_entry",
+                           notes="Jayce, Man of Progress; may destroy friendly Gear to unlock one discounted Gear play this turn."),
         CardImplementation("SFD-088-221", sfd, "unit", "executable",
                            activated_effect="renata",
                            notes="Renata Glasc, Mastermind; battlefield-only draw and score abilities."),
@@ -891,3 +898,4 @@ def spiritforged_registry() -> CardSetRegistry:
                            conquer_effect="ready_self_once",
                            notes="Alternate Lucian, Merciless printing; shared first-conquer ready hook."),
     ])
+

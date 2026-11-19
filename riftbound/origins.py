@@ -238,6 +238,8 @@ class OriginsRules:
         registry.register("fae_dragon_buff", self._effect_fae_dragon_buff)
         registry.register("janna_heal_move", self._effect_janna_heal_move)
         registry.register("kato_keywords", self._effect_kato_keywords)
+        registry.register("rell_attack", self._effect_rell_attack)
+        registry.register("jayce_entry", self._effect_jayce_entry)
         registry.register("albus_optional", self._effect_albus_optional)
         registry.register("albus_channel", self._effect_albus_channel)
         registry.register("jinx_discard", self._effect_jinx_discard)
@@ -858,6 +860,9 @@ class OriginsRules:
                                 vanguard_triggers.append({"effect": "vanguard_helm",
                                                           "owner": unit["owner"],
                                                           "gear": gear["id"]})
+                battle = state.get("battle")
+                if battle is not None and battle.get("combat"):
+                    battle.setdefault("combat_death_ids", []).append(unit["id"])
                 state["units"].remove(unit)
                 if unit["card"] is not None:
                     owner_row = state["players"][unit.get("card_owner", unit["owner"])]
@@ -2191,6 +2196,26 @@ class OriginsRules:
             }
             state["phase"], state["actor"], state["passes"] = "decision", player, 0
             return False
+        if effect == "rell_play_gear":
+            source = self._unit(state, item.get("source"))
+            row = state["players"][player]
+            candidates = [card for card in item.get("candidates", [])
+                          if card in row["hand"]
+                          and (state["cards"][card]["code"] in GEAR_CODES
+                               or self._is_executable_kind(state["cards"][card]["code"], "gear"))
+                          and self.cards[state["cards"][card]["code"]]["energy"] <= 2]
+            if source is None or source["owner"] != player or not self._is_field(state, source["location"]):
+                return True
+            if not candidates:
+                return True
+            state["decision"] = {
+                "kind": "choice", "player": player, "options": candidates,
+                "item": {"effect": "rell_play_gear", "owner": player,
+                          "source": source["id"]},
+                "rell_play_gear": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
         if effect == "veiled_temple_gear":
             gears = [gear["id"] for gear in state["players"][player].get("gear", [])]
             if not gears:
@@ -2587,6 +2612,19 @@ class OriginsRules:
                 "item": {"effect": "kill_gear_optional", "owner": player,
                           "source": item.get("source")},
                 "optional_gear_effect": True,
+            }
+            state["phase"], state["actor"], state["passes"] = "decision", player, 0
+            return False
+        if effect == "jayce_kill_gear":
+            row = state["players"][player]
+            gears = [gear["id"] for gear in row.get("gear", [])]
+            if not gears:
+                return True
+            state["decision"] = {
+                "kind": "target", "player": player, "targets": gears,
+                "item": {"effect": "jayce_kill_gear", "owner": player,
+                          "source": item.get("source")},
+                "jayce_kill_gear": True,
             }
             state["phase"], state["actor"], state["passes"] = "decision", player, 0
             return False
@@ -3023,6 +3061,7 @@ class OriginsRules:
             row["gear_played_turn"] = 0
             row["rainbow_spent_turn"] = 0
             row["enemy_choices_turn"] = 0
+            row["jayce_gear_turn"] = None
         row = state["players"][player]
         row["legend_exhausted"] = False
         if row["turns"] == 0 and not state["beginning_awarded"][player]:
@@ -3629,6 +3668,8 @@ class OriginsRules:
                 implementation = self._card_implementation(code)
                 quick_draw = bool(implementation and "quick_draw" in implementation.static_keywords)
                 quick_draw = quick_draw or self._has_quick_draw_aura(state, player)
+                jayce_free = (row.get("jayce_gear_turn") == state["turn"]
+                              and data["energy"] <= 7)
                 if state["phase"] != "main" and not quick_draw:
                     continue
                 energy = data["energy"]
@@ -3647,6 +3688,22 @@ class OriginsRules:
                                 target_candidates=candidates))
                     else:
                         result.append(Action.make("play_gear", card=card, payment=payment))
+                if jayce_free:
+                    free_payments = self._payments(
+                        state, player, 0, data["domains"], data["power_cost"] or 0)
+                    if quick_draw:
+                        candidates = [unit["id"] for unit in self._units(state, player)]
+                        if candidates:
+                            result.extend(Action.make(
+                                "play_gear_targeted", card=card, payment=payment,
+                                target_candidates=candidates, ignore_energy=True,
+                                jayce_free=True)
+                                         for payment in free_payments)
+                    else:
+                        result.extend(Action.make(
+                            "play_gear", card=card, payment=payment,
+                            ignore_energy=True, jayce_free=True)
+                                     for payment in free_payments)
         gear_resource = {"OGN-040": "fury", "OGN-081": "calm", "OGN-120": "mind",
                          "OGN-163": "body", "OGN-204": "chaos", "OGN-245": "order"}
         for gear in row["gear"]:
@@ -4612,13 +4669,24 @@ class OriginsRules:
                      or (self._is_field(state, destination) and (u["location"] == base or self._ganking(state, u))))]
 
     def _resolve_move(self, state, units, destination, initiator, rng, *, ready=False,
-                      from_effect=False):
-        """Resolve normal and effect moves through one rules path."""
+                      from_effect=False, destination_map=None):
+        """Resolve normal and effect moves through one rules path.
+
+        ``destination_map`` is used by effects that exchange two units.  Both
+        legs still use this method so movement counters, restrictions, entry
+        triggers and showdown creation stay on the shared movement path.
+        """
         moved = [self._unit(state, uid) if isinstance(uid, str) else uid for uid in units]
         moved = [unit for unit in moved if unit is not None]
         if not moved:
             return False
-        if (destination == f"base:{initiator}"
+        destinations = {
+            unit["id"]: (destination_map.get(unit["id"], destination)
+                         if destination_map is not None else destination)
+            for unit in moved
+        }
+        if (any(unit_destination == f"base:{initiator}"
+                for unit_destination in destinations.values())
                 and any(
                     (self._card_implementation(unit["code"]) is not None)
                     and self._card_implementation(unit["code"]).global_effect == "no_base_moves"
@@ -4630,10 +4698,11 @@ class OriginsRules:
             if unit["owner"] != initiator and not from_effect:
                 raise ValueError("cannot move an enemy unit with a normal move")
             origin = origins[unit["id"]]
-            if (destination == f"base:{unit['owner']}" and self._is_field(state, origin)
+            unit_destination = destinations[unit["id"]]
+            if (unit_destination == f"base:{unit['owner']}" and self._is_field(state, origin)
                     and state["fields"][origin]["code"] == "OGN-295"):
                 raise ValueError("Vilemaw's Lair prevents moving to base")
-            unit["location"] = destination
+            unit["location"] = unit_destination
             if ready:
                 self._ready_unit(state, unit)
             else:
@@ -4641,10 +4710,10 @@ class OriginsRules:
             unit["move_count"] = unit.get("move_count", 0) + 1
             if unit["code"] == "OGN-205" and unit["move_count"] == 3:
                 state["points"][unit["owner"]] += 1
-            if self._is_field(state, destination):
+            if self._is_field(state, unit_destination):
                 for watcher in self._units(state, location=None):
                     if (watcher["code"] == "OGN-158" and watcher["owner"] != initiator
-                            and state["fields"][destination]["controller"] != watcher["owner"]):
+                            and state["fields"][unit_destination]["controller"] != watcher["owner"]):
                         self._draw(state, watcher["owner"], 1, rng if rng is not None else random.Random(0))
             if (self._is_field(state, origin)
                     and state["fields"][origin]["code"] == "OGN-277"):
@@ -4659,34 +4728,34 @@ class OriginsRules:
                     and self._is_field(state, origin)):
                 unit["temporary"] += 2
             if (implementation and implementation.move_effect == "buff_another_on_move"
-                    and self._is_field(state, destination)):
+                    and self._is_field(state, unit_destination)):
                 move_triggers.append({"effect": "buff_another_on_move",
                                        "source": unit["id"], "owner": unit["owner"],
-                                       "location": destination})
+                                       "location": unit_destination})
             if (implementation and implementation.move_effect == "kato_keywords"
-                    and self._is_field(state, destination)):
+                    and self._is_field(state, unit_destination)):
                 move_triggers.append({"effect": "kato_keywords", "source": unit["id"],
-                                       "owner": unit["owner"], "location": destination})
+                                       "owner": unit["owner"], "location": unit_destination})
             if (implementation and implementation.move_effect == "discard_one"
-                    and self._is_field(state, destination)):
+                    and self._is_field(state, unit_destination)):
                 move_triggers.append({"effect": "discard_one",
                                        "source": unit["id"], "owner": unit["owner"]})
             if (implementation and implementation.move_effect == "apprentice_smith"
-                    and self._is_field(state, destination)):
+                    and self._is_field(state, unit_destination)):
                 move_triggers.append({"effect": "apprentice_smith",
                                        "source": unit["id"], "owner": unit["owner"]})
             if (implementation and implementation.move_effect == "score_on_third_move"
                     and unit["move_count"] == 3):
                 state["points"][unit["owner"]] += 1
             if (implementation and implementation.move_effect == "play_recruit_three"
-                    and self._is_field(state, destination)):
+                    and self._is_field(state, unit_destination)):
                 for _ in range(3):
-                    self._new_unit(state, TOKEN, unit["owner"], destination)
+                    self._new_unit(state, TOKEN, unit["owner"], unit_destination)
             if (implementation and implementation.move_effect == "fae_porter"
-                    and self._is_field(state, destination)
+                    and self._is_field(state, unit_destination)
                     and "chaos" in state["players"][unit["owner"]].get("power", [])):
                 self._queue_optional(state, unit["owner"], "fae_porter_move",
-                                     source=unit["id"], destination=destination)
+                                     source=unit["id"], destination=unit_destination)
         # Stealthy Pursuer follows a friendly move from its location only
         # through an explicit optional window.  The printed ability says
         # "may"; accepting the window exhausts the Pursuer and moves it to
@@ -4702,11 +4771,19 @@ class OriginsRules:
                 pursuer_followers.append(watcher)
         self._cleanup(state, rng)
         entered_showdown = False
-        if self._is_field(state, destination):
-            enemies = self._units(state, 1 - initiator, destination)
-            if state["fields"][destination]["controller"] != initiator or enemies:
+        showdown_destination = next(
+            (unit_destination for unit_destination in destinations.values()
+             if self._is_field(state, unit_destination)
+             and (state["fields"][unit_destination]["controller"] != initiator
+                  or self._units(state, 1 - initiator, unit_destination))),
+            None,
+        )
+        if showdown_destination is not None:
+            enemies = self._units(state, 1 - initiator, showdown_destination)
+            if (state["fields"][showdown_destination]["controller"] != initiator
+                    or enemies):
                 entered_showdown = True
-                state["battle"] = {"field": destination, "attacker": initiator,
+                state["battle"] = {"field": showdown_destination, "attacker": initiator,
                                     "combat": bool(enemies)}
                 state["focus"], state["passes"] = initiator, 0
                 if from_effect:
@@ -4719,9 +4796,10 @@ class OriginsRules:
                         state["phase"], state["actor"] = "showdown", initiator
                 else:
                     state["phase"], state["actor"] = "showdown", initiator
-        for watcher in pursuer_followers:
-            self._queue_optional(state, initiator, "stealthy_pursuer_follow",
-                                 source=watcher["id"], destination=destination)
+        if destination is not None:
+            for watcher in pursuer_followers:
+                self._queue_optional(state, initiator, "stealthy_pursuer_follow",
+                                     source=watcher["id"], destination=destination)
         for unit in moved:
             if unit["code"] == "OGN-162" and unit.get("move_count", 0) == 1:
                 if any(other["owner"] == initiator and other["id"] != unit["id"]
@@ -5078,10 +5156,11 @@ class OriginsRules:
             return [u["id"] for u in self._units(state, 1 - owner, field)] \
                 if self._is_field(state, field) else []
         if effect == "kato_keywords":
-            source_unit = self._unit(state, source)
-            field = source_unit["location"] if source_unit is not None else None
-            return [u["id"] for u in self._units(state, owner, field)
-                    if u["id"] != source] if self._is_field(state, field) else []
+            # Kato targets another friendly unit wherever it is located.  The
+            # printed ability does not restrict the recipient to Kato's field,
+            # so the target window must include friendly base units as well.
+            return [u["id"] for u in self._units(state, owner)
+                    if u["id"] != source]
         if effect == "move_field_unit":
             return [u["id"] for u in state["units"] if self._is_field(state, u["location"])]
         if effect == "tideturner_target":
@@ -6711,6 +6790,34 @@ class OriginsRules:
                                from_effect=True)
         return True
 
+    def _effect_rell_attack(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if (source is None or source["owner"] != item["owner"]
+                or not self._is_field(state, source["location"])):
+            return True
+        row = state["players"][item["owner"]]
+        candidates = [card for card in row["hand"]
+                      if (state["cards"][card]["code"] in GEAR_CODES
+                          or self._is_executable_kind(state["cards"][card]["code"], "gear"))
+                      and self.cards[state["cards"][card]["code"]]["energy"] <= 2
+                      and self._payments(
+                          state, item["owner"], 0,
+                          self.cards[state["cards"][card]["code"]]["domains"],
+                          self.cards[state["cards"][card]["code"]]["power_cost"])]
+        if candidates:
+            self._queue_optional(state, item["owner"], "rell_play_gear",
+                                 source=source["id"], candidates=candidates)
+        return True
+
+    def _effect_jayce_entry(self, state, item, rng):
+        source = self._unit(state, item.get("source"))
+        if source is None or source["owner"] != item["owner"]:
+            return True
+        if state["players"][item["owner"]].get("gear"):
+            self._queue_optional(state, item["owner"], "jayce_kill_gear",
+                                 source=source["id"])
+        return True
+
     def _effect_kato_keywords(self, state, item, rng):
         """Give one other friendly battlefield unit Kato's keywords and Might."""
         source = self._unit(state, item.get("source"))
@@ -6719,7 +6826,6 @@ class OriginsRules:
         if (source is None or target is None or source["owner"] != item["owner"]
                 or target["owner"] != item["owner"]
                 or not self._is_field(state, source["location"])
-                or target["location"] != source["location"]
                 or target["id"] == source["id"]):
             return True
         target["temporary"] += self.might(state, source)
@@ -8133,6 +8239,8 @@ class OriginsRules:
                         ignore_cost=bool(info.get("free_all")),
                         card_owner=info.get("card_owner"),
                         ignore_energy=bool(info.get("ignore_energy")),
+                        force_attach_target=info.get("force_attach_target"),
+                        jayce_free=bool(info.get("jayce_free")),
                         free_play_parent=True), rng)
                     parent = info.get("parent")
                     if (parent is not None and parent in state.get("chain", [])
@@ -8186,6 +8294,31 @@ class OriginsRules:
                 if not decision or decision.get("kind") != "choice" or args.get("option") not in decision.get("options", []):
                     raise ValueError("invalid choice option")
                 option = args["option"]
+                if decision.get("rell_play_gear"):
+                    source = self._unit(state, decision["item"].get("source"))
+                    code = state["cards"].get(option, {}).get("code")
+                    data = self.cards.get(code)
+                    if (source is None or source["owner"] != player
+                            or not self._is_field(state, source["location"])
+                            or option not in row["hand"] or data is None
+                            or data["type"] != "gear" or data["energy"] > 2):
+                        raise ValueError("Rell Equipment choice is unavailable")
+                    payments = self._payments(state, player, 0, data["domains"], data["power_cost"])
+                    if not payments:
+                        state["decision"] = None
+                        self._cleanup(state, rng)
+                        return
+                    state["decision"] = {
+                        "kind": "free_play_payment", "player": player,
+                        "payments": payments,
+                        "free_play_gear": {
+                            "owner": player, "card": option,
+                            "ignore_energy": True,
+                            "force_attach_target": source["id"],
+                        },
+                    }
+                    state["phase"], state["actor"], state["passes"] = "decision", player, 0
+                    return
                 if decision.get("free_play_field"):
                     info = dict(decision["free_play_field"])
                     x = int(option)
@@ -8737,6 +8870,30 @@ class OriginsRules:
                     raise ValueError("invalid target choice")
                 if not self._is_targetable(state, decision.get("player", player), args["target"]):
                     raise ValueError("target is protected from enemy spells and abilities")
+                if decision.get("jayce_kill_gear"):
+                    gear = next((gear for gear in row.get("gear", [])
+                                 if gear["id"] == args["target"]), None)
+                    if gear is None:
+                        raise ValueError("Jayce Gear target is no longer legal")
+                    row["gear"].remove(gear)
+                    self._trash_gear_card(state, gear)
+                    row["jayce_gear_turn"] = state["turn"]
+                    state["decision"] = None
+                    state["optional_ordered"] = False
+                    if state.get("optional"):
+                        state["phase"], state["actor"], state["passes"] = (
+                            "optional", state["optional"][0]["player"], 0)
+                    else:
+                        restored = state.pop("optional_return", None)
+                        if restored is None:
+                            state["phase"], state["actor"], state["passes"] = "main", player, 0
+                        elif restored["phase"] == "chain" and not state.get("chain"):
+                            self._finish_resolution(state)
+                        else:
+                            state["phase"], state["actor"], state["passes"] = (
+                                restored["phase"], restored["actor"], restored.get("passes", 0))
+                    self._cleanup(state, rng)
+                    return
                 if decision.get("optional_gear_effect"):
                     target_id = args["target"]
                     owner = player
@@ -8866,22 +9023,18 @@ class OriginsRules:
                         raise ValueError("Azir swap target is no longer legal")
                     source_location = source["location"]
                     target_location = target["location"]
-                    source["location"], target["location"] = target_location, source_location
-                    source["exhausted"] = True
-                    target["exhausted"] = True
-                    source["move_count"] = source.get("move_count", 0) + 1
-                    target["move_count"] = target.get("move_count", 0) + 1
-                    source["azir_used_turn"] = state["turn"]
                     gears = [gear["id"] for gear in state["players"][player].get("gear", [])
                              if gear.get("attached_to") == target["id"]]
                     state["decision"] = None
+                    state["phase"], state["actor"], state["passes"] = "main", player, 0
+                    self._resolve_move(
+                        state, [source, target], None, player, rng, from_effect=True,
+                        destination_map={source["id"]: target_location,
+                                         target["id"]: source_location})
+                    source["azir_used_turn"] = state["turn"]
                     if gears:
-                        state["phase"], state["actor"], state["passes"] = "main", player, 0
                         self._queue_optional(state, player, "azir_swap_gear",
                                              source=source["id"], target=target["id"])
-                    else:
-                        state["phase"], state["actor"], state["passes"] = "main", player, 0
-                        self._cleanup(state, rng)
                     return
                 if decision.get("azir_swap_gear"):
                     item = decision.get("item", {})
@@ -9439,7 +9592,9 @@ class OriginsRules:
                         "chain" if state.get("chain") else "main", player, 0)
                     self.apply(state, Action.make(
                         "play_gear", card=item["card"], payment=item["payment"],
-                        ignore_energy=False, quick_draw_target=target["id"]), rng)
+                        ignore_energy=bool(item.get("ignore_energy")),
+                        jayce_free=bool(item.get("jayce_free")),
+                        quick_draw_target=target["id"]), rng)
                     return
                 if decision.get("free_play_gear_target"):
                     info = dict(decision["free_play_gear_target"])
@@ -9716,7 +9871,9 @@ class OriginsRules:
             state["decision"] = {
                 "kind": "target", "player": player, "targets": targets,
                 "item": {"effect": "play_gear_quick", "owner": player,
-                          "card": card, "payment": list(args.get("payment", []))},
+                                  "card": card, "payment": list(args.get("payment", [])),
+                                  "ignore_energy": bool(args.get("ignore_energy")),
+                                  "jayce_free": bool(args.get("jayce_free"))},
                 "quick_draw_gear": True,
             }
             state["phase"], state["actor"], state["passes"] = "decision", player, 0
@@ -9784,11 +9941,21 @@ class OriginsRules:
                 raise ValueError("unsupported gear")
             data = self.cards[code]
             implementation = self._card_implementation(code)
-            quick_target = self._unit(state, args.get("quick_draw_target"))
             quick_draw = bool(implementation and "quick_draw" in implementation.static_keywords)
             quick_draw = quick_draw or self._has_quick_draw_aura(state, player)
+            forced_target = self._unit(state, args.get("force_attach_target"))
+            if args.get("force_attach_target") is not None:
+                if forced_target is None or forced_target["owner"] != player:
+                    raise ValueError("forced Equipment target is unavailable")
+            quick_target = self._unit(state, args.get("quick_draw_target"))
+            if quick_target is None and forced_target is not None:
+                quick_target = forced_target
             if quick_draw and (quick_target is None or quick_target["owner"] != player):
                 raise ValueError("Quick-Draw gear requires a friendly target")
+            jayce_free = bool(args.get("jayce_free"))
+            if jayce_free and (row.get("jayce_gear_turn") != state["turn"]
+                               or data["energy"] > 7):
+                raise ValueError("Jayce's temporary Gear permission is unavailable")
             ignore_energy = bool(args.get("ignore_energy"))
             self._pay(row, 0 if ignore_energy else data["energy"], args.get("payment", []))
             row["hand"].remove(card)
@@ -9809,11 +9976,16 @@ class OriginsRules:
                         "temporary": (code == "SFD-104-221"
                                        or bool(implementation and
                                                "temporary" in implementation.static_keywords)),
-                        "attached_to": quick_target["id"] if quick_draw else None}
+                        "attached_to": ((quick_target["id"] if quick_draw else forced_target["id"])
+                                        if (quick_target is not None or forced_target is not None)
+                                        else None)}
             row["gear"].append(new_gear)
-            if quick_draw:
-                self._equipment_attached(state, player, new_gear, quick_target, rng)
+            attach_target = quick_target if quick_draw else forced_target
+            if attach_target is not None:
+                self._equipment_attached(state, player, new_gear, attach_target, rng)
             row["gear_played_turn"] = row.get("gear_played_turn", 0) + 1
+            if jayce_free:
+                row["jayce_gear_turn"] = None
             if (not self.cards.get(code, {}).get("token")
                     and not row.get("ornns_forge_used")
                     and any(field.get("controller") == player
@@ -11160,6 +11332,14 @@ class OriginsRules:
                 for unit in attackers if unit["code"] == "SFD-028-221"
             ]
             ahri_triggers += [
+                {"effect": "rell_attack", "source": unit["id"],
+                 "owner": unit["owner"], "field": field,
+                 "target_required": False}
+                for unit in attackers
+                if (self._card_implementation(unit["code"]) is not None
+                    and self._card_implementation(unit["code"]).combat_effect == "rell_attack")
+            ]
+            ahri_triggers += [
                 {"effect": "ezreal_attack", "source": unit["id"],
                  "owner": unit["owner"], "field": field}
                 for unit in attackers + defenders
@@ -11290,8 +11470,9 @@ class OriginsRules:
             attackers_alive = bool(self._units(state, attacker, field))
             defenders_alive = bool(self._units(state, 1 - attacker, field))
             draven_initial = dict(battle.get("draven_initial", {}))
+            combat_deaths = set(battle.get("combat_death_ids", []))
             draven_dead = [(uid, owner) for uid, owner in draven_initial.items()
-                           if self._unit(state, uid) is None]
+                           if uid in combat_deaths]
             for uid, owner in draven_dead:
                 if uid not in battle.setdefault("draven_death_scored", []):
                     state["points"][1 - owner] += 1
@@ -11503,3 +11684,4 @@ class OriginsRules:
                     raise ValueError("unresolved combat in neutral state")
                 if obj["controller"] is not None and obj["controller"] not in occupants:
                     raise ValueError("controller without units")
+

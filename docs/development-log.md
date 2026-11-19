@@ -629,3 +629,11 @@ Purifier（`SFD-183-221`、`SFD-241-221`）随后接入同一附着状态的动�
 本批再加入 5 张牌，注册表规模增至 240。`SFD-050-221` / `SFD-050A-221` Azir, Ascendant 使用 `unit_registry_ability` 的 Calm 资源动作和单回合账本，交换完成后对目标单位所附 Equipment 打开可选转移窗口；`SFD-053-221` Janna, Savior 的 Reaction 入场触发使用统一多目标 Chain 窗口，治疗所在位置友军并可把至多一名敌军回基地；`SFD-088-221` / `SFD-088A-221` Renata Glasc, Mastermind 的两项战场能力共享资源支付校验，抽牌不横置，得分能力支付后横置并进入统一清理。新增回归覆盖三种资源/目标交互和装备转移。
 
 本批再加入 3 张牌，注册表规模增至 243。`SFD-112-221` Kato the Arm 通过统一 `_resolve_move` 进入战场触发，在同一 Chain 目标窗口中点选另一名友军，并记录复制的关键词与本回合 Might；`SFD-148-221` / `SFD-148A-221` Draven, Audacious 在 `_settle_battle` 使用战斗快照处理首次胜利和战斗死亡得分，死亡事件按每个实体记录，避免同控制者多张牌被合并。新增回归覆盖移动触发、目标选择、胜利与死亡两条结算路径。
+
+## 接手记录（2026-11-19，Asia/Shanghai）
+
+- 远端 `expansion/sets-2-5` 当前提交核实为 `c8fc5962a7c59c3e965c0c51fa58b23803e58e9b`。本地工作区原先是另一个尚无提交的项目，Riftbound 已单独恢复到 `riftbound/` 子目录；没有发现 Rell 或 Jayce 的未提交草稿，注册表也尚未登记 `SFD-024-221` 或 `SFD-084-221`。
+- Git 协议抓取受网络重置影响，源码、测试、文档和 JSON 数据通过 GitHub 文件接口按上述提交恢复。卡图二进制尚未完整恢复，已补入 `card-back.png`；恢复目录当前可运行 494 项回归测试，CLI 卡图完整性测试因缺少 Origins 卡图失败 1 项。
+- 历史批次已经登记 Kato、Draven、Azir、Renata 的 243 张可执行 Spiritforged 印刷编号。现有测试覆盖了基础目标窗口、资源支付、交换和战斗快照路径，但本次接手尚未确认 Kato 跨基地目标、Draven 回手与真实死亡区分、Azir 统一移动后续触发、Renata 的战场限制与 Rell/Jayce 机制。
+- 下一步先以最小状态场景复现上述五组问题，再补齐 Rell/Jayce 的注册表和公共打出/目标/支付路径。每批提交前更新本记录、执行定向测试、全量 `python -m unittest discover -s tests -q`，并运行固定种子回放检查。
+

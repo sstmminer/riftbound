@@ -637,3 +637,11 @@ Purifier（`SFD-183-221`、`SFD-241-221`）随后接入同一附着状态的动�
 - 历史批次已经登记 Kato、Draven、Azir、Renata 的 243 张可执行 Spiritforged 印刷编号。现有测试覆盖了基础目标窗口、资源支付、交换和战斗快照路径，但本次接手尚未确认 Kato 跨基地目标、Draven 回手与真实死亡区分、Azir 统一移动后续触发、Renata 的战场限制与 Rell/Jayce 机制。
 - 下一步先以最小状态场景复现上述五组问题，再补齐 Rell/Jayce 的注册表和公共打出/目标/支付路径。每批提交前更新本记录、执行定向测试、全量 `python -m unittest discover -s tests -q`，并运行固定种子回放检查。
 
+## 第一批修复验收（2026-11-20，Asia/Shanghai）
+
+- 远端修复提交为 `ad20ef29cbf75b6a3c11d8b4efc70c2aae5bb31f`，从历史基线 `c8fc5962a7c59c3e965c0c51fa58b23803e58e9b` 快进一提交。Spiritforged 注册表从 243 增至 245 个可执行印刷编号，本批新增独立卡名 2 个，分别是 Rell, Magnetic（`SFD-024-221`）和 Jayce, Man of Progress（`SFD-084-221`）。Kato、Draven、Azir、Renata 是本批修复覆盖的既有注册卡名。
+- Kato 的移动触发现在可以选择基地中的另一名友军，并通过完整 Chain 目标窗口复制临时关键词和 Might。Draven 的得分只读取战斗清理记录的真实死亡实体，返回手牌不会误触发；同一实体的每回合首次胜利和多实体同时死亡仍沿用原有顺序。Azir 交换改走统一移动流程，保留两段移动触发和限制。Rell 的攻击触发明确选择手牌中 Energy 不高于 2 的 Equipment，忽略 Energy 但照常支付符能，并固定附着给 Rell。Jayce 先选择并摧毁己方 Gear，随后在本回合开放一次 Energy 不高于 7 的 Gear 免费 Energy 打出许可，仍支付符能；Quick-Draw 继续打开单位目标窗口。
+- 定向 Spiritforged 场景 5 项、既有 Kato/Draven/Azir/Renata 场景 5 项通过。`python -m unittest discover -s tests -q` 通过 499 项测试。`PYTHONPATH=. python tools/check_batch.py --seeds 1` 完成 2 局 Origins 对局，2 局终局，2 份回放复核通过。新增测试使用包含 SFD 卡牌的合法构筑套牌，并实际走过上述支付、目标和临时许可路径。
+- GUI 启动尝试被当前 Python 运行时缺少可用 Tcl/Tk `init.tcl` 阻断，尚未完成一次真实鼠标点击流程。远端仓库原有 Origins 卡图已通过提交树保留，但本地恢复工作树未能从 GitHub 接口物化全部二进制卡图；本地全量测试使用了未提交的 `card-back.png` 硬链接测试夹具，提交没有包含这些占位图。
+- 后续应先补齐本地 Python Tcl/Tk 运行时并完成 GUI 点击验收，再为 Spiritforged 提供能识别 SFD 卡牌的通用 AI 策略和合法套牌长局回放。当前随机 SFD 长局在既有隐藏目标路径中出现空决策状态，尚未纳入本批修复。
+
